@@ -47,7 +47,7 @@ In practice, the app usually needs:
 src/entry.tsx
 src/defaultState.ts
 a thin wrapper that connects the app to the shell runtime
-template registration in worker/src/templates.ts
+softbox.config.json
 runtime setup so the shell and worker can actually use it
 
 Simple rule
@@ -73,7 +73,7 @@ If you add a new app to /apps, ask the agent to:
 1. inspect the app
 2. create the Softbox wrapper
 3. add the runtime entry files
-4. register the template
+4. create softbox.config.json
 5. explain what changed
 
 There is also a repo skill for this:
@@ -85,6 +85,13 @@ That skill is the repo-specific guide for wrapping a new app for Softbox.
 Suggested prompt
 
 "I added a new app under /apps/<name>. Please wrap it for Softbox, register it, and explain the integration."
+
+There is also a command for supported apps:
+
+pnpm wrap-app -- --path apps/<name> --id <template-id>
+
+That command is for browser-first React/Vite apps.
+It does not automatically make Next.js or server-heavy apps work inside Softbox.
 
 One more practical note
 

@@ -1,6 +1,6 @@
 ---
 name: softbox-wrap-app
-description: Wrap a standalone app so Softbox can host it inside the shell runtime. Use when a human adds a new app under /apps, asks to make it mountable in Softbox, or needs shell integration files such as src/entry.tsx, src/defaultState.ts, adapter code, and template registration in worker/src/templates.ts.
+description: Wrap a standalone app so Softbox can host it inside the shell runtime. Use when a human adds a new app under /apps, asks to make it mountable in Softbox, or needs shell integration files such as src/entry.tsx, src/defaultState.ts, adapter code, and app-local softbox.config.json registration.
 ---
 
 # Softbox Wrap App
@@ -16,7 +16,7 @@ Use this skill to onboard a new app into Softbox without pretending that `/apps`
 5. If the app is server-heavy or framework-heavy, read `references/new-app-checklist.md` and explain the porting work honestly before wrapping.
 6. Use `assets/react-vite-shell-adapter/` as starter shapes, not blind copy-paste.
 7. Keep the app standalone-first and keep the wrapper thin.
-8. Register the template in `worker/src/templates.ts`.
+8. Register the template by creating `softbox.config.json`.
 9. Tell the human to look at `HUMAN.md` if they are confused about why the wrapper exists.
 
 ## Hard constraints
@@ -40,7 +40,7 @@ The current runtime expects:
   - `reportHealthy()`
   - `reportError(...)`
 
-The worker also expects the template to be registered in `worker/src/templates.ts`.
+The worker also expects the app to have `softbox.config.json` in the app root.
 
 ## Workflow
 
@@ -82,9 +82,9 @@ Do not put DOM objects, functions, class instances, or server-only values into t
 
 ### 5. Register the template
 
-Add the template id and path to `worker/src/templates.ts`.
+Create `softbox.config.json` in the app root.
 
-If the template is not registered there, Softbox will treat it as missing even if the folder exists.
+If that file is missing, Softbox will treat the app as unwrapped even if the folder exists.
 
 ### 6. Explain what still remains
 

@@ -4,11 +4,9 @@ Read this before wrapping a new app.
 
 ## What the current worker expects
 
-The current worker resolves app templates from:
+The current worker resolves wrapped apps by scanning `/apps/*/softbox.config.json`.
 
-- `worker/src/templates.ts`
-
-The template must be registered there.
+The app must be registered there.
 
 The worker then expects:
 

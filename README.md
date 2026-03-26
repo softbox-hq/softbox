@@ -41,12 +41,8 @@ That keeps the shell stable while the hosted app changes underneath it.
   agent orchestration, build pipeline, upload, publish
 - `convex/`
   schema and mutations for jobs, versions, files, and pipeline runs
-- `apps/live-app-template/`
-  original mutable example app
-- `apps/live-app-template-crm/`
-  CRM-style example app
-- `apps/test-app/`, `apps/test-app-2/`, `apps/test-app-3/`
-  standalone-first Vite experiments hosted by the shell
+- `apps/`
+  standalone apps and wrap targets; a Softbox-hosted app needs `softbox.config.json`, `src/entry.tsx`, and `src/defaultState.ts`
 - `chat-composer/`
   local design reference used while iterating on the shell composer
 - `docs/`
@@ -68,7 +64,7 @@ Setup:
 
 ```bash
 pnpm install
-cp .env.example .env.local
+pnpm setup
 ```
 
 Start Redis for the worker queue:
@@ -83,9 +79,8 @@ BullMQ does not run as a separate container here. It is the queue library used i
 Fill in the required values in `.env.local`, then run:
 
 ```bash
-pnpm dev:convex
-pnpm dev:worker
-pnpm dev:shell
+pnpm run doctor
+pnpm dev
 ```
 
 Notes:
@@ -94,6 +89,16 @@ Notes:
 - mounted app selection is stored in Convex, not in `.env.local`
 - the worker now processes jobs across apps; `APP_ID` and `APP_TEMPLATE_ID` are mainly defaults for `pnpm seed` and worker helper scripts
 - queueing is handled by BullMQ in the worker process; Redis is the only extra service you need to run locally
+- `pnpm dev` starts Convex, the worker, and the shell together
+- use `pnpm run doctor` instead of `pnpm doctor` because `doctor` is a reserved pnpm command
+
+Wrapping a new app:
+
+```bash
+pnpm wrap-app -- --path apps/my-app --id myapp
+```
+
+That command creates the thin Softbox runtime bridge for a browser-first React/Vite app and writes `softbox.config.json` so the worker can discover it automatically. It does not make Next.js or server-heavy apps magically compatible.
 
 Seed the demo app once:
 
@@ -109,6 +114,9 @@ Then open the shell in the browser and submit a prompt.
 ## Useful Commands
 
 ```bash
+pnpm setup
+pnpm run doctor
+pnpm dev
 pnpm dev:shell
 pnpm dev:worker
 pnpm dev:convex
@@ -116,7 +124,8 @@ pnpm build:shell
 pnpm typecheck
 pnpm test
 pnpm seed
-pnpm worker:set-template -- --template-id testapp3
+pnpm wrap-app -- --path apps/my-app --id myapp
+pnpm worker:set-template -- --template-id myapp
 docker compose up -d redis
 ```
 

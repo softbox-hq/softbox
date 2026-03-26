@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { defaultAppId } from "./shared/liveApp";
-import { defaultTemplateId } from "./templates";
+import { getDefaultTemplateId } from "./templates";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -72,6 +72,6 @@ export function loadWorkerConfig(): WorkerConfig {
     queueBackoffMs: parsePositiveNumber(process.env.BULLMQ_QUEUE_BACKOFF_MS, 800),
     r2UploadConcurrency: parsePositiveNumber(process.env.R2_UPLOAD_CONCURRENCY, 6),
     projectRoot,
-    seedTemplateId: process.env.APP_TEMPLATE_ID ?? defaultTemplateId,
+    seedTemplateId: process.env.APP_TEMPLATE_ID?.trim() || getDefaultTemplateId(projectRoot),
   };
 }

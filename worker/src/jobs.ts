@@ -199,7 +199,7 @@ export async function processJobById(
       );
     }
     const liveAppRoot = resolveTemplateRoot(config.projectRoot, appConfig.templateId);
-    const liveAppLabel = getTemplateLabel(appConfig.templateId);
+    const liveAppLabel = getTemplateLabel(appConfig.templateId, config.projectRoot);
     const currentFiles = await readLiveAppFiles(liveAppRoot);
     const sourceBytes = countSourceBytes(currentFiles);
     const primaryTargetFiles = selectLikelyTargetFiles(

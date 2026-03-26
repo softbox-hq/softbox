@@ -30,7 +30,7 @@ async function main(): Promise<void> {
 
   await bundler.dispose();
   console.log(
-    `Seeded app '${config.appId}' from template '${getTemplateLabel(config.seedTemplateId)}'`,
+    `Seeded app '${config.appId}' from template '${getTemplateLabel(config.seedTemplateId, config.projectRoot)}'`,
   );
 }
 

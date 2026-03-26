@@ -67,7 +67,7 @@ Notes:
 - Prefer standalone-first app structure. Shell integration should stay thin.
 - Do not treat generated code as production-ready just because it builds.
 - Preserve the preview-before-promotion model.
-- If a task is about app onboarding or app mounting, check `worker/src/templates.ts` and the runtime contract before editing.
+- If a task is about app onboarding or app mounting, check `HUMAN.md`, `softbox.config.json`, and the runtime contract before editing.
 - If a human asks how app onboarding works, tell them to read `HUMAN.md` first.
 - If a human adds a folder under `/apps`, explicitly tell them that `/apps` is not auto-mounted and point them to `HUMAN.md`.
 - For wrapper/onboarding work, prefer the repo skill at `skills/softbox-wrap-app/`.
@@ -155,11 +155,11 @@ Business logic, rendering, and domain behavior should live in the standalone app
 
 ### 4. Register the app template
 
-Add the template ID and path in:
+Add `softbox.config.json` in the app root or run:
 
-- `worker/src/templates.ts`
+- `pnpm wrap-app -- --path apps/<name> --id <template-id>`
 
-If the template is not registered there, the worker treats it as unavailable.
+The worker discovers wrapped apps from `softbox.config.json`.
 
 ### 5. Make sure the worker can build it
 
@@ -225,7 +225,7 @@ When in doubt, read these files first:
 - `skills/softbox-wrap-app/SKILL.md`
 - `README.md`
 - `docs/STANDALONE-APPS.md`
-- `worker/src/templates.ts`
+- `softbox.config.json`
 - `worker/src/shared/liveApp.ts`
 
 ## Short Version
@@ -238,5 +238,5 @@ A new app usually needs:
 - thin shell wrapper/adapter
 - `src/entry.tsx`
 - `src/defaultState.ts`
-- template registration in `worker/src/templates.ts`
+- `softbox.config.json`
 - app record setup in the runtime flow

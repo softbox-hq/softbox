@@ -1,4 +1,4 @@
 interface:
   display_name: "Softbox App Wrapper"
   short_description: "Wrap apps for Softbox runtime"
-  default_prompt: "Use $softbox-wrap-app to inspect a new app under /apps, add the Softbox wrapper, register it, and explain the integration."
+  default_prompt: "Use $softbox-wrap-app to inspect a new app under /apps, add the Softbox wrapper, create softbox.config.json, and explain the integration."

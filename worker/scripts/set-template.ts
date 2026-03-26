@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   if (!templateId) {
     throw new Error("Missing required --template-id");
   }
-  if (!isTemplateId(templateId)) {
+  if (!isTemplateId(templateId, config.projectRoot)) {
     throw new Error(`Unknown template id '${templateId}'`);
   }
 

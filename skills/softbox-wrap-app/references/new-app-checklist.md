@@ -44,9 +44,9 @@ Usually add:
 
 ## 5. Register the template
 
-Update:
+Create:
 
-- `worker/src/templates.ts`
+- `softbox.config.json`
 
 ## 6. Tell the human what is still missing
 

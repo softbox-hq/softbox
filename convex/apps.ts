@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./server";
 
-const defaultTemplateId = "threejs";
+const defaultTemplateId = "default";
 const defaultShellId = "main";
 
 const agentResult = v.object({
