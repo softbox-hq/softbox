@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": true,
+    "tsBuildInfoFile": "../node_modules/.cache/tsconfig.shell.tsbuildinfo",
+    "baseUrl": ".",
+    "paths": {
+      "@shell/*": ["src/*"],
+      "@shared/*": ["../worker/src/shared/*"]
+    }
+  },
+  "include": ["src", "vite.config.ts", "../worker/src/shared"]
+}

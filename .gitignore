@@ -1,0 +1,17 @@
+node_modules
+dist
+dist-*
+dist-shell
+coverage
+.tmp
+.archive
+.convex
+.env.local
+.env
+.venv
+__pycache__/
+worker-runtime
+*.log
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
