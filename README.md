@@ -2,8 +2,6 @@
 Softbox is a Vite Agentic App Runtime for safe app modification and promotion.
 It lets an agent rewrite a Vite app, build a new immutable version, preview it inside a stable shell, validate it, and only then promote it live.
 
-![2026-03-24, 03_33_35 p m -Explore_Agent_Orchestration_and_AI_Platform_Integration (1)](https://github.com/user-attachments/assets/1f01b6b4-507d-4591-8915-5d34035f20aa)
-
 Optimized for React + Vite apps that can be mounted inside the shell runtime.
 
 Instead of using AI only to generate code in an editor, this project lets a coding agent rewrite a real app, build a new immutable version, preview it inside the shell, and only then promote it live.
@@ -107,8 +105,16 @@ Seed the demo app once:
 pnpm seed
 ```
 
-That seeds the default app id and template from `.env.local`.
+That seeds the bundled `apps/dashboard-example` template when `APP_TEMPLATE_ID=default`.
 After that, switch mounted apps from the shell UI instead of changing env vars.
+
+Starting a new app:
+
+1. copy `apps/dashboard-example` to `apps/<your-app>`
+2. change `softbox.config.json`
+3. replace `src/App.tsx`
+4. keep `src/entry.tsx`, `src/defaultState.ts`, and `src/adapter/`
+5. run `pnpm run doctor`
 
 Then open the shell in the browser and submit a prompt.
 
