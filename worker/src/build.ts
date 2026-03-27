@@ -198,6 +198,7 @@ export class LiveAppBundler {
     const outputFiles = result.outputFiles ?? [];
     const artifacts: ArtifactFile[] = [];
     let entryUrl = "";
+    const cssUrls: string[] = [];
 
     for (const file of outputFiles) {
       const relativeName = relative(join(liveAppRoot, "out"), file.path).replaceAll("\\", "/");
@@ -205,6 +206,9 @@ export class LiveAppBundler {
       const key = sharedArtifactKey(appId, fileName);
       if (fileName.startsWith("entry-") && fileName.endsWith(".js")) {
         entryUrl = `${this.config.r2PublicBaseUrl}/${key}`;
+      }
+      if (fileName.endsWith(".css")) {
+        cssUrls.push(`${this.config.r2PublicBaseUrl}/${key}`);
       }
       artifacts.push({
         key,
@@ -221,6 +225,7 @@ export class LiveAppBundler {
     const manifest = liveManifestSchema.parse({
       version: versionNumber,
       entryUrl,
+      cssUrls: cssUrls.sort(),
       chunkBaseUrl: `${this.config.r2PublicBaseUrl}/apps/${appId}/shared/`,
       createdAt: Date.now(),
       appId,

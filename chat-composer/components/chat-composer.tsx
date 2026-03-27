@@ -28,7 +28,7 @@ export function ChatComposer() {
         />
 
         {/* Bottom toolbar */}
-        <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#1f1f1f]">
+        <div className="mt-2 flex items-center justify-between pt-2">
           {/* Left side buttons */}
           <div className="flex items-center gap-1.5">
             {/* Plus button */}

@@ -262,7 +262,7 @@ export function App() {
 
       {showEmptyState ? (
         <section className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-6">
-          <div className="pointer-events-auto w-full max-w-xl rounded-[2rem] border border-white/10 bg-slate-950/88 p-8 text-center shadow-2xl shadow-black/30 backdrop-blur-2xl">
+          <div className="pointer-events-auto w-full max-w-xl rounded-[2rem] bg-slate-950/88 p-8 text-center shadow-2xl shadow-black/30 backdrop-blur-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-400/90">
               Shell Host
             </p>
@@ -272,7 +272,7 @@ export function App() {
             <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-300">
               {emptyStateBody}
             </p>
-            <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-xs leading-6 text-slate-400">
+            <div className="mt-6 rounded-2xl bg-white/5 px-4 py-3 text-left text-xs leading-6 text-slate-400">
               <p>Next steps:</p>
               <p>1. {emptyStateSteps[0]}</p>
               <p>2. {emptyStateSteps[1]}</p>

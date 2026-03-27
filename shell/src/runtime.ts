@@ -40,6 +40,26 @@ type MountedLayer = {
   layer: HTMLDivElement;
 };
 
+const ACTIVE_CSS_SELECTOR = 'link[data-softbox-active-css="true"]';
+
+function clearActiveCss() {
+  document
+    .querySelectorAll<HTMLLinkElement>(ACTIVE_CSS_SELECTOR)
+    .forEach((node) => node.remove());
+}
+
+function applyActiveCss(versionId: string, cssUrls: string[]) {
+  clearActiveCss();
+  for (const href of cssUrls) {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = `${href}?t=${Date.now()}`;
+    link.dataset.softboxActiveCss = "true";
+    link.dataset.versionId = versionId;
+    document.head.appendChild(link);
+  }
+}
+
 export async function loadManifest(manifestUrl: string) {
   console.info("[shell] loading manifest", manifestUrl);
   const response = await fetch(manifestUrl, { cache: "no-store" });
@@ -119,6 +139,7 @@ export function useLiveAppRuntime(
       void activeMountRef.current?.module.unmount();
       activeMountRef.current = null;
       previewVersionRef.current = null;
+      clearActiveCss();
     };
   }, []);
 
@@ -133,6 +154,7 @@ export function useLiveAppRuntime(
     void Promise.resolve(activeMountRef.current?.module.unmount()).catch(() => undefined);
     activeMountRef.current = null;
     previewVersionRef.current = null;
+    clearActiveCss();
     host.innerHTML = "";
   }, [appId, hostRef]);
 
@@ -146,6 +168,7 @@ export function useLiveAppRuntime(
 
     void (async () => {
       if (!activeVersion) {
+        clearActiveCss();
         return;
       }
       if (activeMountRef.current?.versionId === activeVersion._id) {
@@ -161,6 +184,7 @@ export function useLiveAppRuntime(
         return;
       }
 
+      applyActiveCss(activeVersion._id, manifest.cssUrls ?? []);
       await module.mount({
         root: activeLayer,
         initialState,

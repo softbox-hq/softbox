@@ -16,10 +16,10 @@ type SoftboxRuntimeValue = {
 const defaultRuntimeValue: SoftboxRuntimeValue = {
   initialState: initialLiveAppState,
   publishState() {
-    // Standalone mode does not publish state back into Softbox.
+    // App code can opt into publishing state later.
   },
   reportHealthy() {
-    // Standalone mode does not report health back into Softbox.
+    // The shell adapter reports health by default.
   },
   reportError(error) {
     console.error(error);
