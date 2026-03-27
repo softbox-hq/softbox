@@ -1,9 +1,10 @@
 # Softbox
-Softbox is a host runtime for personalized software. Instead of shipping one fixed app, it makes it possible to adapt the app itself to each user’s needs, with a controlled build, preview, and promotion flow.
+Softbox is a Vite Agentic App Runtime for safe app modification and promotion.
+It lets an agent rewrite a Vite app, build a new immutable version, preview it inside a stable shell, validate it, and only then promote it live.
 
 ![2026-03-24, 03_33_35 p m -Explore_Agent_Orchestration_and_AI_Platform_Integration (1)](https://github.com/user-attachments/assets/1f01b6b4-507d-4591-8915-5d34035f20aa)
 
-Experimental runtime for hosting a stable shell around mutable apps.
+Optimized for React + Vite apps that can be mounted inside the shell runtime.
 
 Instead of using AI only to generate code in an editor, this project lets a coding agent rewrite a real app, build a new immutable version, preview it inside the shell, and only then promote it live.
 
