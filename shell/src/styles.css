@@ -72,6 +72,11 @@
     padding-bottom: 12rem;
   }
 
+  .runtime-layer[data-inspecting="true"],
+  .runtime-layer[data-inspecting="true"] * {
+    cursor: crosshair !important;
+  }
+
   .runtime-layer[data-layer="preview"] {
     opacity: 0;
     pointer-events: none;

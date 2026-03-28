@@ -1,6 +1,6 @@
-import { startTransition, useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowUpFromLine, Check, Trash2 } from "lucide-react";
+import { ArrowUpFromLine, Check, Crosshair, Trash2, X } from "lucide-react";
 import { convexApi } from "@shared/convexApi";
 import type { LiveAppState } from "@shared/liveApp";
 import { defaultAppId } from "@shared/liveApp";
@@ -80,6 +80,232 @@ function getRunProgress(run: any) {
   };
 }
 
+type InspectTarget = {
+  selector: string;
+  tagName: string;
+  role: string | null;
+  label: string | null;
+  rect: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+};
+
+const inspectPreferredTags = new Set([
+  "a",
+  "article",
+  "aside",
+  "button",
+  "footer",
+  "form",
+  "h1",
+  "h2",
+  "h3",
+  "header",
+  "input",
+  "label",
+  "li",
+  "main",
+  "nav",
+  "section",
+  "select",
+  "summary",
+  "textarea",
+]);
+
+function clampRect(rect: DOMRect): InspectTarget["rect"] {
+  return {
+    x: Math.max(0, rect.x),
+    y: Math.max(0, rect.y),
+    width: Math.max(0, rect.width),
+    height: Math.max(0, rect.height),
+  };
+}
+
+function truncateText(text: string | null | undefined, max = 120) {
+  if (!text) {
+    return null;
+  }
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return null;
+  }
+  return normalized.length <= max ? normalized : `${normalized.slice(0, max - 1)}…`;
+}
+
+function escapeSelectorValue(value: string) {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(value);
+  }
+  return value.replace(/["\\]/g, "\\$&");
+}
+
+function getImplicitRole(element: HTMLElement) {
+  const tagName = element.tagName.toLowerCase();
+  switch (tagName) {
+    case "a":
+      return element.hasAttribute("href") ? "link" : null;
+    case "button":
+      return "button";
+    case "input":
+      return "textbox";
+    case "select":
+      return "combobox";
+    case "textarea":
+      return "textbox";
+    default:
+      return null;
+  }
+}
+
+function getElementLabel(element: HTMLElement) {
+  return (
+    truncateText(element.getAttribute("aria-label")) ??
+    truncateText(element.getAttribute("title")) ??
+    truncateText(element.innerText) ??
+    truncateText(element.textContent)
+  );
+}
+
+function isInspectableCandidate(element: HTMLElement) {
+  const tagName = element.tagName.toLowerCase();
+  if (element.dataset.softboxId || element.dataset.testid || element.id) {
+    return true;
+  }
+  if (element.hasAttribute("role") || element.hasAttribute("aria-label")) {
+    return true;
+  }
+  if (inspectPreferredTags.has(tagName)) {
+    return true;
+  }
+  return typeof element.onclick === "function";
+}
+
+function getSelectorSegment(element: HTMLElement, boundary: HTMLElement) {
+  if (element.dataset.softboxId) {
+    return `[data-softbox-id="${escapeSelectorValue(element.dataset.softboxId)}"]`;
+  }
+  if (element.dataset.testid) {
+    return `[data-testid="${escapeSelectorValue(element.dataset.testid)}"]`;
+  }
+  if (element.id) {
+    return `#${escapeSelectorValue(element.id)}`;
+  }
+  const ariaLabel = element.getAttribute("aria-label");
+  if (ariaLabel) {
+    return `${element.tagName.toLowerCase()}[aria-label="${escapeSelectorValue(ariaLabel)}"]`;
+  }
+  if (element === boundary) {
+    return element.tagName.toLowerCase();
+  }
+  const tagName = element.tagName.toLowerCase();
+  const parent = element.parentElement;
+  if (!parent) {
+    return tagName;
+  }
+  const siblings = Array.from(parent.children).filter(
+    (child) => child.tagName === element.tagName,
+  );
+  if (siblings.length <= 1) {
+    return tagName;
+  }
+  const index = siblings.indexOf(element) + 1;
+  return `${tagName}:nth-of-type(${index})`;
+}
+
+function buildSelector(element: HTMLElement, boundary: HTMLElement) {
+  const segments: string[] = [];
+  let current: HTMLElement | null = element;
+  while (current && current !== boundary) {
+    const segment = getSelectorSegment(current, boundary);
+    segments.unshift(segment);
+    if (
+      segment.startsWith("#") ||
+      segment.startsWith("[data-softbox-id") ||
+      segment.startsWith("[data-testid")
+    ) {
+      break;
+    }
+    current = current.parentElement;
+  }
+  if (current === boundary) {
+    segments.unshift("[data-layer=\"active\"]");
+  }
+  return segments.join(" > ");
+}
+
+function pickInspectableElement(start: HTMLElement, boundary: HTMLElement) {
+  let current: HTMLElement | null = start;
+  while (current && current !== boundary) {
+    if (isInspectableCandidate(current)) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return start !== boundary ? start : null;
+}
+
+function snapshotInspectTarget(element: HTMLElement, boundary: HTMLElement): InspectTarget {
+  return {
+    selector: buildSelector(element, boundary),
+    tagName: element.tagName.toLowerCase(),
+    role: element.getAttribute("role") ?? getImplicitRole(element),
+    label: getElementLabel(element),
+    rect: clampRect(element.getBoundingClientRect()),
+  };
+}
+
+function formatInspectSummary(target: InspectTarget) {
+  return [target.tagName, target.role ? `role=${target.role}` : null, target.label ? `"${target.label}"` : null]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function buildPromptWithInspectTarget(prompt: string, target: InspectTarget | null) {
+  const trimmedPrompt = prompt.trim();
+  if (!target) {
+    return trimmedPrompt;
+  }
+  const bounds = `x=${Math.round(target.rect.x)}, y=${Math.round(target.rect.y)}, w=${Math.round(target.rect.width)}, h=${Math.round(target.rect.height)}`;
+  return [
+    trimmedPrompt,
+    "",
+    "Selected UI target:",
+    `- selector: ${target.selector}`,
+    `- tag: ${target.tagName}`,
+    target.role ? `- role: ${target.role}` : null,
+    target.label ? `- text: ${target.label}` : null,
+    `- bounds: ${bounds}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function getInspectOverlayStyle(target: InspectTarget | null): CSSProperties | null {
+  if (!target) {
+    return null;
+  }
+  return {
+    left: target.rect.x,
+    top: target.rect.y,
+    width: target.rect.width,
+    height: target.rect.height,
+  };
+}
+
+function getInspectBadgeStyle(target: InspectTarget | null): CSSProperties | null {
+  if (!target) {
+    return null;
+  }
+  const badgeTop = target.rect.y <= 44 ? target.rect.y + target.rect.height + 8 : target.rect.y - 32;
+  return {
+    left: Math.max(8, target.rect.x),
+    top: badgeTop,
+  };
+}
+
 export function App() {
   const [shellId] = useState(() => getOrCreateShellId());
   const shellSelection = useQuery(convexApi.getShellSelection as any, { shellId }) as any;
@@ -126,6 +352,9 @@ export function App() {
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
   const [switchingVersionId, setSwitchingVersionId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [inspectMode, setInspectMode] = useState(false);
+  const [hoveredTarget, setHoveredTarget] = useState<InspectTarget | null>(null);
+  const [selectedTarget, setSelectedTarget] = useState<InspectTarget | null>(null);
 
   const runtimeStatus = getRuntimeStatus(shellState);
   const lastBuildError = shellState?.lastBuildError ?? null;
@@ -216,7 +445,110 @@ export function App() {
     setSwitchingVersionId(null);
     setExpandedRunId(null);
     setDeletingRunId(null);
+    setInspectMode(false);
+    setHoveredTarget(null);
+    setSelectedTarget(null);
   }, [appId]);
+
+  useEffect(() => {
+    if (!showEmptyState) {
+      return;
+    }
+    setInspectMode(false);
+    setHoveredTarget(null);
+  }, [showEmptyState]);
+
+  useEffect(() => {
+    if (!appsOpen && !pipelineOpen && !versionsOpen) {
+      return;
+    }
+    setInspectMode(false);
+    setHoveredTarget(null);
+  }, [appsOpen, pipelineOpen, versionsOpen]);
+
+  useEffect(() => {
+    if (!inspectMode) {
+      setHoveredTarget(null);
+    }
+  }, [inspectMode]);
+
+  useEffect(() => {
+    if (!inspectMode) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setInspectMode(false);
+        setHoveredTarget(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [inspectMode]);
+
+  useEffect(() => {
+    if (!inspectMode) {
+      return;
+    }
+    const host = hostRef.current;
+    if (!host) {
+      return;
+    }
+    const activeLayer = host.querySelector<HTMLElement>('[data-layer="active"]');
+    if (!activeLayer) {
+      return;
+    }
+
+    activeLayer.dataset.inspecting = "true";
+
+    const updateHoveredTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) {
+        setHoveredTarget(null);
+        return;
+      }
+      const inspectable = pickInspectableElement(target, activeLayer);
+      if (!inspectable) {
+        setHoveredTarget(null);
+        return;
+      }
+      setHoveredTarget(snapshotInspectTarget(inspectable, activeLayer));
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      updateHoveredTarget(event.target);
+    };
+
+    const handlePointerLeave = () => {
+      setHoveredTarget(null);
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof HTMLElement)) {
+        return;
+      }
+      const inspectable = pickInspectableElement(event.target, activeLayer);
+      if (!inspectable) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const snapshot = snapshotInspectTarget(inspectable, activeLayer);
+      setSelectedTarget(snapshot);
+      setHoveredTarget(snapshot);
+      setInspectMode(false);
+    };
+
+    activeLayer.addEventListener("pointermove", handlePointerMove, true);
+    activeLayer.addEventListener("pointerleave", handlePointerLeave, true);
+    activeLayer.addEventListener("pointerdown", handlePointerDown, true);
+
+    return () => {
+      delete activeLayer.dataset.inspecting;
+      activeLayer.removeEventListener("pointermove", handlePointerMove, true);
+      activeLayer.removeEventListener("pointerleave", handlePointerLeave, true);
+      activeLayer.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [inspectMode, shellState?.activeVersion?._id]);
 
   useLiveAppRuntime(hostRef, {
     appId: appId ?? "__unmounted__",
@@ -263,6 +595,21 @@ export function App() {
         />
       </div>
 
+      {inspectMode && hoveredTarget ? (
+        <div className="pointer-events-none fixed inset-0 z-[12]">
+          <div
+            className="absolute rounded-2xl border border-cyan-300/80 bg-cyan-400/10 shadow-[0_0_0_1px_rgba(34,211,238,0.28),0_18px_50px_rgba(8,145,178,0.2)]"
+            style={getInspectOverlayStyle(hoveredTarget) ?? undefined}
+          />
+          <div
+            className="absolute rounded-lg bg-cyan-300 px-2 py-1 text-[10px] font-semibold text-slate-950 shadow-lg"
+            style={getInspectBadgeStyle(hoveredTarget) ?? undefined}
+          >
+            {formatInspectSummary(hoveredTarget)}
+          </div>
+        </div>
+      ) : null}
+
       {showEmptyState ? (
         <section className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-hidden px-6">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.06),transparent_42%),linear-gradient(180deg,rgba(3,4,6,0.86),rgba(3,4,6,0.96))]" />
@@ -304,7 +651,10 @@ export function App() {
               if (!prompt.trim() || promptDisabled) return;
               setSubmitting(true);
               try {
-                await submitPrompt({ appId, prompt });
+                await submitPrompt({
+                  appId,
+                  prompt: buildPromptWithInspectTarget(prompt, selectedTarget),
+                });
                 startTransition(() => setPrompt(""));
               } finally {
                 setSubmitting(false);
@@ -321,6 +671,37 @@ export function App() {
                   <p className="mt-1 text-amber-100/80">
                     {templateSourceMessage ??
                       "This app can still mount its existing built version, but its local source is missing from /apps."}
+                  </p>
+                </div>
+              ) : null}
+              {selectedTarget ? (
+                <div className="mb-3 rounded-xl bg-white/[0.04] px-3 py-2.5 text-xs leading-5 text-gray-300">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-100">Selected element</p>
+                      <p className="mt-1 truncate text-gray-300">
+                        {formatInspectSummary(selectedTarget)}
+                      </p>
+                      <p className="mt-1 truncate font-mono text-[11px] text-gray-500">
+                        {selectedTarget.selector}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTarget(null)}
+                      className="flex size-6 shrink-0 items-center justify-center rounded-md bg-white/[0.04] text-gray-400 transition-colors hover:bg-white/[0.08] hover:text-gray-200"
+                      aria-label="Clear selected element"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {inspectMode ? (
+                <div className="mb-3 rounded-xl bg-cyan-400/10 px-3 py-2 text-xs leading-5 text-cyan-100">
+                  <p className="font-semibold text-cyan-200">Inspect mode is on.</p>
+                  <p className="mt-1 text-cyan-100/80">
+                    Click any mounted app element to attach it to the next prompt. Press Escape to cancel.
                   </p>
                 </div>
               ) : null}
@@ -385,6 +766,23 @@ export function App() {
                 </div>
 
                 <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={noMountedApp || showEmptyState}
+                    onClick={() => {
+                      setInspectMode((current) => !current);
+                      setHoveredTarget(null);
+                    }}
+                    className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      inspectMode
+                        ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                        : "bg-[#1f1f1f] text-gray-300 hover:bg-[#2a2a2a]"
+                    }`}
+                  >
+                    <Crosshair className="size-3.5" />
+                    {inspectMode ? "Inspecting" : "Inspect"}
+                  </button>
+
                   {/* <button
                     type="button"
                     className="flex h-7 items-center gap-1.5 rounded-lg bg-[#1f1f1f] px-2.5 text-gray-400 transition-colors hover:bg-[#2a2a2a] hover:text-gray-300"
