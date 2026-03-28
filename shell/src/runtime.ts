@@ -1,7 +1,8 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { liveManifestSchema } from "@shared/manifest";
 import {
   liveAppStateSchema,
+  type JsonObject,
   type LiveAppModule,
   type LiveAppState,
 } from "@shared/liveApp";
@@ -38,6 +39,11 @@ type MountedLayer = {
   versionId: string;
   module: LiveAppModule;
   layer: HTMLDivElement;
+};
+
+type PublishedStateSnapshot = {
+  versionId: string;
+  state: LiveAppState;
 };
 
 const ACTIVE_CSS_SELECTOR = 'link[data-softbox-active-css="true"]';
@@ -102,6 +108,43 @@ function notifyViewportChange() {
   });
 }
 
+function isPlainStateObject(state: LiveAppState): state is JsonObject {
+  return Boolean(
+    state &&
+      typeof state === "object" &&
+      !Array.isArray(state),
+  );
+}
+
+function readShellRoute() {
+  if (typeof window === "undefined") {
+    return "/";
+  }
+  return window.location.pathname || "/";
+}
+
+function applyShellRouteToState(state: LiveAppState) {
+  if (!isPlainStateObject(state) || typeof state.route !== "string") {
+    return state;
+  }
+  return {
+    ...(state as JsonObject),
+    route: readShellRoute(),
+  } as LiveAppState;
+}
+
+function syncShellRouteFromState(state: LiveAppState) {
+  if (!isPlainStateObject(state) || typeof state.route !== "string" || typeof window === "undefined") {
+    return null;
+  }
+  const route = state.route || "/";
+  if (window.location.pathname !== route) {
+    const nextUrl = `${route}${window.location.search}${window.location.hash}`;
+    window.history.pushState(window.history.state, "", nextUrl);
+  }
+  return route;
+}
+
 export function shouldLoadCandidateVersion(args: {
   activeVersion: VersionRecord | null;
   nextReadyVersion: VersionRecord | null;
@@ -124,6 +167,9 @@ export function useLiveAppRuntime(
   const activeMountRef = useRef<MountedLayer | null>(null);
   const previewVersionRef = useRef<string | null>(null);
   const previousAppIdRef = useRef<string | null>(null);
+  const activeRouteRef = useRef<string | null>(null);
+  const publishedStateRef = useRef<PublishedStateSnapshot | null>(null);
+  const [browserRouteVersion, setBrowserRouteVersion] = useState(0);
   const {
     appId,
     activeVersion,
@@ -139,8 +185,18 @@ export function useLiveAppRuntime(
       void activeMountRef.current?.module.unmount();
       activeMountRef.current = null;
       previewVersionRef.current = null;
+      activeRouteRef.current = null;
+      publishedStateRef.current = null;
       clearActiveCss();
     };
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setBrowserRouteVersion((current) => current + 1);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
   useEffect(() => {
@@ -154,6 +210,8 @@ export function useLiveAppRuntime(
     void Promise.resolve(activeMountRef.current?.module.unmount()).catch(() => undefined);
     activeMountRef.current = null;
     previewVersionRef.current = null;
+    activeRouteRef.current = null;
+    publishedStateRef.current = null;
     clearActiveCss();
     host.innerHTML = "";
   }, [appId, hostRef]);
@@ -168,27 +226,49 @@ export function useLiveAppRuntime(
 
     void (async () => {
       if (!activeVersion) {
+        activeRouteRef.current = null;
+        publishedStateRef.current = null;
         clearActiveCss();
         return;
       }
-      if (activeMountRef.current?.versionId === activeVersion._id) {
+      const shellRoute = readShellRoute();
+      const publishedState =
+        publishedStateRef.current?.versionId === activeVersion._id
+          ? publishedStateRef.current.state
+          : null;
+      const baseState = publishedState ?? liveAppStateSchema.parse(JSON.parse(activeVersion.stateJson));
+      const initialState = applyShellRouteToState(baseState);
+      const routeCapable = isPlainStateObject(initialState) && typeof initialState.route === "string";
+      if (
+        activeMountRef.current?.versionId === activeVersion._id &&
+        (!routeCapable || activeRouteRef.current === shellRoute)
+      ) {
         return;
       }
 
       const activeLayer = ensureLayer(host, "active");
       const manifest = await loadManifest(activeVersion.manifestUrl);
       const module = await importLiveApp(manifest.entryUrl);
-      const initialState = liveAppStateSchema.parse(JSON.parse(activeVersion.stateJson));
+      const existingActive = activeMountRef.current;
       if (cancelled) {
         await module.unmount();
         return;
       }
 
       applyActiveCss(activeVersion._id, manifest.cssUrls ?? []);
+      if (existingActive) {
+        await Promise.resolve(existingActive.module.unmount()).catch(() => undefined);
+        existingActive.layer.innerHTML = "";
+      }
       await module.mount({
         root: activeLayer,
         initialState,
         publishState: (state) => {
+          publishedStateRef.current = {
+            versionId: activeVersion._id,
+            state,
+          };
+          activeRouteRef.current = syncShellRouteFromState(state);
           void publishState(state);
         },
         reportHealthy: () => {
@@ -208,14 +288,15 @@ export function useLiveAppRuntime(
         activeVersion.versionNumber,
       );
 
-      if (activeMountRef.current && activeMountRef.current.versionId !== activeVersion._id) {
-        await activeMountRef.current.module.unmount();
-      }
-
       activeMountRef.current = {
         versionId: activeVersion._id,
         module,
         layer: activeLayer,
+      };
+      activeRouteRef.current = routeCapable ? shellRoute : null;
+      publishedStateRef.current = {
+        versionId: activeVersion._id,
+        state: initialState,
       };
     })().catch((error) => {
       void reportRuntimeError({
@@ -228,7 +309,7 @@ export function useLiveAppRuntime(
     return () => {
       cancelled = true;
     };
-  }, [activeVersion, hostRef, publishState, reportRuntimeError]);
+  }, [activeVersion, browserRouteVersion, hostRef, publishState, reportRuntimeError]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -257,7 +338,9 @@ export function useLiveAppRuntime(
       const version = nextReadyVersion!;
       const manifest = await loadManifest(version.manifestUrl);
       const module = await importLiveApp(manifest.entryUrl);
-      const initialState = liveAppStateSchema.parse(JSON.parse(version.stateJson));
+      const initialState = applyShellRouteToState(
+        liveAppStateSchema.parse(JSON.parse(version.stateJson)),
+      );
 
       try {
         console.info("[shell] previewing candidate version", version.versionNumber);
@@ -309,6 +392,11 @@ export function useLiveAppRuntime(
           root: activeLayer,
           initialState,
           publishState: (state) => {
+            publishedStateRef.current = {
+              versionId: version._id,
+              state,
+            };
+            activeRouteRef.current = syncShellRouteFromState(state);
             void publishState(state);
           },
           reportHealthy: () => {},
@@ -333,6 +421,14 @@ export function useLiveAppRuntime(
           versionId: version._id,
           module,
           layer: activeLayer,
+        };
+        activeRouteRef.current =
+          isPlainStateObject(initialState) && typeof initialState.route === "string"
+            ? readShellRoute()
+            : null;
+        publishedStateRef.current = {
+          versionId: version._id,
+          state: initialState,
         };
       } catch (error) {
         await Promise.resolve(module.unmount()).catch(() => undefined);

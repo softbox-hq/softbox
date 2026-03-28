@@ -1,5 +1,6 @@
 export const initialLiveAppState = {
-  focusQueue: "review",
+  route: "/",
+  focusQueue: "healthy-preview",
   selectedRunId: "run-2048",
   releaseMode: "guarded",
 };
