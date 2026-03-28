@@ -1,6 +1,6 @@
-"use client"
+"use client";
 
-import { useState } from "react"
+import { useState } from "react";
 import {
   Plus,
   ChevronDown,
@@ -8,11 +8,11 @@ import {
   Sparkles,
   X,
   FolderKanban,
-} from "lucide-react"
+} from "lucide-react";
 
 export function ChatComposer() {
-  const [showBanner, setShowBanner] = useState(true)
-  const [inputValue, setInputValue] = useState("")
+  const [showBanner, setShowBanner] = useState(true);
+  const [inputValue, setInputValue] = useState("");
 
   return (
     <div className="w-full max-w-2xl mx-auto">
@@ -22,7 +22,7 @@ export function ChatComposer() {
         <textarea
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
-          placeholder="Ask v0 to build..."
+          placeholder="to change..."
           className="w-full bg-transparent text-gray-200 placeholder-gray-500 text-sm resize-none outline-none min-h-[60px] px-1"
           rows={2}
         />
@@ -97,5 +97,5 @@ export function ChatComposer() {
         </div>
       )}
     </div>
-  )
+  );
 }
