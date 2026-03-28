@@ -303,6 +303,7 @@ export function useLiveAppRuntime(
           currentActive.layer.innerHTML = "";
         }
 
+        applyActiveCss(version._id, manifest.cssUrls ?? []);
         activeLayer.innerHTML = "";
         await module.mount({
           root: activeLayer,

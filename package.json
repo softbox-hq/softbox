@@ -7,7 +7,7 @@
     "setup": "tsx scripts/setup.ts",
     "dev": "tsx scripts/dev.ts",
     "dev:shell": "vite --config shell/vite.config.ts",
-    "dev:worker": "tsx watch --exclude .tmp/** --exclude /tmp/live-runtime-state-* worker/src/index.ts",
+    "dev:worker": "tsx watch --exclude '.tmp/**' --exclude '/tmp/live-runtime-state-*' worker/src/index.ts",
     "dev:convex": "convex dev",
     "build:shell": "vite build --config shell/vite.config.ts",
     "generate:elements-numbr": "tsx scripts/generate-elements-numbr.ts",

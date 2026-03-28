@@ -43,6 +43,20 @@ export type ArtifactPurgeTaskRecord = {
   lastError?: string | null;
 };
 
+export type SeedAppStateRecord = {
+  existingApp: boolean;
+  purgeQueued: boolean;
+  counts: {
+    jobs: number;
+    activeJobs: number;
+    pipelineRuns: number;
+    pipelineStages: number;
+    runtimeErrors: number;
+    versions: number;
+    appFiles: number;
+  };
+};
+
 export class ConvexRuntimeClient {
   private readonly client: ConvexHttpClient;
 
@@ -76,6 +90,14 @@ export class ConvexRuntimeClient {
 
   async getNextArtifactPurgeTask(): Promise<ArtifactPurgeTaskRecord | null> {
     return await this.client.query(convexApi.getNextArtifactPurgeTask as any, {});
+  }
+
+  async inspectSeedAppState(appId: string): Promise<SeedAppStateRecord> {
+    return await this.client.query(convexApi.inspectSeedAppState as any, { appId });
+  }
+
+  async resetSeedAppState(appId: string): Promise<void> {
+    await this.client.mutation(convexApi.resetSeedAppState as any, { appId });
   }
 
   async hasActiveJobsForApp(appId: string): Promise<boolean> {

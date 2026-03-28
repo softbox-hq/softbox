@@ -145,6 +145,56 @@ async function getArtifactPurgeTaskByAppId(ctx: any, appId: string) {
     .first();
 }
 
+async function deleteAppDataRecords(ctx: any, appId: string) {
+  const pipelineStages = await ctx.db
+    .query("pipelineStages")
+    .withIndex("by_appId_and_startedAt", (q) => q.eq("appId", appId))
+    .collect();
+  for (const stage of pipelineStages) {
+    await ctx.db.delete(stage._id);
+  }
+
+  const pipelineRuns = await ctx.db
+    .query("pipelineRuns")
+    .withIndex("by_appId_and_submittedAt", (q) => q.eq("appId", appId))
+    .collect();
+  for (const run of pipelineRuns) {
+    await ctx.db.delete(run._id);
+  }
+
+  const runtimeErrors = await ctx.db
+    .query("runtimeErrors")
+    .withIndex("by_appId_and_createdAt", (q) => q.eq("appId", appId))
+    .collect();
+  for (const error of runtimeErrors) {
+    await ctx.db.delete(error._id);
+  }
+
+  const versions = await ctx.db
+    .query("versions")
+    .withIndex("by_appId_and_versionNumber", (q) => q.eq("appId", appId))
+    .collect();
+  for (const version of versions) {
+    await ctx.db.delete(version._id);
+  }
+
+  const appFiles = await ctx.db
+    .query("appFiles")
+    .withIndex("by_appId", (q) => q.eq("appId", appId))
+    .collect();
+  for (const file of appFiles) {
+    await ctx.db.delete(file._id);
+  }
+
+  const jobs = await ctx.db
+    .query("jobs")
+    .withIndex("by_appId_and_submittedAt", (q) => q.eq("appId", appId))
+    .collect();
+  for (const job of jobs) {
+    await ctx.db.delete(job._id);
+  }
+}
+
 async function upsertShellSelection(
   ctx: any,
   args: { shellId: string; selectedAppId: string | null },
@@ -596,6 +646,80 @@ export const deleteApp = mutation({
   },
 });
 
+export const inspectSeedAppState = query({
+  args: { appId: v.string() },
+  handler: async (ctx, args) => {
+    const app = await getAppById(ctx, args.appId);
+    const purgeTask = await getArtifactPurgeTaskByAppId(ctx, args.appId);
+    const jobs = await ctx.db
+      .query("jobs")
+      .withIndex("by_appId_and_submittedAt", (q) => q.eq("appId", args.appId))
+      .collect();
+    const pipelineRuns = await ctx.db
+      .query("pipelineRuns")
+      .withIndex("by_appId_and_submittedAt", (q) => q.eq("appId", args.appId))
+      .collect();
+    const pipelineStages = await ctx.db
+      .query("pipelineStages")
+      .withIndex("by_appId_and_startedAt", (q) => q.eq("appId", args.appId))
+      .collect();
+    const runtimeErrors = await ctx.db
+      .query("runtimeErrors")
+      .withIndex("by_appId_and_createdAt", (q) => q.eq("appId", args.appId))
+      .collect();
+    const versions = await ctx.db
+      .query("versions")
+      .withIndex("by_appId_and_versionNumber", (q) => q.eq("appId", args.appId))
+      .collect();
+    const appFiles = await ctx.db
+      .query("appFiles")
+      .withIndex("by_appId", (q) => q.eq("appId", args.appId))
+      .collect();
+
+    return {
+      existingApp: Boolean(app),
+      purgeQueued: Boolean(purgeTask),
+      counts: {
+        jobs: jobs.length,
+        activeJobs: jobs.filter((job) => job.status === "pending" || job.status === "running").length,
+        pipelineRuns: pipelineRuns.length,
+        pipelineStages: pipelineStages.length,
+        runtimeErrors: runtimeErrors.length,
+        versions: versions.length,
+        appFiles: appFiles.length,
+      },
+    };
+  },
+});
+
+export const resetSeedAppState = mutation({
+  args: { appId: v.string() },
+  handler: async (ctx, args) => {
+    const app = await getAppById(ctx, args.appId);
+    if (app) {
+      await ctx.db.delete(app._id);
+    }
+
+    const matchingSelections = await ctx.db
+      .query("shellSelections")
+      .withIndex("by_selectedAppId", (q) => q.eq("selectedAppId", args.appId))
+      .collect();
+    for (const selection of matchingSelections) {
+      await ctx.db.patch(selection._id, {
+        selectedAppId: null,
+        updatedAt: Date.now(),
+      });
+    }
+
+    await deleteAppDataRecords(ctx, args.appId);
+
+    const purgeTask = await getArtifactPurgeTaskByAppId(ctx, args.appId);
+    if (purgeTask) {
+      await ctx.db.delete(purgeTask._id);
+    }
+  },
+});
+
 export const getNextArtifactPurgeTask = query({
   args: {},
   handler: async (ctx) => {
@@ -650,53 +774,34 @@ export const recordArtifactPurgeFailure = mutation({
 export const finalizeDeletedAppData = mutation({
   args: { appId: v.string() },
   handler: async (ctx, args) => {
-    const pipelineStages = await ctx.db
+    await deleteAppDataRecords(ctx, args.appId);
+  },
+});
+
+export const deletePipelineRun = mutation({
+  args: { runId: v.id("pipelineRuns") },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) {
+      return { deleted: false };
+    }
+
+    const stages = await ctx.db
       .query("pipelineStages")
-      .withIndex("by_appId_and_startedAt", (q) => q.eq("appId", args.appId))
+      .withIndex("by_runId_and_sortOrder", (q) => q.eq("runId", args.runId))
       .collect();
-    for (const stage of pipelineStages) {
+    for (const stage of stages) {
       await ctx.db.delete(stage._id);
     }
 
-    const pipelineRuns = await ctx.db
-      .query("pipelineRuns")
-      .withIndex("by_appId_and_submittedAt", (q) => q.eq("appId", args.appId))
-      .collect();
-    for (const run of pipelineRuns) {
-      await ctx.db.delete(run._id);
-    }
-
-    const runtimeErrors = await ctx.db
-      .query("runtimeErrors")
-      .withIndex("by_appId_and_createdAt", (q) => q.eq("appId", args.appId))
-      .collect();
-    for (const error of runtimeErrors) {
-      await ctx.db.delete(error._id);
-    }
-
-    const versions = await ctx.db
-      .query("versions")
-      .withIndex("by_appId_and_versionNumber", (q) => q.eq("appId", args.appId))
-      .collect();
-    for (const version of versions) {
-      await ctx.db.delete(version._id);
-    }
-
-    const appFiles = await ctx.db
-      .query("appFiles")
-      .withIndex("by_appId", (q) => q.eq("appId", args.appId))
-      .collect();
-    for (const file of appFiles) {
-      await ctx.db.delete(file._id);
-    }
-
-    const jobs = await ctx.db
-      .query("jobs")
-      .withIndex("by_appId_and_submittedAt", (q) => q.eq("appId", args.appId))
-      .collect();
-    for (const job of jobs) {
+    const job = await ctx.db.get(run.jobId);
+    if (job) {
       await ctx.db.delete(job._id);
     }
+
+    await ctx.db.delete(args.runId);
+
+    return { deleted: true };
   },
 });
 

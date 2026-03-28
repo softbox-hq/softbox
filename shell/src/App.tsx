@@ -1,6 +1,6 @@
 import { startTransition, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowUpFromLine, Check } from "lucide-react";
+import { ArrowUpFromLine, Check, Trash2 } from "lucide-react";
 import { convexApi } from "@shared/convexApi";
 import type { LiveAppState } from "@shared/liveApp";
 import { defaultAppId } from "@shared/liveApp";
@@ -106,6 +106,7 @@ export function App() {
   ) as any[]) ?? [];
   const setSelectedAppMutation = useMutation(convexApi.setSelectedApp as any);
   const deleteAppMutation = useMutation(convexApi.deleteApp as any);
+  const deletePipelineRunMutation = useMutation(convexApi.deletePipelineRun as any);
   const submitPrompt = useMutation(convexApi.submitPrompt as any);
   const publishStateMutation = useMutation(convexApi.publishState as any);
   const activateVersionMutation = useMutation(convexApi.activateVersion as any);
@@ -122,6 +123,7 @@ export function App() {
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [switchingAppId, setSwitchingAppId] = useState<string | null>(null);
   const [deletingAppId, setDeletingAppId] = useState<string | null>(null);
+  const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
   const [switchingVersionId, setSwitchingVersionId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
@@ -213,6 +215,7 @@ export function App() {
     setVersionsOpen(false);
     setSwitchingVersionId(null);
     setExpandedRunId(null);
+    setDeletingRunId(null);
   }, [appId]);
 
   useLiveAppRuntime(hostRef, {
@@ -261,19 +264,21 @@ export function App() {
       </div>
 
       {showEmptyState ? (
-        <section className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-6">
-          <div className="pointer-events-auto w-full max-w-xl rounded-[2rem] bg-slate-950/88 p-8 text-center shadow-2xl shadow-black/30 backdrop-blur-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-400/90">
+        <section className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-hidden px-6">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.06),transparent_42%),linear-gradient(180deg,rgba(3,4,6,0.86),rgba(3,4,6,0.96))]" />
+          <div className="pointer-events-auto relative w-full max-w-xl overflow-hidden rounded-[2rem] bg-[#0f1012]/92 p-8 text-center shadow-[0_36px_120px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
+            <div className="absolute inset-x-10 top-0 h-px bg-white/8" aria-hidden="true" />
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gray-500">
               Shell Host
             </p>
             <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
               {emptyStateTitle}
             </h1>
-            <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-300">
+            <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-300">
               {emptyStateBody}
             </p>
-            <div className="mt-6 rounded-2xl bg-white/5 px-4 py-3 text-left text-xs leading-6 text-slate-400">
-              <p>Next steps:</p>
+            <div className="mt-6 rounded-2xl bg-black/20 px-4 py-3 text-left text-xs leading-6 text-gray-400">
+              <p className="font-medium text-gray-300">Next steps</p>
               <p>1. {emptyStateSteps[0]}</p>
               <p>2. {emptyStateSteps[1]}</p>
             </div>
@@ -469,7 +474,7 @@ export function App() {
               aria-label="Pipeline runs"
               onClick={(event) => event.stopPropagation()}
             >
-              <div className="flex items-center justify-between border-b border-white/10 px-6 py-5 sm:px-8">
+              <div className="flex items-center justify-between px-6 py-5 sm:px-8">
                 <div>
                   <p className="text-sm font-semibold text-white">Pipeline runs</p>
                   <p className="mt-1 text-xs text-gray-500">Detailed prompt-to-render timeline.</p>
@@ -490,17 +495,17 @@ export function App() {
                       const isExpanded = expandedRunId === run._id;
                       const statusTone =
                         run.status === "completed"
-                          ? "bg-emerald-500/10 text-emerald-300 ring-emerald-500/20"
+                          ? "bg-emerald-500/10 text-emerald-300"
                           : run.status === "failed"
-                            ? "bg-rose-500/10 text-rose-300 ring-rose-500/20"
+                            ? "bg-rose-500/10 text-rose-300"
                             : run.status === "running"
-                              ? "bg-amber-500/10 text-amber-300 ring-amber-500/20"
-                              : "bg-white/5 text-gray-300 ring-white/10";
+                              ? "bg-amber-500/10 text-amber-300"
+                              : "bg-white/5 text-gray-300";
 
                       return (
                         <article
                           key={run._id}
-                          className="overflow-hidden rounded-2xl border border-white/8 bg-[#141419]"
+                          className="overflow-hidden rounded-2xl bg-[#141419]"
                         >
                           <button
                             type="button"
@@ -520,7 +525,7 @@ export function App() {
                               </div>
                             </div>
                             <div className="flex shrink-0 items-center gap-3">
-                              <span className={`rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ring-1 ${statusTone}`}>
+                              <span className={`rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${statusTone}`}>
                                 {run.status}
                               </span>
                               <svg
@@ -536,22 +541,51 @@ export function App() {
                           </button>
 
                           {isExpanded ? (
-                            <div className="border-t border-white/8 bg-black/10 px-4 py-4 sm:px-5">
+                            <div className="bg-black/10 px-4 py-4 sm:px-5">
+                              <div className="mb-3 flex items-center justify-end">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const confirmed = window.confirm(
+                                      `Delete this pipeline run and its job record?\n\n${run.prompt}`,
+                                    );
+                                    if (!confirmed) {
+                                      return;
+                                    }
+                                    setDeletingRunId(run._id);
+                                    try {
+                                      await deletePipelineRunMutation({ runId: run._id });
+                                      setExpandedRunId((current) =>
+                                        current === run._id ? null : current,
+                                      );
+                                    } finally {
+                                      setDeletingRunId((current) =>
+                                        current === run._id ? null : current,
+                                      );
+                                    }
+                                  }}
+                                  disabled={deletingRunId === run._id}
+                                  className="inline-flex h-8 items-center gap-2 rounded-lg bg-rose-500/10 px-3 text-xs font-medium text-rose-200 transition-colors hover:bg-rose-500/20 disabled:cursor-wait disabled:opacity-50"
+                                >
+                                  <Trash2 className="size-3.5" />
+                                  {deletingRunId === run._id ? "Deleting..." : "Delete run"}
+                                </button>
+                              </div>
                               <div className="space-y-3">
                                 {(run.stages ?? []).map((stage: any) => {
                                   const stageTone =
                                     stage.status === "completed"
-                                      ? "border-emerald-500/15 bg-emerald-500/5"
+                                      ? "bg-emerald-500/5"
                                       : stage.status === "failed"
-                                        ? "border-rose-500/20 bg-rose-500/5"
+                                        ? "bg-rose-500/5"
                                         : stage.status === "running"
-                                          ? "border-amber-500/20 bg-amber-500/5"
-                                          : "border-white/8 bg-white/[0.02]";
+                                          ? "bg-amber-500/5"
+                                          : "bg-white/[0.02]";
 
                                   return (
                                     <div
                                       key={`${run._id}-${stage.key}`}
-                                      className={`rounded-xl border px-4 py-3 ${stageTone}`}
+                                      className={`rounded-xl px-4 py-3 ${stageTone}`}
                                     >
                                       <div className="flex items-start justify-between gap-3">
                                         <div>
@@ -587,7 +621,7 @@ export function App() {
                     })}
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-white/8 bg-[#141419] px-4 py-6 text-sm text-gray-400">
+                  <div className="rounded-2xl bg-[#141419] px-4 py-6 text-sm text-gray-400">
                     No pipeline runs yet.
                   </div>
                 )}
