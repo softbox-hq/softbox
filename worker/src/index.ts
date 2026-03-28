@@ -18,6 +18,55 @@ function queueJobId(jobId: string): string {
   return `job-${jobId.replace(/:/g, "-")}`;
 }
 
+function parseRedisTarget(redisUrl: string): { host: string; port: number } | null {
+  try {
+    const parsed = new URL(redisUrl);
+    return {
+      host: parsed.hostname || "127.0.0.1",
+      port: parsed.port ? Number(parsed.port) : 6379,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isLocalRedisTarget(redisUrl: string): boolean {
+  const target = parseRedisTarget(redisUrl);
+  if (!target) {
+    return false;
+  }
+  return target.host === "127.0.0.1" || target.host === "localhost" || target.host === "::1";
+}
+
+function isRedisConnectionRefused(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("ECONNREFUSED");
+}
+
+function logRedisConnectionHelpOnce(
+  config: WorkerConfig,
+  error: unknown,
+  state: { shown: boolean },
+) : boolean {
+  if (!isRedisConnectionRefused(error)) {
+    return false;
+  }
+
+  if (state.shown) {
+    return true;
+  }
+
+  state.shown = true;
+
+  if (isLocalRedisTarget(config.redisUrl)) {
+    console.error("[worker] REDIS IS NOT STARTED. START WITH FOLLOWING COMMAND: docker compose up -d redis");
+    return true;
+  }
+
+  console.error(`[worker] Redis is not reachable at ${config.redisUrl}. Check REDIS_URL or start that Redis instance.`);
+  return true;
+}
+
 async function enqueuePendingJob(
   config: WorkerConfig,
   queue: Queue,
@@ -74,6 +123,7 @@ async function main(): Promise<void> {
   const convex = new ConvexRuntimeClient(config);
   const bundler = new LiveAppBundler(config);
   const uploader = new R2Uploader(config);
+  const redisHelpState = { shown: false };
 
   const queue = new Queue(config.queueName, {
     connection: {
@@ -126,6 +176,9 @@ async function main(): Promise<void> {
   );
 
   worker.on("failed", (job: Job | undefined, error: Error) => {
+    if (logRedisConnectionHelpOnce(config, error, redisHelpState)) {
+      return;
+    }
     console.error(
       `[worker] queue job ${job?.id} failed`,
       error instanceof Error ? error.message : String(error),
@@ -133,7 +186,17 @@ async function main(): Promise<void> {
   });
 
   worker.on("error", (error: Error) => {
+    if (logRedisConnectionHelpOnce(config, error, redisHelpState)) {
+      return;
+    }
     console.error("[worker] bullmq error", error instanceof Error ? error.message : String(error));
+  });
+
+  queue.on("error", (error: Error) => {
+    if (logRedisConnectionHelpOnce(config, error, redisHelpState)) {
+      return;
+    }
+    console.error("[worker] queue connection error", error instanceof Error ? error.message : String(error));
   });
 
   let isPolling = false;
@@ -153,6 +216,9 @@ async function main(): Promise<void> {
 
       await enqueuePendingJob(config, queue, pendingJobId);
     } catch (error) {
+      if (logRedisConnectionHelpOnce(config, error, redisHelpState)) {
+        return;
+      }
       console.error(
         "[worker] polling cycle failed",
         error instanceof Error ? error.message : String(error),

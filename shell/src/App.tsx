@@ -355,6 +355,7 @@ export function App() {
   const [inspectMode, setInspectMode] = useState(false);
   const [hoveredTarget, setHoveredTarget] = useState<InspectTarget | null>(null);
   const [selectedTarget, setSelectedTarget] = useState<InspectTarget | null>(null);
+  const [composerHidden, setComposerHidden] = useState(false);
 
   const runtimeStatus = getRuntimeStatus(shellState);
   const lastBuildError = shellState?.lastBuildError ?? null;
@@ -404,6 +405,8 @@ export function App() {
         : 0)
     : 0;
   const elapsedSeconds = Math.floor(elapsedMs / 1000);
+  const queuedTooLong =
+    latestPipelineRun?.status === "pending" && elapsedSeconds >= 60;
 
   useEffect(() => {
     if (!appsQuery || apps.length === 0 || shellSelection === undefined) {
@@ -550,6 +553,40 @@ export function App() {
     };
   }, [inspectMode, shellState?.activeVersion?._id]);
 
+  useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) {
+        return false;
+      }
+      const tagName = target.tagName.toLowerCase();
+      return (
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select" ||
+        target.isContentEditable
+      );
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat) {
+        return;
+      }
+      if (event.key.toLowerCase() !== "k" || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      if (!composerHidden && isTypingTarget(event.target)) {
+        return;
+      }
+      event.preventDefault();
+      setComposerHidden((current) => !current);
+      setInspectMode(false);
+      setHoveredTarget(null);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [composerHidden]);
+
   useLiveAppRuntime(hostRef, {
     appId: appId ?? "__unmounted__",
     activeVersion: shellState?.activeVersion ?? null,
@@ -633,8 +670,20 @@ export function App() {
         </section>
       ) : null}
 
-      <section className="pointer-events-none relative z-10 flex min-h-screen items-end justify-center px-4 py-6 sm:px-6 sm:py-8">
-        <div className="pointer-events-auto w-full max-w-3xl">
+      <section
+        className={`relative z-10 flex min-h-screen items-end justify-center px-4 py-6 transition-[opacity,transform] duration-200 ease-out sm:px-6 sm:py-8 ${
+          composerHidden
+            ? "pointer-events-none translate-y-6 opacity-0"
+            : "pointer-events-none translate-y-0 opacity-100"
+        }`}
+      >
+        <div
+          className={`w-full max-w-3xl transition-[opacity,transform] duration-200 ease-out ${
+            composerHidden
+              ? "pointer-events-none translate-y-3 opacity-0"
+              : "pointer-events-auto translate-y-0 opacity-100"
+          }`}
+        >
           {showErrorBanner ? (
             <div className="mb-4 rounded-[1.5rem] border border-rose-500/25 bg-slate-950/85 px-4 py-3 text-sm text-rose-100 shadow-xl shadow-black/20 backdrop-blur-2xl">
               <p className="font-semibold">
@@ -671,6 +720,20 @@ export function App() {
                   <p className="mt-1 text-amber-100/80">
                     {templateSourceMessage ??
                       "This app can still mount its existing built version, but its local source is missing from /apps."}
+                  </p>
+                </div>
+              ) : null}
+              {queuedTooLong ? (
+                <div className="mb-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs leading-5 text-rose-100">
+                  <p className="font-semibold text-rose-200">
+                    Queued for 1 minute. Did you forget to run Docker?
+                  </p>
+                  <p className="mt-1 text-rose-100/80">
+                    Redis may not be running. Start it with{" "}
+                    <code className="rounded bg-black/20 px-1.5 py-0.5 text-rose-50">
+                      docker compose up -d redis
+                    </code>
+                    .
                   </p>
                 </div>
               ) : null}
