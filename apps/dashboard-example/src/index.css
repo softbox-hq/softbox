@@ -2,9 +2,10 @@
   font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
   color: #e7ecf5;
   background:
-    radial-gradient(circle at top left, rgba(62, 95, 142, 0.24), transparent 32%),
-    radial-gradient(circle at bottom right, rgba(34, 179, 160, 0.18), transparent 28%),
-    #09111e;
+    radial-gradient(circle at 12% 18%, rgba(142, 252, 180, 0.26), transparent 34%),
+    radial-gradient(circle at 86% 12%, rgba(74, 222, 128, 0.18), transparent 30%),
+    radial-gradient(circle at 80% 82%, rgba(22, 163, 74, 0.22), transparent 34%),
+    #04140d;
   line-height: 1.5;
   font-weight: 400;
   color-scheme: dark;
@@ -34,6 +35,11 @@ button {
   padding: 32px;
   display: grid;
   gap: 24px;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(167, 243, 208, 0.18), transparent 28%),
+    radial-gradient(circle at 88% 14%, rgba(74, 222, 128, 0.16), transparent 26%),
+    radial-gradient(circle at 78% 80%, rgba(34, 197, 94, 0.22), transparent 30%),
+    linear-gradient(155deg, #061811 0%, #0b2a1c 38%, #0f3d25 68%, #04140d 100%);
 }
 
 .hero {
@@ -48,7 +54,7 @@ button {
   font-size: 12px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #7ad9c8;
+  color: #a7f8d8;
 }
 
 .hero h1 {
@@ -60,17 +66,21 @@ button {
 .lede {
   max-width: 64ch;
   margin: 16px 0 0;
-  color: #a9b9cd;
+  color: #b7cdbf;
   font-size: 1.05rem;
 }
 
 .hero-card,
 .metric-card,
 .panel {
-  background: rgba(9, 17, 30, 0.72);
-  border: 1px solid rgba(122, 217, 200, 0.14);
+  background:
+    linear-gradient(180deg, rgba(13, 34, 24, 0.82) 0%, rgba(8, 23, 17, 0.74) 100%);
+  border: 1px solid rgba(146, 242, 199, 0.16);
   border-radius: 22px;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.22);
+  box-shadow:
+    0 22px 70px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(235, 255, 243, 0.04);
+  backdrop-filter: blur(18px);
 }
 
 .hero-card {
@@ -80,7 +90,7 @@ button {
 .hero-label,
 .metric-label {
   display: block;
-  color: #89a0bb;
+  color: #94ada0;
   font-size: 0.82rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -100,7 +110,7 @@ button {
 .run-item p,
 .mode-item p {
   margin: 8px 0 0;
-  color: #9fb0c4;
+  color: #abc2b4;
 }
 
 .metrics {
@@ -141,8 +151,12 @@ button {
   align-items: center;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(122, 217, 200, 0.12);
-  color: #7ad9c8;
+  background: rgba(146, 242, 199, 0.2);
+  border: 1px solid rgba(146, 242, 199, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(239, 255, 247, 0.05),
+    0 10px 24px rgba(34, 197, 94, 0.08);
+  color: #b9ffdf;
   font-size: 0.82rem;
 }
 
@@ -159,19 +173,22 @@ button {
 .mode-item {
   width: 100%;
   padding: 16px;
-  border: 1px solid rgba(152, 171, 195, 0.14);
+  border: 1px solid rgba(168, 197, 181, 0.14);
   border-radius: 18px;
-  background: rgba(12, 24, 41, 0.78);
+  background:
+    linear-gradient(180deg, rgba(9, 25, 18, 0.84) 0%, rgba(7, 20, 15, 0.78) 100%);
   color: inherit;
   text-align: left;
   display: flex;
   justify-content: space-between;
   gap: 14px;
   cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(232, 255, 241, 0.02);
   transition:
     transform 160ms ease,
     border-color 160ms ease,
-    background 160ms ease;
+    background 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .mode-item {
@@ -185,8 +202,12 @@ button {
 .run-item.active,
 .mode-item.active {
   transform: translateY(-1px);
-  border-color: rgba(122, 217, 200, 0.42);
-  background: rgba(18, 34, 56, 0.94);
+  border-color: rgba(167, 248, 216, 0.48);
+  background:
+    linear-gradient(180deg, rgba(15, 39, 27, 0.94) 0%, rgba(10, 28, 20, 0.9) 100%);
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(232, 255, 241, 0.04);
 }
 
 .queue-item strong,
@@ -198,7 +219,7 @@ button {
 
 .queue-item span,
 .run-item span {
-  color: #dce7f5;
+  color: #ecfff5;
   white-space: nowrap;
 }
 
@@ -211,9 +232,10 @@ button {
 .note-list li {
   padding: 14px 16px;
   border-radius: 16px;
-  background: rgba(12, 24, 41, 0.78);
-  border: 1px solid rgba(152, 171, 195, 0.14);
-  color: #a9b9cd;
+  background:
+    linear-gradient(180deg, rgba(9, 25, 18, 0.82) 0%, rgba(7, 20, 15, 0.76) 100%);
+  border: 1px solid rgba(168, 197, 181, 0.14);
+  color: #b7cdbf;
 }
 
 .footer {
@@ -221,7 +243,7 @@ button {
   justify-content: space-between;
   gap: 16px;
   padding: 0 4px 20px;
-  color: #89a0bb;
+  color: #95ac9f;
   font-size: 0.92rem;
 }
 

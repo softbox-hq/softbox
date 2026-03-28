@@ -4,6 +4,8 @@ dist-*
 dist-shell
 coverage
 .tmp
+.softbox
+**/.softbox/
 .archive
 .convex
 .env.local

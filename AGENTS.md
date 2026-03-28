@@ -71,6 +71,7 @@ Notes:
 - If a human asks how app onboarding works, tell them to read `HUMAN.md` first.
 - If a human adds a folder under `/apps`, explicitly tell them that `/apps` is not auto-mounted and point them to `HUMAN.md`.
 - For wrapper/onboarding work, prefer the repo skill at `skills/softbox-wrap-app/`.
+- Wrapped/seeded apps should have an app-local `AGENTS.md`; `pnpm wrap-app` and `pnpm seed` now create that scaffold automatically if it is missing.
 
 ## Important: `/apps` Is Not Auto-Mounted
 

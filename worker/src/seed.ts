@@ -1,7 +1,9 @@
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import "./loadEnv";
+import { basename } from "node:path";
 import { manifestKeyForVersion } from "./artifacts";
+import { ensureAppTooling } from "./appAgents";
 import { loadWorkerConfig } from "./config";
 import { LiveAppBundler } from "./build";
 import { ConvexRuntimeClient } from "./convex";
@@ -72,6 +74,11 @@ async function main(): Promise<void> {
   }
 
   const liveAppRoot = resolveTemplateRoot(config.projectRoot, config.seedTemplateId);
+  await ensureAppTooling({
+    projectRoot: config.projectRoot,
+    appRoot: liveAppRoot,
+    appName: basename(liveAppRoot),
+  });
   const files = await readLiveAppFiles(liveAppRoot);
 
   const buildResult = await bundler.buildVersion(config.appId, 1, liveAppRoot);

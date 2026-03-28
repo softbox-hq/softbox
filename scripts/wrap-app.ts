@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
+import { ensureAppTooling } from "../worker/src/appAgents";
 import { softboxConfigFileName } from "../worker/src/templates";
 
 type Args = {
@@ -359,6 +360,12 @@ async function main(): Promise<void> {
     buildSoftboxConfigSource(args.templateId, inspection.relativeAppRoot.split("/").pop() ?? args.templateId),
     args.force,
   );
+  const tooling = await ensureAppTooling({
+    projectRoot,
+    appRoot: inspection.appRoot,
+    appName: inspection.relativeAppRoot.split("/").pop() ?? args.templateId,
+    force: args.force,
+  });
 
   console.log(`[wrap-app] wrapped ${inspection.relativeAppRoot}`);
   console.log(`[wrap-app] wrote ${toRelativePath(projectRoot, entryPath)}`);
@@ -366,6 +373,15 @@ async function main(): Promise<void> {
   console.log(`[wrap-app] wrote ${toRelativePath(projectRoot, runtimePath)}`);
   console.log(`[wrap-app] wrote ${toRelativePath(projectRoot, shellAdapterPath)}`);
   console.log(`[wrap-app] wrote ${toRelativePath(projectRoot, configPath)}`);
+  if (tooling.wroteAgentsFile) {
+    console.log(`[wrap-app] wrote ${tooling.relativeAgentsFilePath}`);
+  }
+  if (tooling.createdWorkspace) {
+    console.log(`[wrap-app] created ${toRelativePath(projectRoot, resolve(inspection.appRoot, ".softbox"))}`);
+  }
+  if (tooling.updatedPackageScript) {
+    console.log(`[wrap-app] updated ${toRelativePath(projectRoot, resolve(inspection.appRoot, "package.json"))} with ui:screenshot`);
+  }
   console.log(
     `[wrap-app] next: set APP_TEMPLATE_ID=${args.templateId}, run 'pnpm run doctor', then 'pnpm seed'`,
   );

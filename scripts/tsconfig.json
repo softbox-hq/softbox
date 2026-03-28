@@ -7,5 +7,10 @@
     "lib": ["ES2022"],
     "types": ["node"]
   },
-  "include": ["./**/*.ts", "../worker/src/loadEnv.ts", "../worker/src/templates.ts"]
+  "include": [
+    "./**/*.ts",
+    "../worker/src/appAgents.ts",
+    "../worker/src/loadEnv.ts",
+    "../worker/src/templates.ts"
+  ]
 }
