@@ -146,6 +146,7 @@ function getRouteFromPath(pathname: string): AppRoute {
 
 function App() {
   const [route, setRoute] = useState<AppRoute>(() => getRouteFromPath(window.location.pathname))
+  const [photoSeed, setPhotoSeed] = useState(() => Math.floor(Math.random() * 100000))
   const [now, setNow] = useState(() => formatNow(new Date()))
   const [news, setNews] = useState<NewsItem[]>([])
   const [newsStatus, setNewsStatus] = useState('Loading latest Iran headlines…')
@@ -306,6 +307,7 @@ function App() {
   }, [])
 
   const activeCam = publicCams[camIndex]
+  const photoUrl = `https://picsum.photos/seed/softbox-photo-${photoSeed}/900/1200`
 
   const routeMeta = useMemo(
     () => ({
@@ -389,6 +391,26 @@ function App() {
                     </li>
                   ))}
                 </ul>
+              </div>
+
+              <div className="photo-widget" aria-label="Random photo of the day widget">
+                <div className="photo-widget__header">
+                  <div>
+                    <p className="photo-widget__label">Photo of the day</p>
+                    <h2 className="photo-widget__title">Random pick</h2>
+                  </div>
+                  <button
+                    type="button"
+                    className="photo-widget__button"
+                    onClick={() => setPhotoSeed(Math.floor(Math.random() * 100000))}
+                  >
+                    New photo
+                  </button>
+                </div>
+
+                <div className="photo-widget__frame">
+                  <img src={photoUrl} alt="Random photo of the day" className="photo-widget__image" />
+                </div>
               </div>
             </div>
 
