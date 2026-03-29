@@ -258,7 +258,7 @@ function App() {
     const loadCronPulse = async () => {
       try {
         const pulse = await fetchJson<{ code: string; lastRun: string }>(
-          `/cron-pulse.json?t=${Date.now()}`,
+          `${import.meta.env.BASE_URL}cron-pulse.json?t=${Date.now()}`,
         )
 
         if (!cancelled) {
