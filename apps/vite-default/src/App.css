@@ -18,7 +18,7 @@
   gap: 18px;
   padding: 28px;
   border: 1px solid color-mix(in srgb, var(--border) 86%, var(--text-h) 14%);
-  border-radius: 30px;
+  border-radius: 0;
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 16%, transparent), transparent 34%),
     linear-gradient(180deg, color-mix(in srgb, var(--bg) 98%, white 2%), color-mix(in srgb, var(--bg) 94%, var(--text-h) 6%));
@@ -510,7 +510,7 @@
   .chat-shell {
     min-height: auto;
     padding: 22px;
-    border-radius: 24px;
+    border-radius: 0;
   }
 
   .top-tabs,
