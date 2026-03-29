@@ -1,5 +1,7 @@
 import './App.css'
 
+const pwd = '/home/fvrlak/ventures/softbox/apps/vite-default'
+
 function App() {
   return (
     <main className="chat-page">
@@ -10,19 +12,12 @@ function App() {
             <h1 id="chat-title" className="chat-title">
               You and the agent
             </h1>
-            <p className="chat-summary">
-              Describe the change, point at the target, and keep constraints explicit.
-            </p>
+            <p className="chat-summary">Current working directory:</p>
           </div>
         </header>
 
         <div className="lorem-card" aria-label="Lorem ipsum block">
-          <p>
-            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer posuere erat a ante
-            venenatis dapibus posuere velit aliquet. Cras mattis consectetur purus sit amet
-            fermentum. Maecenas faucibus mollis interdum. Donec ullamcorper nulla non metus auctor
-            fringilla.
-          </p>
+          <p>{pwd}</p>
         </div>
       </section>
     </main>
