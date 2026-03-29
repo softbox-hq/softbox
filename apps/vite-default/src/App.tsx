@@ -486,12 +486,20 @@ function App() {
           </div>
         ) : (
           <div className="info-card about-card" aria-label="About route content">
-            <p className="about-card__eyebrow">About this page</p>
-            <h2>Small control room, real routes</h2>
+            <p className="about-card__eyebrow">What Softbox feels like</p>
+            <h2>My short take on Softbox</h2>
             <p>
-              This app now uses browser history routes for Home, Dashboard, and About without adding a
-              routing library. The tabs update the URL, support back/forward navigation, and render
-              route-specific content.
+              From this thread, Softbox feels less like a single app and more like a live workspace
+              where an agent can keep shaping the surface with you. It is part interface, part control
+              room, part sketchbook. We changed layout, routes, widgets, feeds, cameras, prices, and
+              little bits of personality without leaving the same environment.
+            </p>
+            <p>
+              What I like about it is that it does not treat the UI as sacred. It feels editable in the
+              moment. If you want a clock, a news panel, a metals board, a webcam, or just a sharper
+              sentence in the right place, Softbox can become that quickly. To me, that makes it feel
+              like software that stays soft on purpose: structured enough to run, flexible enough to
+              keep becoming whatever the conversation needs next.
             </p>
           </div>
         )}
