@@ -24,8 +24,6 @@ type SystemStat = {
 
 type AppRoute = '/' | '/dashboard' | '/about'
 
-import { cronPulseState } from './defaultState'
-
 import './App.css'
 
 type PublicCam = {
@@ -212,7 +210,10 @@ function App() {
       detail: `${formatBytes(1081101176832)} GB total on this workspace disk snapshot.`,
     },
   ])
-  const [cronPulse] = useState(cronPulseState)
+  const [cronPulse, setCronPulse] = useState({
+    code: 'WAITING…',
+    lastRun: 'Cron job not executed yet.',
+  })
 
   useEffect(() => {
     const tick = () => setNow(formatNow(new Date()))
@@ -249,6 +250,37 @@ function App() {
         detail: `${formatBytes(1081101176832)} GB total on this workspace disk snapshot.`,
       },
     ])
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadCronPulse = async () => {
+      try {
+        const pulse = await fetchJson<{ code: string; lastRun: string }>(
+          `/cron-pulse.json?t=${Date.now()}`,
+        )
+
+        if (!cancelled) {
+          setCronPulse(pulse)
+        }
+      } catch {
+        if (!cancelled) {
+          setCronPulse({
+            code: 'OFFLINE',
+            lastRun: 'Could not load cron pulse file.',
+          })
+        }
+      }
+    }
+
+    loadCronPulse()
+    const cronPulseInterval = window.setInterval(loadCronPulse, 15000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(cronPulseInterval)
+    }
   }, [])
 
   useEffect(() => {
