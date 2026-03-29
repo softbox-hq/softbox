@@ -84,10 +84,21 @@ OPENCLAW_AGENT_ID=softbox
 OPENCLAW_SESSION_KEY_PREFIX=softbox
 ```
 
+Per-app agent mode is also supported:
+
+```bash
+AGENT_COMMAND=openclaw
+OPENCLAW_GATEWAY_BASE_URL=http://127.0.0.1:18789
+OPENCLAW_GATEWAY_TOKEN=...
+OPENCLAW_AGENT_ID_PREFIX=softbox-
+OPENCLAW_SESSION_KEY_PREFIX=softbox
+```
+
 Important points:
 
 - `OPENCLAW_GATEWAY_BASE_URL` can be `http://` or `ws://`
 - the worker normalizes `http://` to `ws://` and `https://` to `wss://`
+- either `OPENCLAW_AGENT_ID` or `OPENCLAW_AGENT_ID_PREFIX` must be set
 - the configured OpenClaw agent workspace was `/home/fvrlak/ventures/softbox`
 - the gateway was running locally on loopback
 
@@ -95,6 +106,26 @@ The matching agent was:
 
 - agent id: `softbox`
 - workspace: `/home/fvrlak/ventures/softbox`
+
+In per-app mode, Softbox derives the agent id as:
+
+```text
+<OPENCLAW_AGENT_ID_PREFIX><appId>
+```
+
+For example:
+
+- `softbox-vite-default` -> `/home/fvrlak/ventures/softbox/apps/vite-default`
+- `softbox-dashboard-example` -> `/home/fvrlak/ventures/softbox/apps/dashboard-example`
+
+Softbox validates that a per-app agent exists and that its workspace exactly matches the target app root before starting the rewrite.
+
+To create missing per-app agents for every wrapped app in this repo:
+
+```bash
+pnpm worker:openclaw-sync-agents
+pnpm worker:openclaw-sync-agents -- --apply
+```
 
 ## What Softbox Sends
 

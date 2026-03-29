@@ -140,6 +140,7 @@ pnpm test
 pnpm seed
 pnpm wrap-app -- --path apps/my-app
 pnpm worker:migrate-app-ids
+pnpm worker:openclaw-sync-agents
 docker compose up -d redis
 ```
 

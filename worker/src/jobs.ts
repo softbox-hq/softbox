@@ -11,6 +11,7 @@ import { manifestKeyForVersion } from "./artifacts";
 import { LiveAppBundler } from "./build";
 import { ConvexRuntimeClient } from "./convex";
 import { readLiveAppFiles } from "./filesystem";
+import { buildConfiguredOpenClawAgentId } from "./openClawAgents";
 import { liveAppStateSchema } from "./shared/liveApp";
 import { R2Uploader } from "./r2";
 import {
@@ -204,6 +205,15 @@ export async function processJobById(
     const liveAppLabel = getWrappedAppLabel(appConfig.appId, config.projectRoot);
     const currentFiles = await readLiveAppFiles(liveAppRoot);
     const sourceBytes = countSourceBytes(currentFiles);
+    const openClawAgentId =
+      config.openClawGatewayBaseUrl &&
+      config.openClawGatewayToken &&
+      (config.openClawAgentId || config.openClawAgentIdPrefix)
+        ? buildConfiguredOpenClawAgentId(appId, {
+            agentId: config.openClawAgentId ?? null,
+            agentIdPrefix: config.openClawAgentIdPrefix ?? null,
+          })
+        : null;
     const primaryTargetFiles = selectLikelyTargetFiles(
       runningJob.prompt,
       currentFiles,
@@ -236,6 +246,7 @@ export async function processJobById(
         detail: buildAgentStageStartDetail({
           command: config.agentCommand,
           model: config.agentModel,
+          agentId: openClawAgentId,
           timeoutMs: config.agentTimeoutMs,
           requestChars: runningJob.prompt.trim().length,
           editableFiles: currentFiles.length,
@@ -260,11 +271,12 @@ export async function processJobById(
         openClaw:
           config.openClawGatewayBaseUrl &&
           config.openClawGatewayToken &&
-          config.openClawAgentId
+          (config.openClawAgentId || config.openClawAgentIdPrefix)
             ? {
                 baseUrl: config.openClawGatewayBaseUrl,
                 token: config.openClawGatewayToken,
-                agentId: config.openClawAgentId,
+                agentId: config.openClawAgentId ?? null,
+                agentIdPrefix: config.openClawAgentIdPrefix ?? null,
                 sessionKeyPrefix: config.openClawSessionKeyPrefix,
               }
             : undefined,

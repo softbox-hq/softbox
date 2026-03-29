@@ -42,6 +42,7 @@ export type WorkerConfig = {
   openClawGatewayBaseUrl?: string;
   openClawGatewayToken?: string;
   openClawAgentId?: string;
+  openClawAgentIdPrefix?: string;
   openClawSessionKeyPrefix: string;
 };
 
@@ -59,6 +60,16 @@ export function loadWorkerConfig(): WorkerConfig {
   const pollIntervalMs = parsePositiveNumber(process.env.WORKER_POLL_INTERVAL_MS, 1500);
   const openClawEnabled = isOpenClawCommand(agentCommand);
   const defaultConfiguredAppId = getDefaultWrappedAppId(projectRoot);
+  const openClawAgentId = process.env.OPENCLAW_AGENT_ID?.trim() || undefined;
+  const openClawAgentIdPrefix =
+    process.env.OPENCLAW_AGENT_ID_PREFIX?.trim() || undefined;
+
+  if (openClawEnabled && !openClawAgentId && !openClawAgentIdPrefix) {
+    throw new Error(
+      "OpenClaw command selected, but no agent routing is configured. Set OPENCLAW_AGENT_ID for one shared agent or OPENCLAW_AGENT_ID_PREFIX for one agent per app.",
+    );
+  }
+
   return {
     convexUrl: requireEnv("CONVEX_URL"),
     agentCommand,
@@ -88,9 +99,8 @@ export function loadWorkerConfig(): WorkerConfig {
     openClawGatewayToken: openClawEnabled
       ? requireEnv("OPENCLAW_GATEWAY_TOKEN")
       : undefined,
-    openClawAgentId: openClawEnabled
-      ? requireEnv("OPENCLAW_AGENT_ID")
-      : undefined,
+    openClawAgentId: openClawEnabled ? openClawAgentId : undefined,
+    openClawAgentIdPrefix: openClawEnabled ? openClawAgentIdPrefix : undefined,
     openClawSessionKeyPrefix:
       process.env.OPENCLAW_SESSION_KEY_PREFIX?.trim() || "softbox",
   };

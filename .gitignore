@@ -6,6 +6,13 @@ coverage
 .tmp
 .softbox
 **/.softbox/
+apps/**/.openclaw/
+apps/**/BOOTSTRAP.md
+apps/**/HEARTBEAT.md
+apps/**/IDENTITY.md
+apps/**/SOUL.md
+apps/**/TOOLS.md
+apps/**/USER.md
 .archive
 .convex
 .env.local

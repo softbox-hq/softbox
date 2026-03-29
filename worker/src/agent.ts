@@ -7,6 +7,10 @@ import { tmpdir } from "node:os";
 import { Codex, type ThreadOptions } from "@openai/codex-sdk";
 import type { LiveAppState } from "./shared/liveApp";
 import {
+  normalizeOpenClawModelId,
+  resolveOpenClawAgentForApp,
+} from "./openClawAgents";
+import {
   normalizeSourcePath,
   readLiveAppFiles,
   type SourceFile,
@@ -50,7 +54,8 @@ export type AgentCliConfig = {
   openClaw?: {
     baseUrl: string;
     token: string;
-    agentId: string;
+    agentId?: string | null;
+    agentIdPrefix?: string | null;
     sessionKeyPrefix: string;
   };
 };
@@ -75,6 +80,7 @@ export type AgentObservation = {
   mode: AgentRunMode;
   model: string | null;
   command: string;
+  agentId: string | null;
   thread: "reused" | "new" | "n/a";
   sessionKey: string | null;
   sessionId: string | null;
@@ -346,6 +352,7 @@ function formatMs(value: number): string {
 export function buildAgentStageStartDetail(args: {
   command: string;
   model?: string;
+  agentId?: string | null;
   timeoutMs: number;
   requestChars: number;
   editableFiles: number;
@@ -356,6 +363,7 @@ export function buildAgentStageStartDetail(args: {
     "starting agent rewrite",
     `- command: ${args.command}`,
     `- model: ${args.model ?? "default"}`,
+    `- agent_id: ${args.agentId ?? "n/a"}`,
     `- timeout_ms: ${args.timeoutMs}`,
     `- request_chars: ${args.requestChars}`,
     `- editable_files: ${args.editableFiles}`,
@@ -370,6 +378,7 @@ export function formatAgentObservation(observation: AgentObservation): string {
     `- mode: ${observation.mode}`,
     `- command: ${observation.command}`,
     `- model: ${observation.model ?? "default"}`,
+    `- agent_id: ${observation.agentId ?? "n/a"}`,
     `- thread: ${observation.thread}`,
     `- session_key: ${observation.sessionKey ?? "n/a"}`,
     `- session_id: ${observation.sessionId ?? "n/a"}`,
@@ -683,18 +692,19 @@ function normalizeOpenClawGatewayUrl(baseUrl: string): string {
 function buildOpenClawGatewayArgs(
   config: AgentCliConfig,
   prompt: string,
+  agentId: string,
   sessionKey: string,
   sessionId: string | null,
 ): string[] {
   if (!config.openClaw) {
     throw new Error(
-      "OpenClaw command selected, but OpenClaw gateway settings are missing. Set OPENCLAW_GATEWAY_BASE_URL, OPENCLAW_GATEWAY_TOKEN, and OPENCLAW_AGENT_ID.",
+      "OpenClaw command selected, but OpenClaw gateway settings are missing. Set OPENCLAW_GATEWAY_BASE_URL, OPENCLAW_GATEWAY_TOKEN, and OPENCLAW_AGENT_ID or OPENCLAW_AGENT_ID_PREFIX.",
     );
   }
 
   const params: Record<string, unknown> = {
     message: prompt,
-    agentId: config.openClaw.agentId,
+    agentId,
     sessionKey,
     timeout: Math.max(1, Math.ceil(config.timeoutMs / 1000)),
     idempotencyKey: `softbox-${config.appId}-${randomUUID()}`,
@@ -704,8 +714,9 @@ function buildOpenClawGatewayArgs(
     params.sessionId = sessionId;
   }
 
-  if (config.model) {
-    params.model = config.model;
+  const normalizedModel = normalizeOpenClawModelId(config.model ?? null);
+  if (normalizedModel) {
+    params.model = normalizedModel;
   }
 
   return [
@@ -731,6 +742,7 @@ type AgentExecutionResult = {
   metrics: AgentRunMetrics;
   codexThreadId: string | null;
   openClawSessionId: string | null;
+  openClawAgentId: string | null;
   sessionKey: string | null;
   model: string | null;
 };
@@ -742,27 +754,38 @@ async function runOpenClawGateway(
 ): Promise<AgentExecutionResult> {
   if (!config.openClaw) {
     throw new Error(
-      "OpenClaw command selected, but OpenClaw gateway settings are missing. Set OPENCLAW_GATEWAY_BASE_URL, OPENCLAW_GATEWAY_TOKEN, and OPENCLAW_AGENT_ID.",
+      "OpenClaw command selected, but OpenClaw gateway settings are missing. Set OPENCLAW_GATEWAY_BASE_URL, OPENCLAW_GATEWAY_TOKEN, and OPENCLAW_AGENT_ID or OPENCLAW_AGENT_ID_PREFIX.",
     );
   }
 
+  const resolvedAgent = await resolveOpenClawAgentForApp({
+    command: config.command,
+    projectRoot: config.projectRoot,
+    appId: config.appId,
+    liveAppRoot: config.liveAppRoot,
+    openClaw: {
+      agentId: config.openClaw.agentId ?? null,
+      agentIdPrefix: config.openClaw.agentIdPrefix ?? null,
+    },
+  });
   const sessionKey = buildOpenClawSessionKey({
     appId: config.appId,
     openClaw: {
-      agentId: config.openClaw.agentId,
+      agentId: resolvedAgent.agentId,
       sessionKeyPrefix: config.openClaw.sessionKeyPrefix,
     },
   });
   const args = buildOpenClawGatewayArgs(
     config,
     prompt,
+    resolvedAgent.agentId,
     sessionKey,
     sessionState?.openClawSessionId ?? null,
   );
   const startedAt = performance.now();
 
   console.log(
-    `[worker] invoking OpenClaw gateway agent over WS with ${args.length} args`,
+    `[worker] invoking OpenClaw gateway agent '${resolvedAgent.agentId}' over WS with ${args.length} args`,
   );
 
   return await new Promise<AgentExecutionResult>((resolve, reject) => {
@@ -870,6 +893,7 @@ async function runOpenClawGateway(
         stderr,
         codexThreadId: null,
         openClawSessionId,
+        openClawAgentId: resolvedAgent.agentId,
         sessionKey: extractOpenClawSessionKey(payload) ?? sessionKey,
         model: extractOpenClawModel(payload) ?? config.model ?? null,
         metrics: {
@@ -966,6 +990,7 @@ async function runAgentCli(
               stderr,
               codexThreadId: null,
               openClawSessionId: null,
+              openClawAgentId: null,
               sessionKey: null,
               model: config.model ?? null,
               metrics: {
@@ -1041,6 +1066,7 @@ async function runCodexSdk(
       stderr: "",
       codexThreadId: thread.id,
       openClawSessionId: null,
+      openClawAgentId: null,
       sessionKey: null,
       model: config.model ?? null,
       metrics: {
@@ -1135,6 +1161,7 @@ export async function rewriteLiveAppFiles(
     mode: result.metrics.mode,
     model: result.model ?? config.model ?? null,
     command: config.command,
+    agentId: result.openClawAgentId,
     thread:
       result.metrics.reusedThread === null
         ? "n/a"

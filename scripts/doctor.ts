@@ -11,6 +11,12 @@ import {
   inspectWrappedAppSource,
   softboxConfigFileName,
 } from "../worker/src/templates";
+import {
+  buildConfiguredOpenClawAgentId,
+  isPerAppOpenClawRouting,
+  listOpenClawAgents,
+  normalizeOpenClawModelId,
+} from "../worker/src/openClawAgents";
 
 type CheckLevel = "ok" | "warn" | "fail";
 
@@ -180,6 +186,8 @@ async function main(): Promise<void> {
   }
 
   const configuredAppId = readEnv("APP_ID") || getDefaultWrappedAppId(projectRoot);
+  const configuredWrappedApp =
+    discovery.apps.find((app) => app.appId === configuredAppId) ?? null;
   pushResult(
     results,
     discovery.apps.some((app) => app.appId === configuredAppId)
@@ -192,6 +200,97 @@ async function main(): Promise<void> {
         ? `Still using fallback '${defaultWrappedAppId}'. Set APP_ID after wrapping an app.`
         : `'${configuredAppId}' does not match any wrapped app.`,
   );
+
+  if (agentCommand.toLowerCase().startsWith("openclaw")) {
+    const openClawAgentId = readEnv("OPENCLAW_AGENT_ID") || "";
+    const openClawAgentIdPrefix = readEnv("OPENCLAW_AGENT_ID_PREFIX") || "";
+    const configuredAgentModel = readEnv("AGENT_MODEL") || "";
+
+    pushResult(
+      results,
+      openClawAgentId || openClawAgentIdPrefix ? "ok" : "fail",
+      "OpenClaw routing",
+      openClawAgentIdPrefix
+        ? `Per-app mode enabled with prefix '${openClawAgentIdPrefix}'.`
+        : openClawAgentId
+          ? `Shared mode enabled with agent '${openClawAgentId}'.`
+          : "Set OPENCLAW_AGENT_ID for one shared agent or OPENCLAW_AGENT_ID_PREFIX for one agent per app.",
+    );
+
+    if (configuredAgentModel) {
+      const normalizedAgentModel = normalizeOpenClawModelId(configuredAgentModel);
+      pushResult(
+        results,
+        configuredAgentModel === normalizedAgentModel ? "ok" : "warn",
+        "OpenClaw model",
+        configuredAgentModel === normalizedAgentModel
+          ? `Using '${configuredAgentModel}'.`
+          : `Bare model '${configuredAgentModel}' should be provider-qualified for OpenClaw. Softbox will normalize it to '${normalizedAgentModel}'.`,
+      );
+    }
+
+    if ((openClawAgentId || openClawAgentIdPrefix) && configuredWrappedApp) {
+      try {
+        const expectedAgentId = buildConfiguredOpenClawAgentId(configuredAppId, {
+          agentId: openClawAgentId || null,
+          agentIdPrefix: openClawAgentIdPrefix || null,
+        });
+        const agents = await listOpenClawAgents({
+          command: agentCommand,
+          projectRoot,
+          forceRefresh: true,
+        });
+        const matchingAgent = agents.find((agent) => agent.id === expectedAgentId);
+        const normalizedAgentModel = normalizeOpenClawModelId(configuredAgentModel || null);
+
+        if (!matchingAgent) {
+          pushResult(
+            results,
+            "fail",
+            "OpenClaw agent",
+            isPerAppOpenClawRouting({ agentIdPrefix: openClawAgentIdPrefix || null })
+              ? `Expected agent '${expectedAgentId}' for app '${configuredAppId}'. Run 'pnpm worker:openclaw-sync-agents -- --apply'.`
+              : `Configured agent '${expectedAgentId}' was not found in OpenClaw.`,
+          );
+        } else if (
+          isPerAppOpenClawRouting({ agentIdPrefix: openClawAgentIdPrefix || null }) &&
+          matchingAgent.workspace !== resolve(configuredWrappedApp.root)
+        ) {
+          pushResult(
+            results,
+            "fail",
+            "OpenClaw agent",
+            `Agent '${expectedAgentId}' points at '${matchingAgent.workspace ?? "unknown"}', expected '${resolve(configuredWrappedApp.root)}'.`,
+          );
+        } else if (
+          normalizedAgentModel &&
+          matchingAgent.model &&
+          matchingAgent.model !== normalizedAgentModel
+        ) {
+          pushResult(
+            results,
+            "warn",
+            "OpenClaw agent",
+            `Agent '${expectedAgentId}' uses model '${matchingAgent.model}', expected '${normalizedAgentModel}'. Run 'pnpm worker:openclaw-sync-agents -- --apply' to repair it.`,
+          );
+        } else {
+          pushResult(
+            results,
+            "ok",
+            "OpenClaw agent",
+            `Using '${expectedAgentId}'${matchingAgent.workspace ? ` -> ${matchingAgent.workspace}` : ""}.`,
+          );
+        }
+      } catch (error) {
+        pushResult(
+          results,
+          "fail",
+          "OpenClaw agent",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+  }
 
   try {
     await access(resolve(projectRoot, "docker-compose.yml"));

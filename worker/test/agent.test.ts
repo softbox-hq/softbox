@@ -11,6 +11,10 @@ import {
   selectLikelyTargetFiles,
   summarizeClaudeOutput,
 } from "../src/agent";
+import {
+  buildConfiguredOpenClawAgentId,
+  normalizeOpenClawModelId,
+} from "../src/openClawAgents";
 
 describe("buildClaudePrompt", () => {
   it("points the agent at the template AGENTS.md and only includes the user request", () => {
@@ -162,6 +166,36 @@ describe("buildOpenClawSessionKey", () => {
         },
       }),
     ).toBe("agent:softbox:softbox");
+  });
+});
+
+describe("buildConfiguredOpenClawAgentId", () => {
+  it("uses a shared configured agent id when no prefix is set", () => {
+    expect(
+      buildConfiguredOpenClawAgentId("vite-default", {
+        agentId: "softbox",
+        agentIdPrefix: null,
+      }),
+    ).toBe("softbox");
+  });
+
+  it("derives a per-app agent id when a prefix is set", () => {
+    expect(
+      buildConfiguredOpenClawAgentId("vite-default", {
+        agentId: "softbox",
+        agentIdPrefix: "softbox-",
+      }),
+    ).toBe("softbox-vite-default");
+  });
+});
+
+describe("normalizeOpenClawModelId", () => {
+  it("prefixes bare gpt models for OpenClaw", () => {
+    expect(normalizeOpenClawModelId("gpt-5.4")).toBe("openai-codex/gpt-5.4");
+  });
+
+  it("keeps provider-qualified models unchanged", () => {
+    expect(normalizeOpenClawModelId("openai-codex/gpt-5.4")).toBe("openai-codex/gpt-5.4");
   });
 });
 

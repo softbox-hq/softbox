@@ -11,6 +11,7 @@
     "./**/*.ts",
     "../worker/src/appAgents.ts",
     "../worker/src/loadEnv.ts",
+    "../worker/src/openClawAgents.ts",
     "../worker/src/templates.ts"
   ]
 }

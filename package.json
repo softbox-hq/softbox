@@ -21,6 +21,7 @@
     "wrap-app": "tsx scripts/wrap-app.ts",
     "worker:agent-stage": "tsx worker/scripts/inspect-agent-stage.ts",
     "worker:migrate-app-ids": "tsx worker/scripts/migrate-app-ids.ts",
+    "worker:openclaw-sync-agents": "tsx worker/scripts/sync-openclaw-agents.ts",
     "worker:queue-clear": "tsx worker/scripts/queue-clear.ts",
     "worker:state": "tsx worker/scripts/inspect-worker-state.ts",
     "worker:recover-running": "tsx worker/scripts/recover-running-job.ts"
