@@ -486,20 +486,24 @@ function App() {
           </div>
         ) : (
           <div className="info-card about-card" aria-label="About route content">
-            <p className="about-card__eyebrow">What Softbox feels like</p>
-            <h2>My short take on Softbox</h2>
+            <p className="about-card__eyebrow">What Softbox is, to me</p>
+            <h2>More platform than board</h2>
             <p>
-              From this thread, Softbox feels less like a single app and more like a live workspace
-              where an agent can keep shaping the surface with you. It is part interface, part control
-              room, part sketchbook. We changed layout, routes, widgets, feeds, cameras, prices, and
-              little bits of personality without leaving the same environment.
+              I think you are right: this board is only one use case. It is a good demo because it makes
+              the idea visible fast, but it is not the definition of Softbox. If I switch to another Vite
+              app and build something totally different, the core idea still holds.
             </p>
             <p>
-              What I like about it is that it does not treat the UI as sacred. It feels editable in the
-              moment. If you want a clock, a news panel, a metals board, a webcam, or just a sharper
-              sentence in the right place, Softbox can become that quickly. To me, that makes it feel
-              like software that stays soft on purpose: structured enough to run, flexible enough to
-              keep becoming whatever the conversation needs next.
+              So to me, Softbox is not a dashboard builder. It is a soft layer between intent and
+              interface — a space where an agent can shape software in real time around a person, a task,
+              or a mood. Sometimes that becomes widgets on a board. Sometimes it could become a writing
+              space, a home control surface, a research room, a family panel, a monitoring wall, or
+              something stranger that does not fit a normal product category yet.
+            </p>
+            <p>
+              What makes it interesting is that the container is reusable, but the expression is not
+              fixed. The same system can host many different small worlds. That is why “soft” feels like
+              the right word: the structure exists, but the form can keep changing.
             </p>
           </div>
         )}
