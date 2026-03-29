@@ -486,26 +486,26 @@ function App() {
           </div>
         ) : (
           <div className="info-card about-card" aria-label="About route content">
-            <p className="about-card__eyebrow">How I would make Softbox known</p>
-            <h2>Show use cases, not abstractions</h2>
+            <p className="about-card__eyebrow">Where I think the first users are</p>
+            <h2>Go where people already customize their tools</h2>
             <p>
-              I would not try to promote Softbox by explaining the architecture first. That usually loses
-              people. I would promote it through sharp, visible examples: “I built this live control
-              board in 10 minutes,” “I turned a blank app into a research room,” “I made an ops panel,
-              a family wall, and a writing workspace from the same base.” People understand products
-              faster when they can see the before and after.
+              I would start with people who already enjoy shaping their own systems: indie hackers,
+              makers, home-lab people, productivity tinkerers, designers who prototype ideas fast, and
+              developers who care about personal tools more than polished enterprise software. Those are
+              the people most likely to immediately understand why Softbox matters.
             </p>
             <p>
-              So I think the best strategy is to publish many small demos, each with a very clear job.
-              One for personal dashboards, one for home control, one for note-taking, one for monitoring,
-              one weird experimental one that people remember. Short screen recordings would matter more
-              than long explanations. The message should be: Softbox is the fastest way to turn intent
-              into a living interface.
+              In practice, that means places like X, Hacker News, Reddit communities, Discord servers,
+              maker groups, and demo-heavy corners of the internet where people share setups, workflows,
+              dashboards, and weird side projects. Not broad generic audiences — smaller groups that like
+              building their own environment.
             </p>
             <p>
-              If nobody knows it yet, the first goal is not broad marketing. It is creating enough
-              concrete examples that the right people immediately get it and want to remix it for their
-              own world.
+              I would also look for adjacent communities rather than “AI people” in general: Home
+              Assistant users, Notion/Obsidian tinkerers, self-hosters, founders making internal tools,
+              and people posting “look what I built for myself” videos. Those people are usually the
+              earliest adopters, because they do not need a perfect category first — they just need to
+              feel the possibility.
             </p>
           </div>
         )}
