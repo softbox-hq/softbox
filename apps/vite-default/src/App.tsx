@@ -557,20 +557,19 @@ function App() {
           </div>
         ) : (
           <div className="info-card about-card" aria-label="About route content">
-            <p className="about-card__eyebrow">Can I see the route?</p>
-            <h2>Yes — but only the app route, not some hidden chat route</h2>
+            <p className="about-card__eyebrow">Gateway cron jobs</p>
+            <h2>Yes, I can create them</h2>
             <p>
-              From inside this app, yes: I can see the current app route, and right now this panel lives
-              on the About page route. In this app that means <strong>/about</strong>.
+              Yes — I can create cron jobs inside the Gateway from here. Not just talk about them: I can
+              actually add, update, list, run, disable, and remove them.
             </p>
             <p>
-              I can tell that because the page itself tracks the route in the UI and in the browser path,
-              and your selected target is the About route content block.
+              So if you want a scheduled reminder, recurring check, summary, wake-up event, or periodic
+              agent task, I can wire that into Gateway cron directly.
             </p>
             <p>
-              What I cannot see is some secret platform route for the message itself beyond the context I
-              am given here. So: I can see the app route you are on, but not an invisible transport path
-              behind your message.
+              If you want, the next step is simple: tell me what should happen, when it should run, and
+              whether it repeats. Then I can create the job.
             </p>
           </div>
         )}
