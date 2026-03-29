@@ -51,6 +51,29 @@ function formatNewsTime(value: string) {
   }).format(date)
 }
 
+function parseNewsFeed(xmlText: string) {
+  const xml = new window.DOMParser().parseFromString(xmlText, 'text/xml')
+
+  return Array.from(xml.querySelectorAll('item'))
+    .slice(0, 4)
+    .map((item) => ({
+      title: item.querySelector('title')?.textContent?.trim() ?? 'Untitled headline',
+      link: item.querySelector('link')?.textContent?.trim() ?? '#',
+      pubDate: item.querySelector('pubDate')?.textContent?.trim() ?? '',
+    }))
+    .filter((item) => item.title)
+}
+
+async function fetchFeedThrough(url: string) {
+  const response = await fetch(url)
+
+  if (!response.ok) {
+    throw new Error(`Feed request failed: ${response.status}`)
+  }
+
+  return response.text()
+}
+
 function App() {
   const [now, setNow] = useState(() => formatNow(new Date()))
   const [news, setNews] = useState<NewsItem[]>([])
@@ -67,37 +90,37 @@ function App() {
     let cancelled = false
 
     const loadNews = async () => {
-      try {
-        setNewsStatus('Loading latest Iran headlines…')
+      setNewsStatus('Loading latest Iran headlines…')
 
-        const feedUrl = encodeURIComponent(
-          'https://news.google.com/rss/search?q=Iran&hl=en-US&gl=US&ceid=US:en',
-        )
-        const response = await fetch(`https://api.allorigins.win/raw?url=${feedUrl}`)
+      const directFeed = 'https://news.google.com/rss/search?q=Iran&hl=en-US&gl=US&ceid=US:en'
+      const fallbackFeed = 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml'
+      const sources = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(directFeed)}`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(fallbackFeed)}`,
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(directFeed)}`,
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(fallbackFeed)}`,
+      ]
 
-        if (!response.ok) {
-          throw new Error(`Feed request failed: ${response.status}`)
+      for (const source of sources) {
+        try {
+          const xmlText = await fetchFeedThrough(source)
+          const items = parseNewsFeed(xmlText).filter(
+            (item) => source.includes('q=Iran') || /iran/i.test(item.title),
+          )
+
+          if (!cancelled && items.length) {
+            setNews(items)
+            setNewsStatus('Latest news')
+            return
+          }
+        } catch {
+          // try next source
         }
+      }
 
-        const xmlText = await response.text()
-        const xml = new window.DOMParser().parseFromString(xmlText, 'text/xml')
-        const items = Array.from(xml.querySelectorAll('item'))
-          .slice(0, 4)
-          .map((item) => ({
-            title: item.querySelector('title')?.textContent?.trim() ?? 'Untitled headline',
-            link: item.querySelector('link')?.textContent?.trim() ?? '#',
-            pubDate: item.querySelector('pubDate')?.textContent?.trim() ?? '',
-          }))
-
-        if (!cancelled) {
-          setNews(items)
-          setNewsStatus(items.length ? 'Latest news' : 'No headlines found right now.')
-        }
-      } catch {
-        if (!cancelled) {
-          setNews([])
-          setNewsStatus('Could not load live Iran headlines right now.')
-        }
+      if (!cancelled) {
+        setNews([])
+        setNewsStatus('Live feeds are blocked right now. Try again in a moment.')
       }
     }
 
