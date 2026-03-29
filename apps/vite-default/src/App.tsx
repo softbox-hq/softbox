@@ -314,27 +314,7 @@ function App() {
               </a>
             </div>
           </>
-        ) : route === '/dashboard' ? (
-          <div className="dashboard-grid" aria-label="Dashboard route content">
-            <div className="info-card stat-card">
-              <p className="stat-card__label">Clock</p>
-              <h2 className="stat-card__value">{now.time}</h2>
-              <p className="stat-card__meta">{now.date}</p>
-            </div>
-
-            <div className="info-card stat-card">
-              <p className="stat-card__label">Iran headlines</p>
-              <h2 className="stat-card__value">{news.length}</h2>
-              <p className="stat-card__meta">{newsStatus}</p>
-            </div>
-
-            <div className="info-card stat-card stat-card--wide">
-              <p className="stat-card__label">Current live cam</p>
-              <h2 className="stat-card__value">{activeCam.name}</h2>
-              <p className="stat-card__meta">{activeCam.place}</p>
-            </div>
-          </div>
-        ) : (
+        ) : route === '/dashboard' ? null : (
           <div className="info-card about-card" aria-label="About route content">
             <p className="about-card__eyebrow">About this page</p>
             <h2>Small control room, real routes</h2>
