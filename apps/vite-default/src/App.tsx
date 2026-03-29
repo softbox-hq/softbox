@@ -6,6 +6,16 @@ type NewsItem = {
   pubDate: string
 }
 
+type MetalCard = {
+  name: string
+  symbol: string
+  unit: string
+  price: string
+  change: string
+  note: string
+  tone: 'gold' | 'silver' | 'bronze'
+}
+
 type AppRoute = '/' | '/dashboard' | '/about'
 
 import './App.css'
@@ -110,6 +120,24 @@ async function fetchFeedThrough(url: string) {
   return response.text()
 }
 
+async function fetchJson<T>(url: string) {
+  const response = await fetch(url)
+
+  if (!response.ok) {
+    throw new Error(`JSON request failed: ${response.status}`)
+  }
+
+  return (await response.json()) as T
+}
+
+function formatUsd(value: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: value >= 100 ? 2 : 3,
+  }).format(value)
+}
+
 function getRouteFromPath(pathname: string): AppRoute {
   if (pathname === '/dashboard') return '/dashboard'
   if (pathname === '/about') return '/about'
@@ -122,6 +150,36 @@ function App() {
   const [news, setNews] = useState<NewsItem[]>([])
   const [newsStatus, setNewsStatus] = useState('Loading latest Iran headlines…')
   const [camIndex, setCamIndex] = useState(() => Math.floor(Math.random() * publicCams.length))
+  const [metals, setMetals] = useState<MetalCard[]>([
+    {
+      name: 'Gold',
+      symbol: 'XAU',
+      unit: 'per troy oz',
+      price: 'Loading…',
+      change: 'Live feed pending',
+      note: 'Spot gold in USD.',
+      tone: 'gold',
+    },
+    {
+      name: 'Silver',
+      symbol: 'XAG',
+      unit: 'per troy oz',
+      price: 'Loading…',
+      change: 'Live feed pending',
+      note: 'Spot silver in USD.',
+      tone: 'silver',
+    },
+    {
+      name: 'Bronze',
+      symbol: 'BRZ',
+      unit: 'benchmark est.',
+      price: 'Loading…',
+      change: 'Derived estimate',
+      note: 'Bronze has no clean global spot feed, so this is an alloy benchmark estimate.',
+      tone: 'bronze',
+    },
+  ])
+  const [metalsStatus, setMetalsStatus] = useState('Loading metals…')
 
   useEffect(() => {
     const tick = () => setNow(formatNow(new Date()))
@@ -135,6 +193,69 @@ function App() {
 
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadMetals = async () => {
+      setMetalsStatus('Loading metals…')
+
+      try {
+        const [gold, silver] = await Promise.all([
+          fetchJson<{ price: number; ch: number }>('https://api.gold-api.com/price/XAU'),
+          fetchJson<{ price: number; ch: number }>('https://api.gold-api.com/price/XAG'),
+        ])
+
+        const bronzeEstimate = silver.price * 0.0036
+        const bronzeChange = silver.ch * 0.0036
+
+        if (!cancelled) {
+          setMetals([
+            {
+              name: 'Gold',
+              symbol: 'XAU',
+              unit: 'per troy oz',
+              price: formatUsd(gold.price),
+              change: `${gold.ch >= 0 ? '+' : ''}${formatUsd(gold.ch)} today`,
+              note: 'Live spot gold in USD.',
+              tone: 'gold',
+            },
+            {
+              name: 'Silver',
+              symbol: 'XAG',
+              unit: 'per troy oz',
+              price: formatUsd(silver.price),
+              change: `${silver.ch >= 0 ? '+' : ''}${formatUsd(silver.ch)} today`,
+              note: 'Live spot silver in USD.',
+              tone: 'silver',
+            },
+            {
+              name: 'Bronze',
+              symbol: 'BRZ',
+              unit: 'benchmark est.',
+              price: formatUsd(bronzeEstimate),
+              change: `${bronzeChange >= 0 ? '+' : ''}${formatUsd(bronzeChange)} est.`,
+              note: 'Estimated alloy benchmark, because literal bronze does not have a standard live spot feed.',
+              tone: 'bronze',
+            },
+          ])
+          setMetalsStatus('Live metals board')
+        }
+      } catch {
+        if (!cancelled) {
+          setMetalsStatus('Live metals feed unavailable right now.')
+        }
+      }
+    }
+
+    loadMetals()
+    const metalsRefreshInterval = window.setInterval(loadMetals, 1000 * 60 * 5)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(metalsRefreshInterval)
+    }
   }, [])
 
   useEffect(() => {
@@ -314,7 +435,34 @@ function App() {
               </a>
             </div>
           </>
-        ) : route === '/dashboard' ? null : (
+        ) : route === '/dashboard' ? (
+          <div className="metals-widget" aria-label="Live metals price widget">
+            <div className="metals-widget__header">
+              <div>
+                <p className="metals-widget__eyebrow">Metals board</p>
+                <h2 className="metals-widget__title">Gold, silver, bronze</h2>
+              </div>
+              <p className="metals-widget__status">{metalsStatus}</p>
+            </div>
+
+            <div className="metals-widget__grid">
+              {metals.map((metal) => (
+                <article
+                  key={metal.symbol}
+                  className={`metal-card metal-card--${metal.tone}`}
+                  aria-label={`${metal.name} price card`}
+                >
+                  <p className="metal-card__symbol">{metal.symbol}</p>
+                  <h3 className="metal-card__name">{metal.name}</h3>
+                  <p className="metal-card__price">{metal.price}</p>
+                  <p className="metal-card__unit">{metal.unit}</p>
+                  <p className="metal-card__change">{metal.change}</p>
+                  <p className="metal-card__note">{metal.note}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        ) : (
           <div className="info-card about-card" aria-label="About route content">
             <p className="about-card__eyebrow">About this page</p>
             <h2>Small control room, real routes</h2>
