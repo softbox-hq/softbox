@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { defaultAppId } from "./shared/liveApp";
 import { getDefaultTemplateId } from "./templates";
 
@@ -13,6 +13,10 @@ function requireEnv(name: string): string {
 function parsePositiveNumber(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function isOpenClawCommand(command: string): boolean {
+  return basename(command.trim()).toLowerCase().startsWith("openclaw");
 }
 
 export type WorkerConfig = {
@@ -36,22 +40,28 @@ export type WorkerConfig = {
   r2UploadConcurrency: number;
   projectRoot: string;
   seedTemplateId: string;
+  openClawGatewayBaseUrl?: string;
+  openClawGatewayToken?: string;
+  openClawAgentId?: string;
+  openClawSessionKeyPrefix: string;
 };
 
 export function loadWorkerConfig(): WorkerConfig {
   const projectRoot = resolve(process.cwd());
+  const agentCommand =
+    process.env.AGENT_COMMAND ??
+    process.env.CLAUDE_CODE_COMMAND ??
+    "codex";
   const agentTimeoutMs = parsePositiveNumber(process.env.AGENT_TIMEOUT_MS, 120000);
   const staleJobTimeoutMs = parsePositiveNumber(
     process.env.JOB_STALE_TIMEOUT_MS,
     Math.max(agentTimeoutMs * 3, 120000),
   );
   const pollIntervalMs = parsePositiveNumber(process.env.WORKER_POLL_INTERVAL_MS, 1500);
+  const openClawEnabled = isOpenClawCommand(agentCommand);
   return {
     convexUrl: requireEnv("CONVEX_URL"),
-    agentCommand:
-      process.env.AGENT_COMMAND ??
-      process.env.CLAUDE_CODE_COMMAND ??
-      "codex",
+    agentCommand,
     agentModel:
       process.env.AGENT_MODEL?.trim() ||
       process.env.CLAUDE_CODE_MODEL?.trim() ||
@@ -73,5 +83,16 @@ export function loadWorkerConfig(): WorkerConfig {
     r2UploadConcurrency: parsePositiveNumber(process.env.R2_UPLOAD_CONCURRENCY, 6),
     projectRoot,
     seedTemplateId: process.env.APP_TEMPLATE_ID?.trim() || getDefaultTemplateId(projectRoot),
+    openClawGatewayBaseUrl: openClawEnabled
+      ? (process.env.OPENCLAW_GATEWAY_BASE_URL?.trim() || "http://127.0.0.1:18789")
+      : undefined,
+    openClawGatewayToken: openClawEnabled
+      ? requireEnv("OPENCLAW_GATEWAY_TOKEN")
+      : undefined,
+    openClawAgentId: openClawEnabled
+      ? requireEnv("OPENCLAW_AGENT_ID")
+      : undefined,
+    openClawSessionKeyPrefix:
+      process.env.OPENCLAW_SESSION_KEY_PREFIX?.trim() || "softbox",
   };
 }

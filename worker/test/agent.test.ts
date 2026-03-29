@@ -3,8 +3,10 @@ import {
   buildAgentArgs,
   buildCodexThreadOptions,
   buildClaudePrompt,
+  buildOpenClawSessionKey,
   countSourceBytes,
   diffEditedSourceFiles,
+  extractOpenClawResponseText,
   getCodexThreadKey,
   selectLikelyTargetFiles,
   summarizeClaudeOutput,
@@ -16,6 +18,7 @@ describe("buildClaudePrompt", () => {
       prompt: "Move object D to the bottom left",
       files: [{ path: "src/objects.ts", content: "export const objects = [];" }],
       liveAppLabel: "live-app-template",
+      liveAppInstructionsPath: "apps/vite-default/AGENTS.md",
       latestBuildError: null,
       latestRuntimeError: null,
       currentState: null,
@@ -23,7 +26,7 @@ describe("buildClaudePrompt", () => {
     });
 
     expect(prompt).toContain("Move object D to the bottom left");
-    expect(prompt).toContain("Read live-app-template/AGENTS.md");
+    expect(prompt).toContain("Read apps/vite-default/AGENTS.md");
     expect(prompt).not.toContain("live-app-template/src/");
     expect(prompt).not.toContain("Current editable files");
   });
@@ -148,6 +151,70 @@ describe("getCodexThreadKey", () => {
   });
 });
 
+describe("buildOpenClawSessionKey", () => {
+  it("creates a deterministic per-app session key", () => {
+    expect(
+      buildOpenClawSessionKey({
+        appId: "softbox",
+        openClaw: {
+          agentId: "softbox",
+          sessionKeyPrefix: "softbox",
+        },
+      }),
+    ).toBe("agent:softbox:softbox");
+  });
+});
+
+describe("extractOpenClawResponseText", () => {
+  it("extracts assistant text from an OpenClaw gateway agent payload", () => {
+    expect(
+      extractOpenClawResponseText({
+        runId: "run_123",
+        result: {
+          payloads: [
+            {
+              text: "Updated the dashboard layout.",
+              mediaUrl: null,
+            },
+          ],
+          meta: {
+            agentMeta: {
+              sessionId: "session_123",
+              model: "gpt-5.4",
+            },
+          },
+        },
+      }),
+    ).toBe("Updated the dashboard layout.");
+  });
+
+  it("extracts assistant text from a standard responses payload", () => {
+    expect(
+      extractOpenClawResponseText({
+        id: "resp_123",
+        output: [
+          {
+            type: "message",
+            role: "assistant",
+            content: [
+              { type: "output_text", text: "Updated the dashboard layout." },
+            ],
+          },
+        ],
+      }),
+    ).toBe("Updated the dashboard layout.");
+  });
+
+  it("prefers top-level output_text when present", () => {
+    expect(
+      extractOpenClawResponseText({
+        output_text: "Changed the app shell wrapper.",
+        output: [],
+      }),
+    ).toBe("Changed the app shell wrapper.");
+  });
+});
+
 describe("summarizeClaudeOutput", () => {
   it("builds a structured UI payload from plain-text Claude output and the diff", () => {
     expect(
@@ -166,7 +233,7 @@ describe("summarizeClaudeOutput", () => {
     expect(
       summarizeClaudeOutput("", ["src/objects.ts", "src/scene.tsx"]),
     ).toEqual({
-      summary: "Claude updated 2 file(s) in live-app-template/src.",
+      summary: "Agent updated 2 file(s) in live-app-template/src.",
       changed_files: [
         "live-app-template/src/objects.ts",
         "live-app-template/src/scene.tsx",

@@ -927,6 +927,7 @@ export const seedApp = mutation({
       name: args.name,
       templateId: args.templateId,
       codexThreadId: null,
+      openClawSessionId: null,
       templateSourceStatus: "unknown",
       templateSourcePath: null,
       templateSourceMessage: null,
@@ -977,6 +978,7 @@ export const getAppConfig = query({
       name: app.name,
       templateId: app.templateId ?? defaultTemplateId,
       codexThreadId: app.codexThreadId ?? null,
+      openClawSessionId: app.openClawSessionId ?? null,
     };
   },
 });
@@ -1003,6 +1005,7 @@ export const setAppTemplate = mutation({
     await ctx.db.patch(app._id, {
       templateId: args.templateId,
       codexThreadId: null,
+      openClawSessionId: null,
       templateSourceStatus: "unknown",
       templateSourcePath: null,
       templateSourceMessage: null,
@@ -1024,6 +1027,22 @@ export const setAppCodexThread = mutation({
     }
     await ctx.db.patch(app._id, {
       codexThreadId: args.threadId,
+    });
+  },
+});
+
+export const setAppOpenClawSession = mutation({
+  args: {
+    appId: v.string(),
+    sessionId: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const app = await getAppById(ctx, args.appId);
+    if (!app) {
+      return;
+    }
+    await ctx.db.patch(app._id, {
+      openClawSessionId: args.sessionId,
     });
   },
 });

@@ -257,6 +257,17 @@ export async function processJobById(
         projectRoot: config.projectRoot,
         liveAppRoot,
         liveAppLabel,
+        openClaw:
+          config.openClawGatewayBaseUrl &&
+          config.openClawGatewayToken &&
+          config.openClawAgentId
+            ? {
+                baseUrl: config.openClawGatewayBaseUrl,
+                token: config.openClawGatewayToken,
+                agentId: config.openClawAgentId,
+                sessionKeyPrefix: config.openClawSessionKeyPrefix,
+              }
+            : undefined,
       },
       {
         prompt: runningJob.prompt,
@@ -266,16 +277,17 @@ export async function processJobById(
         latestRuntimeError: shellState?.lastRuntimeError ?? null,
         currentState: parseState(shellState?.currentStateJson ?? null),
         codexThreadId: appConfig.codexThreadId ?? null,
+        openClawSessionId: appConfig.openClawSessionId ?? null,
         primaryTargetFiles,
       },
     );
     logJob(
       runningJob._id,
-      `Codex returned ${rewrite.files.length} file write(s) and ${rewrite.deletedPaths.length} file deletion(s)`,
+      `agent returned ${rewrite.files.length} file write(s) and ${rewrite.deletedPaths.length} file deletion(s)`,
     );
     logJob(
       runningJob._id,
-      `Claude summary ${JSON.stringify(rewrite.details)}`,
+      `agent summary ${JSON.stringify(rewrite.details)}`,
     );
     logJob(
       runningJob._id,
@@ -286,6 +298,15 @@ export async function processJobById(
       await convex.setAppCodexThread({
         appId,
         threadId: rewrite.codexThreadId,
+      });
+    }
+    if (
+      rewrite.openClawSessionId !== null &&
+      rewrite.openClawSessionId !== (appConfig.openClawSessionId ?? null)
+    ) {
+      await convex.setAppOpenClawSession({
+        appId,
+        sessionId: rewrite.openClawSessionId,
       });
     }
     if (runningJob.pipelineRunId) {
@@ -307,7 +328,7 @@ export async function processJobById(
     const nextFiles = rewrite.allFiles;
     logJob(
       runningJob._id,
-      `Codex changed ${rewrite.files.length + rewrite.deletedPaths.length} file(s) in ${liveAppLabel}/src`,
+      `agent changed ${rewrite.files.length + rewrite.deletedPaths.length} file(s) in ${liveAppLabel}/src`,
     );
 
     await assertAppStillExists();

@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
-import { basename, join } from "node:path";
+import { basename, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { Codex, type ThreadOptions } from "@openai/codex-sdk";
 import type { LiveAppState } from "./shared/liveApp";
@@ -29,10 +30,12 @@ export type RewriteRequest = {
   prompt: string;
   files: SourceFile[];
   liveAppLabel: string;
+  liveAppInstructionsPath?: string;
   latestBuildError: string | null;
   latestRuntimeError: string | null;
   currentState: LiveAppState | null;
   codexThreadId?: string | null;
+  openClawSessionId?: string | null;
   primaryTargetFiles?: string[];
 };
 
@@ -44,13 +47,20 @@ export type AgentCliConfig = {
   projectRoot: string;
   liveAppRoot: string;
   liveAppLabel: string;
+  openClaw?: {
+    baseUrl: string;
+    token: string;
+    agentId: string;
+    sessionKeyPrefix: string;
+  };
 };
 
 export type CodexThreadState = {
   threadId: string | null;
+  openClawSessionId?: string | null;
 };
 
-export type AgentRunMode = "codex_sdk" | "cli";
+export type AgentRunMode = "codex_sdk" | "openclaw_ws" | "cli";
 
 export type AgentRunMetrics = {
   mode: AgentRunMode;
@@ -66,6 +76,8 @@ export type AgentObservation = {
   model: string | null;
   command: string;
   thread: "reused" | "new" | "n/a";
+  sessionKey: string | null;
+  sessionId: string | null;
   timeoutMs: number;
   requestChars: number;
   promptChars: number;
@@ -94,12 +106,44 @@ function isCodexCommand(command: string): boolean {
   return basename(command).toLowerCase().startsWith("codex");
 }
 
+function isOpenClawCommand(command: string): boolean {
+  return basename(command).toLowerCase().startsWith("openclaw");
+}
+
 export function getCodexThreadKey(config: Pick<AgentCliConfig, "appId" | "projectRoot" | "liveAppRoot">): string {
   return [
     config.appId,
     config.projectRoot,
     config.liveAppRoot,
   ].join("\u0000");
+}
+
+export function buildOpenClawSessionKey(
+  config: Pick<AgentCliConfig, "appId"> & {
+    openClaw: {
+      agentId: string;
+      sessionKeyPrefix: string;
+    };
+  },
+): string {
+  const agentId = normalizeOpenClawSessionSegment(config.openClaw.agentId);
+  const prefix = normalizeOpenClawSessionSegment(config.openClaw.sessionKeyPrefix);
+  const appId = normalizeOpenClawSessionSegment(config.appId);
+  const restSegments = [
+    prefix !== agentId ? prefix : null,
+    appId,
+  ].filter((value): value is string => Boolean(value));
+  return `agent:${agentId}:${restSegments.join(":")}`;
+}
+
+function normalizeOpenClawSessionSegment(value: string): string {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "main"
+  );
 }
 
 export function buildCodexThreadOptions(
@@ -275,8 +319,10 @@ export function countSourceBytes(files: SourceFile[]): number {
 }
 
 export function buildClaudePrompt(request: RewriteRequest): string {
+  const instructionsPath =
+    request.liveAppInstructionsPath ?? `${request.liveAppLabel}/AGENTS.md`;
   const sections = [
-    `Read ${request.liveAppLabel}/AGENTS.md before making changes.`,
+    `Read ${instructionsPath} before making changes.`,
     `User request:\n${request.prompt}`,
   ];
 
@@ -287,6 +333,10 @@ export function buildClaudePrompt(request: RewriteRequest): string {
   }
 
   return sections.join("\n\n");
+}
+
+function buildLiveAppInstructionsPath(projectRoot: string, liveAppRoot: string): string {
+  return `${relative(projectRoot, liveAppRoot).replaceAll("\\", "/") || "."}/AGENTS.md`;
 }
 
 function formatMs(value: number): string {
@@ -321,6 +371,8 @@ export function formatAgentObservation(observation: AgentObservation): string {
     `- command: ${observation.command}`,
     `- model: ${observation.model ?? "default"}`,
     `- thread: ${observation.thread}`,
+    `- session_key: ${observation.sessionKey ?? "n/a"}`,
+    `- session_id: ${observation.sessionId ?? "n/a"}`,
     `- timeout_ms: ${observation.timeoutMs}`,
     `- request_chars: ${observation.requestChars}`,
     `- prompt_chars: ${observation.promptChars}`,
@@ -385,7 +437,7 @@ export function summarizeClaudeOutput(
 
   if (!cleaned) {
     return {
-      summary: `Claude updated ${scopedChangedPaths.length} file(s) in ${liveAppLabel}/src.`,
+      summary: `Agent updated ${scopedChangedPaths.length} file(s) in ${liveAppLabel}/src.`,
       changed_files: scopedChangedPaths,
     };
   }
@@ -408,10 +460,435 @@ export function summarizeClaudeOutput(
   };
 }
 
+function extractTextFromOpenClawMessageContent(content: unknown): string[] {
+  if (!Array.isArray(content)) {
+    return [];
+  }
+
+  const text: string[] = [];
+  for (const part of content) {
+    if (!part || typeof part !== "object") {
+      continue;
+    }
+    const candidate = part as {
+      type?: unknown;
+      text?: unknown;
+    };
+    if (
+      (candidate.type === "output_text" || candidate.type === "text") &&
+      typeof candidate.text === "string"
+    ) {
+      text.push(candidate.text);
+    }
+  }
+  return text;
+}
+
+function extractTextFromOpenClawGatewayPayloads(payloads: unknown): string[] {
+  if (!Array.isArray(payloads)) {
+    return [];
+  }
+
+  const text: string[] = [];
+  for (const payload of payloads) {
+    if (!payload || typeof payload !== "object") {
+      continue;
+    }
+    const candidate = payload as {
+      text?: unknown;
+      type?: unknown;
+      content?: unknown;
+    };
+    if (typeof candidate.text === "string" && candidate.text.trim()) {
+      text.push(candidate.text.trim());
+      continue;
+    }
+    if (candidate.type === "message") {
+      text.push(...extractTextFromOpenClawMessageContent(candidate.content));
+    }
+  }
+
+  return text;
+}
+
+export function extractOpenClawResponseText(payload: unknown): string {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+
+  const candidate = payload as {
+    result?: unknown;
+    output_text?: unknown;
+    output?: unknown;
+    response?: unknown;
+  };
+
+  if (candidate.result && typeof candidate.result === "object") {
+    const result = candidate.result as {
+      payloads?: unknown;
+    };
+    const gatewayText = extractTextFromOpenClawGatewayPayloads(result.payloads);
+    if (gatewayText.length > 0) {
+      return gatewayText.join("\n\n").trim();
+    }
+  }
+
+  if (typeof candidate.output_text === "string" && candidate.output_text.trim()) {
+    return candidate.output_text.trim();
+  }
+
+  if (candidate.response && typeof candidate.response === "object") {
+    const nested = extractOpenClawResponseText(candidate.response);
+    if (nested) {
+      return nested;
+    }
+  }
+
+  if (!Array.isArray(candidate.output)) {
+    return "";
+  }
+
+  const collected: string[] = [];
+  for (const item of candidate.output) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const message = item as {
+      type?: unknown;
+      text?: unknown;
+      content?: unknown;
+    };
+    if (typeof message.text === "string" && message.text.trim()) {
+      collected.push(message.text.trim());
+      continue;
+    }
+    if (message.type === "message") {
+      collected.push(...extractTextFromOpenClawMessageContent(message.content));
+    }
+  }
+
+  return collected.join("\n\n").trim();
+}
+
+function extractOpenClawSessionId(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const result = (payload as { result?: unknown }).result;
+  if (!result || typeof result !== "object") {
+    return null;
+  }
+
+  const meta = (result as { meta?: unknown }).meta;
+  if (!meta || typeof meta !== "object") {
+    return null;
+  }
+
+  const agentMeta = (meta as { agentMeta?: unknown }).agentMeta;
+  if (
+    agentMeta &&
+    typeof agentMeta === "object" &&
+    typeof (agentMeta as { sessionId?: unknown }).sessionId === "string"
+  ) {
+    return (agentMeta as { sessionId: string }).sessionId;
+  }
+
+  const report = (meta as { systemPromptReport?: unknown }).systemPromptReport;
+  if (
+    report &&
+    typeof report === "object" &&
+    typeof (report as { sessionId?: unknown }).sessionId === "string"
+  ) {
+    return (report as { sessionId: string }).sessionId;
+  }
+
+  return null;
+}
+
+function extractOpenClawSessionKey(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const result = (payload as { result?: unknown }).result;
+  if (!result || typeof result !== "object") {
+    return null;
+  }
+
+  const meta = (result as { meta?: unknown }).meta;
+  if (!meta || typeof meta !== "object") {
+    return null;
+  }
+
+  const report = (meta as { systemPromptReport?: unknown }).systemPromptReport;
+  if (
+    report &&
+    typeof report === "object" &&
+    typeof (report as { sessionKey?: unknown }).sessionKey === "string"
+  ) {
+    return (report as { sessionKey: string }).sessionKey;
+  }
+
+  return null;
+}
+
+function extractOpenClawModel(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const result = (payload as { result?: unknown }).result;
+  if (!result || typeof result !== "object") {
+    return null;
+  }
+
+  const meta = (result as { meta?: unknown }).meta;
+  if (!meta || typeof meta !== "object") {
+    return null;
+  }
+
+  const agentMeta = (meta as { agentMeta?: unknown }).agentMeta;
+  if (
+    agentMeta &&
+    typeof agentMeta === "object" &&
+    typeof (agentMeta as { model?: unknown }).model === "string"
+  ) {
+    return (agentMeta as { model: string }).model;
+  }
+
+  const report = (meta as { systemPromptReport?: unknown }).systemPromptReport;
+  if (
+    report &&
+    typeof report === "object" &&
+    typeof (report as { model?: unknown }).model === "string"
+  ) {
+    return (report as { model: string }).model;
+  }
+
+  return null;
+}
+
+function normalizeOpenClawGatewayUrl(baseUrl: string): string {
+  const raw = baseUrl.trim();
+  const url = new URL(raw.includes("://") ? raw : `ws://${raw}`);
+  if (url.protocol === "http:") {
+    url.protocol = "ws:";
+  } else if (url.protocol === "https:") {
+    url.protocol = "wss:";
+  }
+  return url.toString().replace(/\/$/, "");
+}
+
+function buildOpenClawGatewayArgs(
+  config: AgentCliConfig,
+  prompt: string,
+  sessionKey: string,
+  sessionId: string | null,
+): string[] {
+  if (!config.openClaw) {
+    throw new Error(
+      "OpenClaw command selected, but OpenClaw gateway settings are missing. Set OPENCLAW_GATEWAY_BASE_URL, OPENCLAW_GATEWAY_TOKEN, and OPENCLAW_AGENT_ID.",
+    );
+  }
+
+  const params: Record<string, unknown> = {
+    message: prompt,
+    agentId: config.openClaw.agentId,
+    sessionKey,
+    timeout: Math.max(1, Math.ceil(config.timeoutMs / 1000)),
+    idempotencyKey: `softbox-${config.appId}-${randomUUID()}`,
+  };
+
+  if (sessionId) {
+    params.sessionId = sessionId;
+  }
+
+  if (config.model) {
+    params.model = config.model;
+  }
+
+  return [
+    "gateway",
+    "call",
+    "agent",
+    "--expect-final",
+    "--json",
+    "--url",
+    normalizeOpenClawGatewayUrl(config.openClaw.baseUrl),
+    "--token",
+    config.openClaw.token,
+    "--timeout",
+    String(Math.max(10_000, config.timeoutMs + 30_000)),
+    "--params",
+    JSON.stringify(params),
+  ];
+}
+
+type AgentExecutionResult = {
+  stdout: string;
+  stderr: string;
+  metrics: AgentRunMetrics;
+  codexThreadId: string | null;
+  openClawSessionId: string | null;
+  sessionKey: string | null;
+  model: string | null;
+};
+
+async function runOpenClawGateway(
+  config: AgentCliConfig,
+  prompt: string,
+  sessionState?: CodexThreadState | null,
+): Promise<AgentExecutionResult> {
+  if (!config.openClaw) {
+    throw new Error(
+      "OpenClaw command selected, but OpenClaw gateway settings are missing. Set OPENCLAW_GATEWAY_BASE_URL, OPENCLAW_GATEWAY_TOKEN, and OPENCLAW_AGENT_ID.",
+    );
+  }
+
+  const sessionKey = buildOpenClawSessionKey({
+    appId: config.appId,
+    openClaw: {
+      agentId: config.openClaw.agentId,
+      sessionKeyPrefix: config.openClaw.sessionKeyPrefix,
+    },
+  });
+  const args = buildOpenClawGatewayArgs(
+    config,
+    prompt,
+    sessionKey,
+    sessionState?.openClawSessionId ?? null,
+  );
+  const startedAt = performance.now();
+
+  console.log(
+    `[worker] invoking OpenClaw gateway agent over WS with ${args.length} args`,
+  );
+
+  return await new Promise<AgentExecutionResult>((resolve, reject) => {
+    const child = spawn(config.command, args, {
+      cwd: config.projectRoot,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      child.kill("SIGTERM");
+      reject(
+        new Error(
+          `OpenClaw gateway run timed out after ${config.timeoutMs}ms. Check the gateway, agent workspace, and timeout settings.`,
+        ),
+      );
+    }, config.timeoutMs + 30_000);
+
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+
+    child.on("error", (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      reject(
+        new Error(
+          `Failed to start OpenClaw gateway command '${config.command}': ${error.message}`,
+        ),
+      );
+    });
+
+    child.on("close", (code, signal) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+
+      if (code !== 0) {
+        reject(
+          new Error(
+            [
+              `OpenClaw gateway command exited with ${signal ? `signal ${signal}` : `code ${code}`}.`,
+              stderr.trim() ? `stderr:\n${stderr.trim()}` : "",
+              stdout.trim() ? `stdout:\n${stdout.trim()}` : "",
+            ]
+              .filter(Boolean)
+              .join("\n\n"),
+          ),
+        );
+        return;
+      }
+
+      let payload: unknown = null;
+      try {
+        payload = stdout.trim() ? JSON.parse(stdout) : null;
+      } catch (error) {
+        reject(
+          new Error(
+            `OpenClaw gateway returned non-JSON output: ${error instanceof Error ? error.message : "Unknown parse error"}`,
+          ),
+        );
+        return;
+      }
+
+      const openClawSessionId = extractOpenClawSessionId(payload);
+      if (!openClawSessionId) {
+        reject(
+          new Error(
+            "OpenClaw gateway returned no session id for the agent run.",
+          ),
+        );
+        return;
+      }
+
+      if (
+        sessionState?.openClawSessionId &&
+        openClawSessionId !== sessionState.openClawSessionId
+      ) {
+        reject(
+          new Error(
+            `OpenClaw gateway returned session ${openClawSessionId} while resuming ${sessionState.openClawSessionId}.`,
+          ),
+        );
+        return;
+      }
+
+      resolve({
+        stdout: extractOpenClawResponseText(payload),
+        stderr,
+        codexThreadId: null,
+        openClawSessionId,
+        sessionKey: extractOpenClawSessionKey(payload) ?? sessionKey,
+        model: extractOpenClawModel(payload) ?? config.model ?? null,
+        metrics: {
+          mode: "openclaw_ws",
+          reusedThread: sessionState?.openClawSessionId ? true : false,
+          argsCount: args.length,
+          stdoutChars: extractOpenClawResponseText(payload).length,
+          stderrChars: stderr.length,
+          runMs: performance.now() - startedAt,
+        },
+      });
+    });
+  });
+}
+
 async function runAgentCli(
   config: AgentCliConfig,
   prompt: string,
-): Promise<{ stdout: string; stderr: string; metrics: AgentRunMetrics; threadId: string | null }> {
+): Promise<AgentExecutionResult> {
   let tempDir: string | null = null;
   let outputFile: string | undefined;
 
@@ -427,7 +904,7 @@ async function runAgentCli(
     );
     const startedAt = performance.now();
 
-    return await new Promise<{ stdout: string; stderr: string; metrics: AgentRunMetrics; threadId: string | null }>(
+    return await new Promise<AgentExecutionResult>(
       (resolve, reject) => {
         const child = spawn(config.command, args, {
           cwd: config.projectRoot,
@@ -487,7 +964,10 @@ async function runAgentCli(
             resolve({
               stdout: finalStdout,
               stderr,
-              threadId: null,
+              codexThreadId: null,
+              openClawSessionId: null,
+              sessionKey: null,
+              model: config.model ?? null,
               metrics: {
                 mode: "cli",
                 reusedThread: null,
@@ -527,7 +1007,7 @@ async function runCodexSdk(
   config: AgentCliConfig,
   prompt: string,
   threadState?: CodexThreadState | null,
-): Promise<{ stdout: string; stderr: string; metrics: AgentRunMetrics; threadId: string | null }> {
+): Promise<AgentExecutionResult> {
   const threadKey = getCodexThreadKey(config);
   let thread = codexThreads.get(threadKey);
   let reusedThread = true;
@@ -559,7 +1039,10 @@ async function runCodexSdk(
     return {
       stdout: turn.finalResponse,
       stderr: "",
-      threadId: thread.id,
+      codexThreadId: thread.id,
+      openClawSessionId: null,
+      sessionKey: null,
+      model: config.model ?? null,
       metrics: {
         mode: "codex_sdk",
         reusedThread,
@@ -592,9 +1075,13 @@ async function runAgent(
   config: AgentCliConfig,
   prompt: string,
   threadState?: CodexThreadState | null,
-): Promise<{ stdout: string; stderr: string; metrics: AgentRunMetrics; threadId: string | null }> {
+): Promise<AgentExecutionResult> {
   if (isCodexCommand(config.command)) {
     return runCodexSdk(config, prompt, threadState);
+  }
+
+  if (isOpenClawCommand(config.command)) {
+    return runOpenClawGateway(config, prompt, threadState);
   }
 
   return runAgentCli(config, prompt);
@@ -608,16 +1095,24 @@ export async function rewriteLiveAppFiles(
   details: ClaudeStructuredOutput;
   observation: AgentObservation;
   codexThreadId: string | null;
+  openClawSessionId: string | null;
   files: SourceFile[];
   deletedPaths: string[];
   allFiles: SourceFile[];
 }> {
   const totalStartedAt = performance.now();
   const buildPromptStartedAt = performance.now();
-  const prompt = buildClaudePrompt(request);
+  const prompt = buildClaudePrompt({
+    ...request,
+    liveAppInstructionsPath: buildLiveAppInstructionsPath(
+      config.projectRoot,
+      config.liveAppRoot,
+    ),
+  });
   const buildPromptMs = performance.now() - buildPromptStartedAt;
   const result = await runAgent(config, prompt, {
     threadId: request.codexThreadId ?? null,
+    openClawSessionId: request.openClawSessionId ?? null,
   });
   const rereadStartedAt = performance.now();
   const nextFiles = await readLiveAppFiles(config.liveAppRoot);
@@ -638,7 +1133,7 @@ export async function rewriteLiveAppFiles(
   const summarizeMs = performance.now() - summarizeStartedAt;
   const observation: AgentObservation = {
     mode: result.metrics.mode,
-    model: config.model ?? null,
+    model: result.model ?? config.model ?? null,
     command: config.command,
     thread:
       result.metrics.reusedThread === null
@@ -646,6 +1141,8 @@ export async function rewriteLiveAppFiles(
         : result.metrics.reusedThread
           ? "reused"
           : "new",
+    sessionKey: result.sessionKey,
+    sessionId: result.openClawSessionId,
     timeoutMs: config.timeoutMs,
     requestChars: request.prompt.trim().length,
     promptChars: prompt.length,
@@ -674,14 +1171,14 @@ export async function rewriteLiveAppFiles(
     return {
       summary:
         details.summary.trim() ||
-        "Claude Code made no source-file changes for this request.",
+        "Agent made no source-file changes for this request.",
       details: {
         ...details,
         changed_files: [],
         notes:
           details.notes ??
           [
-            `Claude Code completed without changing ${config.liveAppLabel}/src files.`,
+            `Agent completed without changing ${config.liveAppLabel}/src files.`,
             result.stdout.trim() ? `stdout:\n${result.stdout.trim()}` : "",
             result.stderr.trim() ? `stderr:\n${result.stderr.trim()}` : "",
           ]
@@ -689,7 +1186,8 @@ export async function rewriteLiveAppFiles(
             .join("\n\n"),
       },
       observation,
-      codexThreadId: result.threadId,
+      codexThreadId: result.codexThreadId,
+      openClawSessionId: result.openClawSessionId,
       files: [],
       deletedPaths: [],
       allFiles: nextFiles,
@@ -699,10 +1197,11 @@ export async function rewriteLiveAppFiles(
   return {
     summary:
       details.summary.trim() ||
-      `Claude Code changed ${changedPaths.length} file(s)`,
+      `Agent changed ${changedPaths.length} file(s)`,
     details,
     observation,
-    codexThreadId: result.threadId,
+    codexThreadId: result.codexThreadId,
+    openClawSessionId: result.openClawSessionId,
     files: diff.writtenFiles,
     deletedPaths: diff.deletedPaths,
     allFiles: nextFiles,

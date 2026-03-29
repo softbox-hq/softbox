@@ -25,6 +25,7 @@ export type AppConfigRecord = {
   name: string;
   templateId: string;
   codexThreadId?: string | null;
+  openClawSessionId?: string | null;
 };
 
 export type AppRecord = {
@@ -126,6 +127,13 @@ export class ConvexRuntimeClient {
     threadId: string | null;
   }): Promise<void> {
     await this.client.mutation(convexApi.setAppCodexThread as any, args);
+  }
+
+  async setAppOpenClawSession(args: {
+    appId: string;
+    sessionId: string | null;
+  }): Promise<void> {
+    await this.client.mutation(convexApi.setAppOpenClawSession as any, args);
   }
 
   async setAppTemplateSourceStatus(args: {
