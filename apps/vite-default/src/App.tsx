@@ -557,27 +557,27 @@ function App() {
           </div>
         ) : (
           <div className="info-card about-card" aria-label="About route content">
-            <p className="about-card__eyebrow">Where I would actually go</p>
-            <h2>Specific places, specific angles</h2>
+            <p className="about-card__eyebrow">Potential value</p>
+            <h2>Big if it becomes a category, small if it stays a demo</h2>
             <p>
-              Fair hit. So: not “communities” in the abstract. I would go to specific places where people
-              already post custom setups and little personal systems: Home Assistant Reddit and Discord,
-              Obsidian and Notion communities, self-hosting / homelab circles, indie hacker Twitter/X,
-              Hacker News Show HN, Product Hunt, and maker-heavy Discord servers where people share side
-              projects in progress.
+              My honest take: the value could be anything from modest to very large, depending on whether
+              Softbox becomes a reusable product people adopt for real workflows, or remains something
+              that feels clever but custom. If it stays in “cool prototype” territory, the value is
+              limited. If it becomes the default way people spin up living interfaces around agents, data,
+              and personal workflows, the upside is serious.
             </p>
             <p>
-              But the trick is not just showing up there. You need the right bait. Post things like:
-              “I turned one blank app into a family wall, a market board, and a research room,” “I made a
-              live interface with an agent in 15 minutes,” or “Here are 5 wildly different apps built on
-              the same Softbox base.” That gets curiosity. “Here is a flexible agent interface runtime”
-              does not.
+              The reason the ceiling is high is that this is not just one tool. It can sit in multiple
+              categories at once: personal software, internal tools, agent interfaces, dashboards,
+              ambient home surfaces, and lightweight app creation. If people start using it as a base
+              layer for many different recurring tasks, then the value is closer to platform value than
+              feature value.
             </p>
             <p>
-              If I were doing it manually, I would start with 20 concrete posts and demos across X,
-              Reddit, HN Show HN, Product Hunt, and a few Discord servers, then watch which audience
-              reacts hardest. My guess: self-hosters, makers, and “tools for myself” people will convert
-              before mainstream AI audiences do.
+              So I would frame it like this: low value if it is only impressive, high value if it becomes
+              habitual. The real question is not “is the idea powerful?” I think it is. The real question
+              is whether people start returning to Softbox as the place where new useful surfaces get
+              born.
             </p>
           </div>
         )}
