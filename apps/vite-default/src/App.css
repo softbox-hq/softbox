@@ -110,6 +110,11 @@
   gap: 16px;
 }
 
+.photo-stack {
+  display: grid;
+  gap: 18px;
+}
+
 .photo-widget {
   display: grid;
   gap: 14px;
@@ -166,6 +171,63 @@
   height: 100%;
   display: block;
   object-fit: cover;
+}
+
+.system-widget {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border) 72%);
+  background: color-mix(in srgb, var(--bg) 93%, var(--text-h) 7%);
+}
+
+.system-widget__label,
+.system-widget__title,
+.system-stat-card__label,
+.system-stat-card__value,
+.system-stat-card__detail {
+  margin: 0;
+}
+
+.system-widget__label,
+.system-stat-card__label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text) 76%, var(--accent) 24%);
+}
+
+.system-widget__title {
+  margin-top: 6px;
+  font-size: 1.15rem;
+  color: var(--text-h);
+}
+
+.system-widget__grid {
+  display: grid;
+  gap: 10px;
+}
+
+.system-stat-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, var(--text-h) 20%);
+  background: color-mix(in srgb, var(--bg) 96%, var(--text-h) 4%);
+}
+
+.system-stat-card__value {
+  font-family: 'Jersey 10', var(--heading);
+  font-size: 2rem;
+  line-height: 0.95;
+  color: var(--text-h);
+}
+
+.system-stat-card__detail {
+  color: var(--text);
+  line-height: 1.4;
+  font-size: 0.92rem;
 }
 
 .metals-widget__header {

@@ -16,6 +16,12 @@ type MetalCard = {
   tone: 'gold' | 'silver' | 'bronze'
 }
 
+type SystemStat = {
+  label: string
+  value: string
+  detail: string
+}
+
 type AppRoute = '/' | '/dashboard' | '/about'
 
 import './App.css'
@@ -138,6 +144,12 @@ function formatUsd(value: number) {
   }).format(value)
 }
 
+function formatBytes(value: number) {
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 1,
+  }).format(value / 1024 / 1024 / 1024)
+}
+
 function getRouteFromPath(pathname: string): AppRoute {
   if (pathname === '/dashboard') return '/dashboard'
   if (pathname === '/about') return '/about'
@@ -181,6 +193,23 @@ function App() {
     },
   ])
   const [metalsStatus, setMetalsStatus] = useState('Loading metals…')
+  const [systemStats, setSystemStats] = useState<SystemStat[]>([
+    {
+      label: 'CPU',
+      value: 'Unknown',
+      detail: 'Live host CPU usage is not exposed to this frontend.',
+    },
+    {
+      label: 'RAM',
+      value: 'Unknown',
+      detail: 'Waiting for browser-visible memory info.',
+    },
+    {
+      label: 'Free space',
+      value: `${formatBytes(938510725120)} GB`,
+      detail: `${formatBytes(1081101176832)} GB total on this workspace disk snapshot.`,
+    },
+  ])
 
   useEffect(() => {
     const tick = () => setNow(formatNow(new Date()))
@@ -194,6 +223,29 @@ function App() {
 
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  useEffect(() => {
+    const memoryGiB = typeof navigator.deviceMemory === 'number' ? navigator.deviceMemory : null
+    const cpuThreads = typeof navigator.hardwareConcurrency === 'number' ? navigator.hardwareConcurrency : null
+
+    setSystemStats([
+      {
+        label: 'CPU',
+        value: cpuThreads ? `${cpuThreads} threads` : 'Unavailable',
+        detail: 'Browser-visible hardware concurrency, not live CPU load.',
+      },
+      {
+        label: 'RAM',
+        value: memoryGiB ? `${memoryGiB} GB` : 'Unavailable',
+        detail: 'Approximate device memory reported by the browser.',
+      },
+      {
+        label: 'Free space',
+        value: `${formatBytes(938510725120)} GB`,
+        detail: `${formatBytes(1081101176832)} GB total on this workspace disk snapshot.`,
+      },
+    ])
   }, [])
 
   useEffect(() => {
@@ -393,23 +445,42 @@ function App() {
                 </ul>
               </div>
 
-              <div className="photo-widget" aria-label="Random photo of the day widget">
-                <div className="photo-widget__header">
-                  <div>
-                    <p className="photo-widget__label">Photo of the day</p>
-                    <h2 className="photo-widget__title">Random pick</h2>
+              <div className="photo-stack">
+                <div className="photo-widget" aria-label="Random photo of the day widget">
+                  <div className="photo-widget__header">
+                    <div>
+                      <p className="photo-widget__label">Photo of the day</p>
+                      <h2 className="photo-widget__title">Random pick</h2>
+                    </div>
+                    <button
+                      type="button"
+                      className="photo-widget__button"
+                      onClick={() => setPhotoSeed(Math.floor(Math.random() * 100000))}
+                    >
+                      New photo
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    className="photo-widget__button"
-                    onClick={() => setPhotoSeed(Math.floor(Math.random() * 100000))}
-                  >
-                    New photo
-                  </button>
+
+                  <div className="photo-widget__frame">
+                    <img src={photoUrl} alt="Random photo of the day" className="photo-widget__image" />
+                  </div>
                 </div>
 
-                <div className="photo-widget__frame">
-                  <img src={photoUrl} alt="Random photo of the day" className="photo-widget__image" />
+                <div className="system-widget" aria-label="System usage widget">
+                  <div className="system-widget__header">
+                    <p className="system-widget__label">System snapshot</p>
+                    <h2 className="system-widget__title">CPU, RAM, space</h2>
+                  </div>
+
+                  <div className="system-widget__grid">
+                    {systemStats.map((stat) => (
+                      <article key={stat.label} className="system-stat-card">
+                        <p className="system-stat-card__label">{stat.label}</p>
+                        <p className="system-stat-card__value">{stat.value}</p>
+                        <p className="system-stat-card__detail">{stat.detail}</p>
+                      </article>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
