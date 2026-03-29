@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 type NewsItem = {
   title: string
   link: string
   pubDate: string
 }
+
+type AppRoute = '/' | '/dashboard' | '/about'
 
 import './App.css'
 
@@ -108,8 +110,14 @@ async function fetchFeedThrough(url: string) {
   return response.text()
 }
 
+function getRouteFromPath(pathname: string): AppRoute {
+  if (pathname === '/dashboard') return '/dashboard'
+  if (pathname === '/about') return '/about'
+  return '/'
+}
+
 function App() {
-  const [activeTab, setActiveTab] = useState<'home' | 'dashboard' | 'about'>('home')
+  const [route, setRoute] = useState<AppRoute>(() => getRouteFromPath(window.location.pathname))
   const [now, setNow] = useState(() => formatNow(new Date()))
   const [news, setNews] = useState<NewsItem[]>([])
   const [newsStatus, setNewsStatus] = useState('Loading latest Iran headlines…')
@@ -120,6 +128,13 @@ function App() {
     const interval = window.setInterval(tick, 1000)
 
     return () => window.clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    const onPopState = () => setRoute(getRouteFromPath(window.location.pathname))
+
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
   }, [])
 
   useEffect(() => {
@@ -171,97 +186,165 @@ function App() {
 
   const activeCam = publicCams[camIndex]
 
+  const routeMeta = useMemo(
+    () => ({
+      '/': { label: 'Home', title: 'Home' },
+      '/dashboard': { label: 'Dashboard', title: 'Dashboard' },
+      '/about': { label: 'About', title: 'About' },
+    })[route],
+    [route],
+  )
+
+  const navigateTo = (nextRoute: AppRoute) => {
+    if (nextRoute === route) return
+    window.history.pushState({}, '', nextRoute)
+    setRoute(nextRoute)
+  }
+
   return (
     <main className="chat-page">
       <section className="chat-shell" aria-labelledby="chat-title">
         <nav className="top-tabs" aria-label="Primary navigation tabs">
-          <button
-            type="button"
-            className={`top-tabs__tab ${activeTab === 'home' ? 'top-tabs__tab--active' : ''}`}
-            onClick={() => setActiveTab('home')}
+          <a
+            href="/"
+            className={`top-tabs__tab ${route === '/' ? 'top-tabs__tab--active' : ''}`}
+            onClick={(event) => {
+              event.preventDefault()
+              navigateTo('/')
+            }}
           >
             Home
-          </button>
-          <button
-            type="button"
-            className={`top-tabs__tab ${activeTab === 'dashboard' ? 'top-tabs__tab--active' : ''}`}
-            onClick={() => setActiveTab('dashboard')}
+          </a>
+          <a
+            href="/dashboard"
+            className={`top-tabs__tab ${route === '/dashboard' ? 'top-tabs__tab--active' : ''}`}
+            onClick={(event) => {
+              event.preventDefault()
+              navigateTo('/dashboard')
+            }}
           >
             Dashboard
-          </button>
-          <button
-            type="button"
-            className={`top-tabs__tab ${activeTab === 'about' ? 'top-tabs__tab--active' : ''}`}
-            onClick={() => setActiveTab('about')}
+          </a>
+          <a
+            href="/about"
+            className={`top-tabs__tab ${route === '/about' ? 'top-tabs__tab--active' : ''}`}
+            onClick={(event) => {
+              event.preventDefault()
+              navigateTo('/about')
+            }}
           >
             About
-          </button>
+          </a>
         </nav>
 
-        <div className="widget-row">
-          <div className="clock-widget" aria-label="Current date and time widget">
-            <p className="clock-widget__label">Current time</p>
-            <p className="clock-widget__time">{now.time}</p>
-            <p className="clock-widget__date">{now.date}</p>
-          </div>
+        <header className="route-header" aria-label="Current route header">
+          <p className="route-header__eyebrow">Current route</p>
+          <h1 className="route-header__title">{routeMeta.title}</h1>
+          <p className="route-header__path">{window.location.pathname}</p>
+        </header>
 
-          <div className="news-widget" aria-label="Latest Iran news widget">
-            <p className="news-widget__label">Iran news</p>
-            <h2 className="news-widget__title">Latest headlines</h2>
-            <p className="news-widget__status">{newsStatus}</p>
-            <ul className="news-widget__list">
-              {news.map((item) => (
-                <li key={`${item.link}-${item.pubDate}`} className="news-widget__item">
-                  <a href={item.link} target="_blank" rel="noreferrer" className="news-widget__link">
-                    {item.title}
-                  </a>
-                  {item.pubDate ? (
-                    <p className="news-widget__time">{formatNewsTime(item.pubDate)}</p>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+        {route === '/' ? (
+          <>
+            <div className="widget-row">
+              <div className="clock-widget" aria-label="Current date and time widget">
+                <p className="clock-widget__label">Current time</p>
+                <p className="clock-widget__time">{now.time}</p>
+                <p className="clock-widget__date">{now.date}</p>
+              </div>
 
-        <div className="info-card webcam-card" aria-label="Random public live webcam widget">
-          <div className="webcam-card__header">
-            <div>
-              <p className="webcam-card__label">Public live cam</p>
-              <h2>{activeCam.name}</h2>
-              <p className="webcam-card__place">{activeCam.place}</p>
+              <div className="news-widget" aria-label="Latest Iran news widget">
+                <p className="news-widget__label">Iran news</p>
+                <h2 className="news-widget__title">Latest headlines</h2>
+                <p className="news-widget__status">{newsStatus}</p>
+                <ul className="news-widget__list">
+                  {news.map((item) => (
+                    <li key={`${item.link}-${item.pubDate}`} className="news-widget__item">
+                      <a href={item.link} target="_blank" rel="noreferrer" className="news-widget__link">
+                        {item.title}
+                      </a>
+                      {item.pubDate ? (
+                        <p className="news-widget__time">{formatNewsTime(item.pubDate)}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
-            <button
-              type="button"
-              className="webcam-card__button"
-              onClick={() => setCamIndex((current) => (current + 1 + Math.floor(Math.random() * 4)) % publicCams.length)}
-            >
-              Randomize
-            </button>
+
+            <div className="info-card webcam-card" aria-label="Random public live webcam widget">
+              <div className="webcam-card__header">
+                <div>
+                  <p className="webcam-card__label">Public live cam</p>
+                  <h2>{activeCam.name}</h2>
+                  <p className="webcam-card__place">{activeCam.place}</p>
+                </div>
+                <button
+                  type="button"
+                  className="webcam-card__button"
+                  onClick={() =>
+                    setCamIndex(
+                      (current) => (current + 1 + Math.floor(Math.random() * 4)) % publicCams.length,
+                    )
+                  }
+                >
+                  Randomize
+                </button>
+              </div>
+
+              <p className="webcam-card__note">{activeCam.note}</p>
+
+              <div className="webcam-card__frame-wrap">
+                <iframe
+                  key={activeCam.embedUrl}
+                  src={activeCam.embedUrl}
+                  title={`${activeCam.name} live webcam`}
+                  className="webcam-card__frame"
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  allow="autoplay; fullscreen; picture-in-picture"
+                />
+              </div>
+
+              <p className="webcam-card__fallback">
+                If this camera refuses to render in the page, open it directly:
+              </p>
+
+              <a href={activeCam.href} target="_blank" rel="noreferrer" className="webcam-card__link">
+                Open live webcam
+              </a>
+            </div>
+          </>
+        ) : route === '/dashboard' ? (
+          <div className="dashboard-grid" aria-label="Dashboard route content">
+            <div className="info-card stat-card">
+              <p className="stat-card__label">Clock</p>
+              <h2 className="stat-card__value">{now.time}</h2>
+              <p className="stat-card__meta">{now.date}</p>
+            </div>
+
+            <div className="info-card stat-card">
+              <p className="stat-card__label">Iran headlines</p>
+              <h2 className="stat-card__value">{news.length}</h2>
+              <p className="stat-card__meta">{newsStatus}</p>
+            </div>
+
+            <div className="info-card stat-card stat-card--wide">
+              <p className="stat-card__label">Current live cam</p>
+              <h2 className="stat-card__value">{activeCam.name}</h2>
+              <p className="stat-card__meta">{activeCam.place}</p>
+            </div>
           </div>
-
-          <p className="webcam-card__note">{activeCam.note}</p>
-
-          <div className="webcam-card__frame-wrap">
-            <iframe
-              key={activeCam.embedUrl}
-              src={activeCam.embedUrl}
-              title={`${activeCam.name} live webcam`}
-              className="webcam-card__frame"
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-              allow="autoplay; fullscreen; picture-in-picture"
-            />
+        ) : (
+          <div className="info-card about-card" aria-label="About route content">
+            <p className="about-card__eyebrow">About this page</p>
+            <h2>Small control room, real routes</h2>
+            <p>
+              This app now uses browser history routes for Home, Dashboard, and About without adding a
+              routing library. The tabs update the URL, support back/forward navigation, and render
+              route-specific content.
+            </p>
           </div>
-
-          <p className="webcam-card__fallback">
-            If this camera refuses to render in the page, open it directly:
-          </p>
-
-          <a href={activeCam.href} target="_blank" rel="noreferrer" className="webcam-card__link">
-            Open live webcam
-          </a>
-        </div>
+        )}
       </section>
     </main>
   )

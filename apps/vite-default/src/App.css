@@ -43,6 +43,7 @@
   font-weight: 600;
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  text-decoration: none;
 }
 
 .top-tabs__tab:hover {
@@ -54,6 +55,78 @@
   background: color-mix(in srgb, var(--bg) 84%, var(--accent) 16%);
   color: var(--text-h);
   border-color: color-mix(in srgb, var(--accent) 50%, var(--border) 50%);
+}
+
+.route-header {
+  display: grid;
+  gap: 6px;
+}
+
+.route-header__eyebrow,
+.route-header__title,
+.route-header__path,
+.stat-card__label,
+.stat-card__value,
+.stat-card__meta,
+.about-card__eyebrow,
+.about-card p {
+  margin: 0;
+}
+
+.route-header__eyebrow,
+.stat-card__label,
+.about-card__eyebrow {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text) 76%, var(--accent) 24%);
+}
+
+.route-header__title {
+  font-family: 'Jersey 10', var(--heading);
+  font-size: clamp(2.4rem, 5vw, 4rem);
+  line-height: 0.95;
+  color: var(--text-h);
+}
+
+.route-header__path,
+.stat-card__meta,
+.about-card p {
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.widget-row,
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.dashboard-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.stat-card {
+  gap: 10px;
+}
+
+.stat-card__value {
+  font-family: 'Jersey 10', var(--heading);
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 0.95;
+  color: var(--text-h);
+}
+
+.stat-card--wide {
+  grid-column: span 3;
+}
+
+.about-card {
+  gap: 14px;
+  max-width: 56rem;
 }
 
 .widget-row {
@@ -474,11 +547,16 @@
 
   .top-tabs,
   .widget-row,
+  .dashboard-grid,
   .composer-bar,
   .webcam-card__header {
     grid-template-columns: 1fr;
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .stat-card--wide {
+    grid-column: span 1;
   }
 
   .chat-thread {
