@@ -168,7 +168,8 @@
 
 .webcam-card__label,
 .webcam-card__place,
-.webcam-card__note {
+.webcam-card__note,
+.webcam-card__fallback {
   margin: 0;
 }
 
@@ -188,6 +189,26 @@
 .webcam-card__note {
   color: var(--text-h);
   line-height: 1.6;
+}
+
+.webcam-card__frame-wrap {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border) 72%);
+  background: color-mix(in srgb, var(--bg) 92%, var(--text-h) 8%);
+}
+
+.webcam-card__frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+.webcam-card__fallback {
+  color: var(--text);
 }
 
 .webcam-card__button,

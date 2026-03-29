@@ -12,6 +12,7 @@ type PublicCam = {
   name: string
   place: string
   href: string
+  embedUrl: string
   note: string
 }
 
@@ -20,30 +21,35 @@ const publicCams: PublicCam[] = [
     name: 'Venice Grand Canal',
     place: 'Venice, Italy',
     href: 'https://www.skylinewebcams.com/en/webcam/italia/veneto/venezia/canal-grande-rialto.html',
+    embedUrl: 'https://www.skylinewebcams.com/en/webcam/italia/veneto/venezia/canal-grande-rialto.html',
     note: 'Busy canal traffic and classic Venice chaos.',
   },
   {
     name: 'Times Square',
     place: 'New York City, USA',
     href: 'https://www.earthcam.com/usa/newyork/timessquare/',
+    embedUrl: 'https://www.earthcam.com/usa/newyork/timessquare/',
     note: 'Bright lights, giant screens, permanent overstimulation.',
   },
   {
     name: 'Shibuya Crossing',
     place: 'Tokyo, Japan',
     href: 'https://www.skylinewebcams.com/en/webcam/japan/kanto/tokyo/shibuya-crossing.html',
+    embedUrl: 'https://www.skylinewebcams.com/en/webcam/japan/kanto/tokyo/shibuya-crossing.html',
     note: 'One of the best people-flow cameras on earth.',
   },
   {
     name: 'Old Town Square',
     place: 'Prague, Czech Republic',
     href: 'https://www.skylinewebcams.com/en/webcam/czech-republic/prague/prague/old-town-square.html',
+    embedUrl: 'https://www.skylinewebcams.com/en/webcam/czech-republic/prague/prague/old-town-square.html',
     note: 'Historic center, rooftops, clock, tourists.',
   },
   {
     name: 'Santa Monica Beach',
     place: 'California, USA',
     href: 'https://www.earthcam.com/usa/california/santamonica/',
+    embedUrl: 'https://www.earthcam.com/usa/california/santamonica/',
     note: 'Beach, pier, weather, a more relaxed kind of surveillance.',
   },
 ]
@@ -210,6 +216,22 @@ function App() {
           </div>
 
           <p className="webcam-card__note">{activeCam.note}</p>
+
+          <div className="webcam-card__frame-wrap">
+            <iframe
+              key={activeCam.embedUrl}
+              src={activeCam.embedUrl}
+              title={`${activeCam.name} live webcam`}
+              className="webcam-card__frame"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              allow="autoplay; fullscreen; picture-in-picture"
+            />
+          </div>
+
+          <p className="webcam-card__fallback">
+            If this camera refuses to render in the page, open it directly:
+          </p>
 
           <a href={activeCam.href} target="_blank" rel="noreferrer" className="webcam-card__link">
             Open live webcam
