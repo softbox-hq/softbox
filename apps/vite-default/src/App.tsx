@@ -24,6 +24,8 @@ type SystemStat = {
 
 type AppRoute = '/' | '/dashboard' | '/about'
 
+import { cronPulseState } from './defaultState'
+
 import './App.css'
 
 type PublicCam = {
@@ -210,6 +212,7 @@ function App() {
       detail: `${formatBytes(1081101176832)} GB total on this workspace disk snapshot.`,
     },
   ])
+  const [cronPulse] = useState(cronPulseState)
 
   useEffect(() => {
     const tick = () => setNow(formatNow(new Date()))
@@ -481,6 +484,19 @@ function App() {
                       </article>
                     ))}
                   </div>
+                </div>
+
+                <div className="cron-widget" aria-label="Cron execution widget">
+                  <div className="cron-widget__header">
+                    <p className="cron-widget__label">Gateway cron pulse</p>
+                    <h2 className="cron-widget__title">Executed every minute</h2>
+                  </div>
+
+                  <div className="cron-widget__code">{cronPulse.code}</div>
+                  <p className="cron-widget__detail">Last execution: {cronPulse.lastRun}</p>
+                  <p className="cron-widget__detail">
+                    This value is updated by a Gateway cron job that writes a new random 8-character code.
+                  </p>
                 </div>
               </div>
             </div>

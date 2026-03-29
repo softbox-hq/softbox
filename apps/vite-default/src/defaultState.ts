@@ -64,6 +64,11 @@ export const initialConversation: ChatMessage[] = [
   },
 ]
 
+export const cronPulseState = {
+  code: 'WAITING…',
+  lastRun: 'Cron job not executed yet.',
+}
+
 export const initialLiveAppState = {
   route: '/',
   selection: null,

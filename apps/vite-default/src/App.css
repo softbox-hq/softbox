@@ -173,7 +173,8 @@
   object-fit: cover;
 }
 
-.system-widget {
+.system-widget,
+.cron-widget {
   display: grid;
   gap: 14px;
   padding: 18px;
@@ -185,12 +186,16 @@
 .system-widget__title,
 .system-stat-card__label,
 .system-stat-card__value,
-.system-stat-card__detail {
+.system-stat-card__detail,
+.cron-widget__label,
+.cron-widget__title,
+.cron-widget__detail {
   margin: 0;
 }
 
 .system-widget__label,
-.system-stat-card__label {
+.system-stat-card__label,
+.cron-widget__label {
   font-size: 0.76rem;
   font-weight: 700;
   letter-spacing: 0.2em;
@@ -198,10 +203,37 @@
   color: color-mix(in srgb, var(--text) 76%, var(--accent) 24%);
 }
 
-.system-widget__title {
+.system-widget__title,
+.cron-widget__title {
   margin-top: 6px;
   font-size: 1.15rem;
   color: var(--text-h);
+}
+
+.cron-widget__header {
+  display: grid;
+  gap: 8px;
+}
+
+.cron-widget__code {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border) 64%);
+  background: color-mix(in srgb, var(--bg) 96%, var(--accent) 4%);
+  font-family: var(--mono);
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--text-h);
+}
+
+.cron-widget__detail {
+  color: var(--text);
+  line-height: 1.45;
+  font-size: 0.92rem;
 }
 
 .system-widget__grid {
