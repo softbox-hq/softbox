@@ -109,6 +109,7 @@ async function fetchFeedThrough(url: string) {
 }
 
 function App() {
+  const [activeTab, setActiveTab] = useState<'home' | 'dashboard' | 'about'>('home')
   const [now, setNow] = useState(() => formatNow(new Date()))
   const [news, setNews] = useState<NewsItem[]>([])
   const [newsStatus, setNewsStatus] = useState('Loading latest Iran headlines…')
@@ -173,6 +174,30 @@ function App() {
   return (
     <main className="chat-page">
       <section className="chat-shell" aria-labelledby="chat-title">
+        <nav className="top-tabs" aria-label="Primary navigation tabs">
+          <button
+            type="button"
+            className={`top-tabs__tab ${activeTab === 'home' ? 'top-tabs__tab--active' : ''}`}
+            onClick={() => setActiveTab('home')}
+          >
+            Home
+          </button>
+          <button
+            type="button"
+            className={`top-tabs__tab ${activeTab === 'dashboard' ? 'top-tabs__tab--active' : ''}`}
+            onClick={() => setActiveTab('dashboard')}
+          >
+            Dashboard
+          </button>
+          <button
+            type="button"
+            className={`top-tabs__tab ${activeTab === 'about' ? 'top-tabs__tab--active' : ''}`}
+            onClick={() => setActiveTab('about')}
+          >
+            About
+          </button>
+        </nav>
+
         <div className="widget-row">
           <div className="clock-widget" aria-label="Current date and time widget">
             <p className="clock-widget__label">Current time</p>

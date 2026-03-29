@@ -26,6 +26,36 @@
   text-align: left;
 }
 
+.top-tabs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+}
+
+.top-tabs__tab {
+  border: 1px solid color-mix(in srgb, var(--border) 82%, var(--text-h) 18%);
+  background: color-mix(in srgb, var(--bg) 94%, var(--text-h) 6%);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.top-tabs__tab:hover {
+  color: var(--text-h);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border) 60%);
+}
+
+.top-tabs__tab--active {
+  background: color-mix(in srgb, var(--bg) 84%, var(--accent) 16%);
+  color: var(--text-h);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border) 50%);
+}
+
 .widget-row {
   display: grid;
   grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
@@ -442,6 +472,7 @@
     border-radius: 24px;
   }
 
+  .top-tabs,
   .widget-row,
   .composer-bar,
   .webcam-card__header {
