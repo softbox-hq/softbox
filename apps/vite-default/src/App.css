@@ -156,16 +156,65 @@
   margin: 0;
 }
 
-.info-card ol {
-  margin: 0;
-  padding-left: 1.25rem;
-  display: grid;
-  gap: 12px;
-  color: var(--text-h);
+.webcam-card {
+  gap: 18px;
 }
 
-.info-card li {
+.webcam-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.webcam-card__label,
+.webcam-card__place,
+.webcam-card__note {
+  margin: 0;
+}
+
+.webcam-card__label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text) 76%, var(--accent) 24%);
+}
+
+.webcam-card__place {
+  margin-top: 8px;
+  color: var(--text);
+}
+
+.webcam-card__note {
+  color: var(--text-h);
   line-height: 1.6;
+}
+
+.webcam-card__button,
+.webcam-card__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.webcam-card__button {
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border) 58%);
+  background: color-mix(in srgb, var(--bg) 90%, var(--accent) 10%);
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.webcam-card__link {
+  width: fit-content;
+  background: var(--accent);
+  color: #08212a;
 }
 
 .chat-thread {
@@ -374,7 +423,8 @@
   }
 
   .widget-row,
-  .composer-bar {
+  .composer-bar,
+  .webcam-card__header {
     grid-template-columns: 1fr;
     flex-direction: column;
     align-items: stretch;

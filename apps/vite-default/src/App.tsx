@@ -8,12 +8,44 @@ type NewsItem = {
 
 import './App.css'
 
-const telegramReality = [
-  'No — not magically. I cannot inspect your whole Telegram account, read all your private messages, or browse your history unless Telegram itself exposes that data through a connection you explicitly set up.',
-  'With a normal Telegram bot integration, the scope is much narrower: I can only see messages sent to that bot or in chats where the bot is present and allowed to read them.',
-  'I do not get automatic access to your DMs, archived chats, contacts, secret chats, or account-wide history just because you asked.',
-  'So: your messages are not something I can just pull out of your account on my own. That is a platform permission boundary, not me being difficult.',
-  'If you want, I can help you set up the maximum legitimate access Telegram allows through a bot, or show you how to export your own data and let me analyze it locally.',
+type PublicCam = {
+  name: string
+  place: string
+  href: string
+  note: string
+}
+
+const publicCams: PublicCam[] = [
+  {
+    name: 'Venice Grand Canal',
+    place: 'Venice, Italy',
+    href: 'https://www.skylinewebcams.com/en/webcam/italia/veneto/venezia/canal-grande-rialto.html',
+    note: 'Busy canal traffic and classic Venice chaos.',
+  },
+  {
+    name: 'Times Square',
+    place: 'New York City, USA',
+    href: 'https://www.earthcam.com/usa/newyork/timessquare/',
+    note: 'Bright lights, giant screens, permanent overstimulation.',
+  },
+  {
+    name: 'Shibuya Crossing',
+    place: 'Tokyo, Japan',
+    href: 'https://www.skylinewebcams.com/en/webcam/japan/kanto/tokyo/shibuya-crossing.html',
+    note: 'One of the best people-flow cameras on earth.',
+  },
+  {
+    name: 'Old Town Square',
+    place: 'Prague, Czech Republic',
+    href: 'https://www.skylinewebcams.com/en/webcam/czech-republic/prague/prague/old-town-square.html',
+    note: 'Historic center, rooftops, clock, tourists.',
+  },
+  {
+    name: 'Santa Monica Beach',
+    place: 'California, USA',
+    href: 'https://www.earthcam.com/usa/california/santamonica/',
+    note: 'Beach, pier, weather, a more relaxed kind of surveillance.',
+  },
 ]
 
 function formatNow(date: Date) {
@@ -74,6 +106,7 @@ function App() {
   const [now, setNow] = useState(() => formatNow(new Date()))
   const [news, setNews] = useState<NewsItem[]>([])
   const [newsStatus, setNewsStatus] = useState('Loading latest Iran headlines…')
+  const [camIndex, setCamIndex] = useState(() => Math.floor(Math.random() * publicCams.length))
 
   useEffect(() => {
     const tick = () => setNow(formatNow(new Date()))
@@ -129,6 +162,8 @@ function App() {
     }
   }, [])
 
+  const activeCam = publicCams[camIndex]
+
   return (
     <main className="chat-page">
       <section className="chat-shell" aria-labelledby="chat-title">
@@ -158,13 +193,27 @@ function App() {
           </div>
         </div>
 
-        <div className="info-card" aria-label="Telegram setup guide">
-          <h2>Can I inspect your whole Telegram account?</h2>
-          <ol>
-            {telegramReality.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ol>
+        <div className="info-card webcam-card" aria-label="Random public live webcam widget">
+          <div className="webcam-card__header">
+            <div>
+              <p className="webcam-card__label">Public live cam</p>
+              <h2>{activeCam.name}</h2>
+              <p className="webcam-card__place">{activeCam.place}</p>
+            </div>
+            <button
+              type="button"
+              className="webcam-card__button"
+              onClick={() => setCamIndex((current) => (current + 1 + Math.floor(Math.random() * 4)) % publicCams.length)}
+            >
+              Randomize
+            </button>
+          </div>
+
+          <p className="webcam-card__note">{activeCam.note}</p>
+
+          <a href={activeCam.href} target="_blank" rel="noreferrer" className="webcam-card__link">
+            Open live webcam
+          </a>
         </div>
       </section>
     </main>
