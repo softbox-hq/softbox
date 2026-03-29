@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
 
+type NewsItem = {
+  title: string
+  link: string
+  pubDate: string
+}
+
 import './App.css'
 
 const telegramAnswer = `Not by default. I don't have direct access to your Telegram account or chats unless you've explicitly connected Telegram to this OpenClaw setup.
@@ -30,8 +36,25 @@ function formatNow(date: Date) {
   }
 }
 
+function formatNewsTime(value: string) {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
 function App() {
   const [now, setNow] = useState(() => formatNow(new Date()))
+  const [news, setNews] = useState<NewsItem[]>([])
+  const [newsStatus, setNewsStatus] = useState('Loading latest Iran headlines…')
 
   useEffect(() => {
     const tick = () => setNow(formatNow(new Date()))
@@ -40,13 +63,80 @@ function App() {
     return () => window.clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+
+    const loadNews = async () => {
+      try {
+        setNewsStatus('Loading latest Iran headlines…')
+
+        const feedUrl = encodeURIComponent(
+          'https://news.google.com/rss/search?q=Iran&hl=en-US&gl=US&ceid=US:en',
+        )
+        const response = await fetch(`https://api.allorigins.win/raw?url=${feedUrl}`)
+
+        if (!response.ok) {
+          throw new Error(`Feed request failed: ${response.status}`)
+        }
+
+        const xmlText = await response.text()
+        const xml = new window.DOMParser().parseFromString(xmlText, 'text/xml')
+        const items = Array.from(xml.querySelectorAll('item'))
+          .slice(0, 4)
+          .map((item) => ({
+            title: item.querySelector('title')?.textContent?.trim() ?? 'Untitled headline',
+            link: item.querySelector('link')?.textContent?.trim() ?? '#',
+            pubDate: item.querySelector('pubDate')?.textContent?.trim() ?? '',
+          }))
+
+        if (!cancelled) {
+          setNews(items)
+          setNewsStatus(items.length ? 'Latest news' : 'No headlines found right now.')
+        }
+      } catch {
+        if (!cancelled) {
+          setNews([])
+          setNewsStatus('Could not load live Iran headlines right now.')
+        }
+      }
+    }
+
+    loadNews()
+    const refreshInterval = window.setInterval(loadNews, 1000 * 60 * 10)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(refreshInterval)
+    }
+  }, [])
+
   return (
     <main className="chat-page">
       <section className="chat-shell" aria-labelledby="chat-title">
-        <div className="clock-widget" aria-label="Current date and time widget">
-          <p className="clock-widget__label">Current time</p>
-          <p className="clock-widget__time">{now.time}</p>
-          <p className="clock-widget__date">{now.date}</p>
+        <div className="widget-row">
+          <div className="clock-widget" aria-label="Current date and time widget">
+            <p className="clock-widget__label">Current time</p>
+            <p className="clock-widget__time">{now.time}</p>
+            <p className="clock-widget__date">{now.date}</p>
+          </div>
+
+          <div className="news-widget" aria-label="Latest Iran news widget">
+            <p className="news-widget__label">Iran news</p>
+            <h2 className="news-widget__title">Latest headlines</h2>
+            <p className="news-widget__status">{newsStatus}</p>
+            <ul className="news-widget__list">
+              {news.map((item) => (
+                <li key={`${item.link}-${item.pubDate}`} className="news-widget__item">
+                  <a href={item.link} target="_blank" rel="noreferrer" className="news-widget__link">
+                    {item.title}
+                  </a>
+                  {item.pubDate ? (
+                    <p className="news-widget__time">{formatNewsTime(item.pubDate)}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
 
         <header className="chat-header">
