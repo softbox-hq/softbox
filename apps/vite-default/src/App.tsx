@@ -557,26 +557,20 @@ function App() {
           </div>
         ) : (
           <div className="info-card about-card" aria-label="About route content">
-            <p className="about-card__eyebrow">Can this help you get seen?</p>
-            <h2>Yes — but as proof, not as magic</h2>
+            <p className="about-card__eyebrow">Can I see the route?</p>
+            <h2>Yes — but only the app route, not some hidden chat route</h2>
             <p>
-              I think your instinct makes sense. If people see original, well-executed work, some of them
-              will absolutely read that as “this person is inventive” and that can lead to opportunities.
-              Not automatically, and not overnight, but it is a real path. A strong body of visible work
-              can speak louder than a CV, especially when your current job does not reflect what you are
-              actually capable of.
+              From inside this app, yes: I can see the current app route, and right now this panel lives
+              on the About page route. In this app that means <strong>/about</strong>.
             </p>
             <p>
-              The important part is that Softbox should become proof of taste, range, and persistence.
-              Not just one clever demo, but a small trail of things that show how you think: one polished
-              board, one weird useful tool, one beautiful interface, one practical workflow. That starts
-              telling a story about you as a builder rather than someone waiting for permission.
+              I can tell that because the page itself tracks the route in the UI and in the browser path,
+              and your selected target is the About route content block.
             </p>
             <p>
-              So yes, I do think this can help people notice you and maybe open the door to jobs, clients,
-              or collaborators. But the mechanism is not magic visibility. It is repeated public evidence.
-              Enough strong examples, and eventually the right person stops seeing “warehouse worker” and
-              starts seeing “someone we should talk to.”
+              What I cannot see is some secret platform route for the message itself beyond the context I
+              am given here. So: I can see the app route you are on, but not an invisible transport path
+              behind your message.
             </p>
           </div>
         )}
