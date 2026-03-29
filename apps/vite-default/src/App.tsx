@@ -486,26 +486,27 @@ function App() {
           </div>
         ) : (
           <div className="info-card about-card" aria-label="About route content">
-            <p className="about-card__eyebrow">Where I think the first users are</p>
-            <h2>Go where people already customize their tools</h2>
+            <p className="about-card__eyebrow">Where I would actually go</p>
+            <h2>Specific places, specific angles</h2>
             <p>
-              I would start with people who already enjoy shaping their own systems: indie hackers,
-              makers, home-lab people, productivity tinkerers, designers who prototype ideas fast, and
-              developers who care about personal tools more than polished enterprise software. Those are
-              the people most likely to immediately understand why Softbox matters.
+              Fair hit. So: not “communities” in the abstract. I would go to specific places where people
+              already post custom setups and little personal systems: Home Assistant Reddit and Discord,
+              Obsidian and Notion communities, self-hosting / homelab circles, indie hacker Twitter/X,
+              Hacker News Show HN, Product Hunt, and maker-heavy Discord servers where people share side
+              projects in progress.
             </p>
             <p>
-              In practice, that means places like X, Hacker News, Reddit communities, Discord servers,
-              maker groups, and demo-heavy corners of the internet where people share setups, workflows,
-              dashboards, and weird side projects. Not broad generic audiences — smaller groups that like
-              building their own environment.
+              But the trick is not just showing up there. You need the right bait. Post things like:
+              “I turned one blank app into a family wall, a market board, and a research room,” “I made a
+              live interface with an agent in 15 minutes,” or “Here are 5 wildly different apps built on
+              the same Softbox base.” That gets curiosity. “Here is a flexible agent interface runtime”
+              does not.
             </p>
             <p>
-              I would also look for adjacent communities rather than “AI people” in general: Home
-              Assistant users, Notion/Obsidian tinkerers, self-hosters, founders making internal tools,
-              and people posting “look what I built for myself” videos. Those people are usually the
-              earliest adopters, because they do not need a perfect category first — they just need to
-              feel the possibility.
+              If I were doing it manually, I would start with 20 concrete posts and demos across X,
+              Reddit, HN Show HN, Product Hunt, and a few Discord servers, then watch which audience
+              reacts hardest. My guess: self-hosters, makers, and “tools for myself” people will convert
+              before mainstream AI audiences do.
             </p>
           </div>
         )}
