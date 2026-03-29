@@ -28,7 +28,7 @@ export type LiveAppModule = {
   unmount(): Promise<void> | void;
 };
 
-export const defaultAppId = "softbox";
+export const defaultAppId = "vite-default";
 export const defaultShellId = "main";
 export const liveAppStateSchemaVersion = 1;
 export const runtimeHealthTimeoutMs = 4_000;

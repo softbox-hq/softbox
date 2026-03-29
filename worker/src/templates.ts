@@ -2,19 +2,19 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { basename, relative, resolve } from "node:path";
 
-export const defaultTemplateId = "default";
+export const defaultWrappedAppId = "vite-default";
 export const softboxConfigFileName = "softbox.config.json";
 
-type TemplateConfig = {
-  templateId: string;
+type WrappedAppConfig = {
   label?: string;
   runtime?: string;
+  templateId?: string;
 };
 
-export type TemplateId = string;
+export type WrappedAppId = string;
 
-export type RegisteredTemplate = {
-  templateId: string;
+export type RegisteredWrappedApp = {
+  appId: string;
   label: string;
   runtime: string | null;
   root: string;
@@ -23,7 +23,7 @@ export type RegisteredTemplate = {
   relativeConfigPath: string;
 };
 
-export type TemplateDiscoveryIssue = {
+export type WrappedAppDiscoveryIssue = {
   appDir: string;
   severity: "warning" | "error";
   message: string;
@@ -33,38 +33,38 @@ function normalizeRelativePath(projectRoot: string, absolutePath: string): strin
   return relative(projectRoot, absolutePath).replaceAll("\\", "/") || absolutePath;
 }
 
-function readTemplateConfig(configPath: string): TemplateConfig {
+function readWrappedAppConfig(configPath: string): WrappedAppConfig {
   const parsed = JSON.parse(readFileSync(configPath, "utf8")) as unknown;
   if (!parsed || typeof parsed !== "object") {
     throw new Error("Config must be a JSON object.");
   }
 
   const config = parsed as Record<string, unknown>;
-  if (typeof config.templateId !== "string" || config.templateId.trim() === "") {
-    throw new Error("Missing required string field 'templateId'.");
-  }
   if (config.label !== undefined && typeof config.label !== "string") {
     throw new Error("Optional field 'label' must be a string.");
   }
   if (config.runtime !== undefined && typeof config.runtime !== "string") {
     throw new Error("Optional field 'runtime' must be a string.");
   }
+  if (config.templateId !== undefined && typeof config.templateId !== "string") {
+    throw new Error("Legacy field 'templateId' must be a string when present.");
+  }
 
   return {
-    templateId: config.templateId.trim(),
     label: typeof config.label === "string" ? config.label.trim() : undefined,
     runtime: typeof config.runtime === "string" ? config.runtime.trim() : undefined,
+    templateId:
+      typeof config.templateId === "string" ? config.templateId.trim() : undefined,
   };
 }
 
-export function discoverTemplates(projectRoot: string): {
-  templates: RegisteredTemplate[];
-  issues: TemplateDiscoveryIssue[];
+export function discoverWrappedApps(projectRoot: string): {
+  apps: RegisteredWrappedApp[];
+  issues: WrappedAppDiscoveryIssue[];
 } {
   const appsRoot = resolve(projectRoot, "apps");
-  const issues: TemplateDiscoveryIssue[] = [];
-  const templates: RegisteredTemplate[] = [];
-  const seenTemplateIds = new Map<string, string>();
+  const issues: WrappedAppDiscoveryIssue[] = [];
+  const apps: RegisteredWrappedApp[] = [];
 
   if (!existsSync(appsRoot)) {
     issues.push({
@@ -72,7 +72,7 @@ export function discoverTemplates(projectRoot: string): {
       severity: "warning",
       message: "The /apps directory does not exist yet.",
     });
-    return { templates, issues };
+    return { apps, issues };
   }
 
   const entries = readdirSync(appsRoot, { withFileTypes: true })
@@ -94,16 +94,16 @@ export function discoverTemplates(projectRoot: string): {
           severity: "warning",
           message:
             `App source exists but is not wrapped for Softbox. ` +
-            `Run 'pnpm wrap-app -- --path ${relativeRoot} --id <template-id>' ` +
+            `Run 'pnpm wrap-app -- --path ${relativeRoot}' ` +
             `for a supported browser-first React/Vite app.`,
         });
       }
       continue;
     }
 
-    let config: TemplateConfig;
+    let config: WrappedAppConfig;
     try {
-      config = readTemplateConfig(configPath);
+      config = readWrappedAppConfig(configPath);
     } catch (error) {
       issues.push({
         appDir: relativeRoot,
@@ -115,21 +115,20 @@ export function discoverTemplates(projectRoot: string): {
       continue;
     }
 
-    const duplicatePath = seenTemplateIds.get(config.templateId);
-    if (duplicatePath) {
+    const appId = basename(relativeRoot);
+    if (config.templateId && config.templateId !== appId) {
       issues.push({
         appDir: relativeRoot,
-        severity: "error",
+        severity: "warning",
         message:
-          `Duplicate templateId '${config.templateId}' already registered by '${duplicatePath}'.`,
+          `Legacy 'templateId' field '${config.templateId}' does not match app id '${appId}'. ` +
+          `The worker now uses the app directory name as the only source id and ignores 'templateId'.`,
       });
-      continue;
     }
 
-    seenTemplateIds.set(config.templateId, relativeRoot);
-    templates.push({
-      templateId: config.templateId,
-      label: config.label || basename(relativeRoot),
+    apps.push({
+      appId,
+      label: config.label || appId,
       runtime: config.runtime || null,
       root,
       relativeRoot,
@@ -138,67 +137,75 @@ export function discoverTemplates(projectRoot: string): {
     });
   }
 
-  return { templates, issues };
+  return { apps, issues };
 }
 
-export function listTemplates(projectRoot: string): RegisteredTemplate[] {
-  return discoverTemplates(projectRoot).templates;
+export function listWrappedApps(projectRoot: string): RegisteredWrappedApp[] {
+  return discoverWrappedApps(projectRoot).apps;
 }
 
-function getTemplateRecord(projectRoot: string, templateId: string): RegisteredTemplate {
-  const record = listTemplates(projectRoot).find((template) => template.templateId === templateId);
+function getWrappedAppRecord(projectRoot: string, appId: string): RegisteredWrappedApp {
+  const record = listWrappedApps(projectRoot).find((app) => app.appId === appId);
   if (!record) {
     throw new Error(
-      `Unknown templateId '${templateId}'. Add '${softboxConfigFileName}' under /apps ` +
-        `or run 'pnpm wrap-app -- --path apps/<name> --id <template-id>'.`,
+      `Unknown app id '${appId}'. Add '${softboxConfigFileName}' under /apps/${appId} ` +
+        `or run 'pnpm wrap-app -- --path apps/<app-id>'.`,
     );
   }
   return record;
 }
 
-export function getDefaultTemplateId(projectRoot: string): string {
-  return listTemplates(projectRoot)[0]?.templateId ?? defaultTemplateId;
+export function getDefaultWrappedAppId(projectRoot: string): string {
+  const apps = listWrappedApps(projectRoot);
+  return (
+    apps.find((app) => app.appId === defaultWrappedAppId)?.appId ??
+    apps[0]?.appId ??
+    defaultWrappedAppId
+  );
 }
 
-export function isTemplateId(value: string, projectRoot = resolve(process.cwd())): value is TemplateId {
-  return listTemplates(projectRoot).some((template) => template.templateId === value);
+export function isWrappedAppId(
+  value: string,
+  projectRoot = resolve(process.cwd()),
+): value is WrappedAppId {
+  return listWrappedApps(projectRoot).some((app) => app.appId === value);
 }
 
-export function getTemplateDirName(
-  templateId: string,
+export function getWrappedAppDirName(
+  appId: string,
   projectRoot = resolve(process.cwd()),
 ): string {
-  return getTemplateRecord(projectRoot, templateId).relativeRoot;
+  return getWrappedAppRecord(projectRoot, appId).relativeRoot;
 }
 
-export function getTemplateLabel(
-  templateId: string,
+export function getWrappedAppLabel(
+  appId: string,
   projectRoot = resolve(process.cwd()),
 ): string {
-  return getTemplateRecord(projectRoot, templateId).label;
+  return getWrappedAppRecord(projectRoot, appId).label;
 }
 
-export function resolveTemplateRoot(projectRoot: string, templateId: string): string {
-  return getTemplateRecord(projectRoot, templateId).root;
+export function resolveWrappedAppRoot(projectRoot: string, appId: string): string {
+  return getWrappedAppRecord(projectRoot, appId).root;
 }
 
-export async function inspectTemplateSource(
+export async function inspectWrappedAppSource(
   projectRoot: string,
-  templateId: string,
+  appId: string,
 ): Promise<{
   status: "available" | "missing";
   path: string | null;
   message: string | null;
 }> {
-  const record = listTemplates(projectRoot).find((template) => template.templateId === templateId);
+  const record = listWrappedApps(projectRoot).find((app) => app.appId === appId);
   if (!record) {
     return {
       status: "missing",
       path: null,
       message:
-        `Template '${templateId}' is not registered. ` +
-        `Add '${softboxConfigFileName}' under an app in /apps or run ` +
-        `'pnpm wrap-app -- --path apps/<name> --id <template-id>'.`,
+        `App '${appId}' is not registered under /apps. ` +
+        `Add '${softboxConfigFileName}' under /apps/${appId} or run ` +
+        `'pnpm wrap-app -- --path apps/${appId}'.`,
     };
   }
 
@@ -221,7 +228,7 @@ export async function inspectTemplateSource(
         `Mounted version is still available from previously built artifacts, ` +
         `but the local Softbox runtime files are missing at '${record.relativeRoot}'. ` +
         `Expected 'src/entry.tsx' and 'src/defaultState.ts'. ` +
-        `Restore them or re-run 'pnpm wrap-app -- --path ${record.relativeRoot} --id ${templateId} --force'.`,
+        `Restore them or re-run 'pnpm wrap-app -- --path ${record.relativeRoot} --force'.`,
     };
   }
 }

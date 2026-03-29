@@ -1,7 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./server";
 
-const defaultTemplateId = "default";
 const defaultShellId = "main";
 
 const agentResult = v.object({
@@ -145,6 +144,305 @@ async function getArtifactPurgeTaskByAppId(ctx: any, appId: string) {
     .first();
 }
 
+type LegacyAppIdMigrationCounts = {
+  versions: number;
+  appFiles: number;
+  jobs: number;
+  pipelineRuns: number;
+  pipelineStages: number;
+  runtimeErrors: number;
+  artifactPurgeTasks: number;
+  shellSelections: number;
+};
+
+type LegacyAppIdMigration = {
+  fromAppId: string;
+  toAppId: string;
+  name: string;
+  counts: LegacyAppIdMigrationCounts;
+};
+
+type LegacyAppIdMigrationConflict = {
+  fromAppId: string;
+  toAppId: string;
+  reason: string;
+};
+
+type LegacyTemplateFieldCleanupSummary = {
+  appDocs: number;
+  pipelineRuns: number;
+};
+
+function readLegacyTemplateId(app: any): string | null {
+  const templateId = typeof app?.templateId === "string" ? app.templateId.trim() : "";
+  if (!templateId || templateId === app.appId) {
+    return null;
+  }
+  return templateId;
+}
+
+async function collectLegacyAppIdMigrationCounts(
+  ctx: any,
+  appId: string,
+): Promise<LegacyAppIdMigrationCounts> {
+  const [versions, appFiles, jobs, pipelineRuns, pipelineStages, runtimeErrors, purgeTasks, shellSelections] =
+    await Promise.all([
+      ctx.db
+        .query("versions")
+        .withIndex("by_appId_and_versionNumber", (q: any) => q.eq("appId", appId))
+        .collect(),
+      ctx.db
+        .query("appFiles")
+        .withIndex("by_appId", (q: any) => q.eq("appId", appId))
+        .collect(),
+      ctx.db
+        .query("jobs")
+        .withIndex("by_appId_and_submittedAt", (q: any) => q.eq("appId", appId))
+        .collect(),
+      ctx.db
+        .query("pipelineRuns")
+        .withIndex("by_appId_and_submittedAt", (q: any) => q.eq("appId", appId))
+        .collect(),
+      ctx.db
+        .query("pipelineStages")
+        .withIndex("by_appId_and_startedAt", (q: any) => q.eq("appId", appId))
+        .collect(),
+      ctx.db
+        .query("runtimeErrors")
+        .withIndex("by_appId_and_createdAt", (q: any) => q.eq("appId", appId))
+        .collect(),
+      ctx.db
+        .query("artifactPurgeTasks")
+        .withIndex("by_appId", (q: any) => q.eq("appId", appId))
+        .collect(),
+      ctx.db
+        .query("shellSelections")
+        .withIndex("by_selectedAppId", (q: any) => q.eq("selectedAppId", appId))
+        .collect(),
+    ]);
+
+  return {
+    versions: versions.length,
+    appFiles: appFiles.length,
+    jobs: jobs.length,
+    pipelineRuns: pipelineRuns.length,
+    pipelineStages: pipelineStages.length,
+    runtimeErrors: runtimeErrors.length,
+    artifactPurgeTasks: purgeTasks.length,
+    shellSelections: shellSelections.length,
+  };
+}
+
+async function buildLegacyAppIdMigrationPlan(ctx: any): Promise<{
+  migrations: LegacyAppIdMigration[];
+  conflicts: LegacyAppIdMigrationConflict[];
+}> {
+  const apps = await ctx.db.query("apps").collect();
+  const reservedCanonicalIds = new Set<string>(apps.map((app: any) => app.appId));
+  const claimedTargetIds = new Set<string>();
+  const migrations: LegacyAppIdMigration[] = [];
+  const conflicts: LegacyAppIdMigrationConflict[] = [];
+
+  for (const app of apps) {
+    const toAppId = readLegacyTemplateId(app);
+    if (!toAppId) {
+      continue;
+    }
+
+    if (reservedCanonicalIds.has(toAppId)) {
+      conflicts.push({
+        fromAppId: app.appId,
+        toAppId,
+        reason: `target app id '${toAppId}' already exists`,
+      });
+      continue;
+    }
+
+    if (claimedTargetIds.has(toAppId)) {
+      conflicts.push({
+        fromAppId: app.appId,
+        toAppId,
+        reason: `multiple legacy apps resolve to '${toAppId}'`,
+      });
+      continue;
+    }
+
+    claimedTargetIds.add(toAppId);
+    migrations.push({
+      fromAppId: app.appId,
+      toAppId,
+      name: app.name,
+      counts: await collectLegacyAppIdMigrationCounts(ctx, app.appId),
+    });
+  }
+
+  return { migrations, conflicts };
+}
+
+async function collectLegacyTemplateFieldCleanupSummary(
+  ctx: any,
+): Promise<LegacyTemplateFieldCleanupSummary> {
+  const [apps, pipelineRuns] = await Promise.all([
+    ctx.db.query("apps").collect(),
+    ctx.db.query("pipelineRuns").collect(),
+  ]);
+
+  return {
+    appDocs: apps.filter((app: any) => typeof app?.templateId === "string" && app.templateId.trim()).length,
+    pipelineRuns: pipelineRuns.filter(
+      (run: any) => typeof run?.templateId === "string" && run.templateId.trim(),
+    ).length,
+  };
+}
+
+function buildAppReplacementDoc(app: any, nextAppId: string, updatedAt: number) {
+  const nextDoc: Record<string, unknown> = {
+    appId: nextAppId,
+    name: app.name,
+    codexThreadId: app.codexThreadId ?? null,
+    openClawSessionId: app.openClawSessionId ?? null,
+    templateSourceStatus: app.templateSourceStatus ?? "unknown",
+    templateSourcePath: app.templateSourcePath ?? null,
+    templateSourceMessage: app.templateSourceMessage ?? null,
+    templateSourceCheckedAt: app.templateSourceCheckedAt ?? null,
+    currentStateJson: app.currentStateJson ?? null,
+    lastBuildError: app.lastBuildError ?? null,
+    lastRuntimeError: app.lastRuntimeError ?? null,
+    updatedAt,
+  };
+
+  if (app.activeVersionId !== undefined) {
+    nextDoc.activeVersionId = app.activeVersionId;
+  }
+  if (app.previewCursorVersionNumber !== undefined) {
+    nextDoc.previewCursorVersionNumber = app.previewCursorVersionNumber;
+  }
+
+  return nextDoc;
+}
+
+function buildPipelineRunReplacementDoc(run: any, nextAppId: string, updatedAt: number) {
+  const nextDoc: Record<string, unknown> = {
+    appId: nextAppId,
+    jobId: run.jobId,
+    prompt: run.prompt,
+    status: run.status,
+    submittedAt: run.submittedAt,
+    updatedAt,
+  };
+
+  if (run.versionId !== undefined) {
+    nextDoc.versionId = run.versionId;
+  }
+  if (run.claimedAt !== undefined) {
+    nextDoc.claimedAt = run.claimedAt;
+  }
+  if (run.completedAt !== undefined) {
+    nextDoc.completedAt = run.completedAt;
+  }
+  if (run.failedAt !== undefined) {
+    nextDoc.failedAt = run.failedAt;
+  }
+
+  return nextDoc;
+}
+
+async function applyLegacyAppIdMigration(ctx: any, migration: LegacyAppIdMigration): Promise<void> {
+  const app = await getAppById(ctx, migration.fromAppId);
+  if (!app) {
+    return;
+  }
+
+  const now = Date.now();
+  const [versions, appFiles, jobs, pipelineRuns, pipelineStages, runtimeErrors, purgeTasks, shellSelections] =
+    await Promise.all([
+      ctx.db
+        .query("versions")
+        .withIndex("by_appId_and_versionNumber", (q: any) => q.eq("appId", migration.fromAppId))
+        .collect(),
+      ctx.db
+        .query("appFiles")
+        .withIndex("by_appId", (q: any) => q.eq("appId", migration.fromAppId))
+        .collect(),
+      ctx.db
+        .query("jobs")
+        .withIndex("by_appId_and_submittedAt", (q: any) => q.eq("appId", migration.fromAppId))
+        .collect(),
+      ctx.db
+        .query("pipelineRuns")
+        .withIndex("by_appId_and_submittedAt", (q: any) => q.eq("appId", migration.fromAppId))
+        .collect(),
+      ctx.db
+        .query("pipelineStages")
+        .withIndex("by_appId_and_startedAt", (q: any) => q.eq("appId", migration.fromAppId))
+        .collect(),
+      ctx.db
+        .query("runtimeErrors")
+        .withIndex("by_appId_and_createdAt", (q: any) => q.eq("appId", migration.fromAppId))
+        .collect(),
+      ctx.db
+        .query("artifactPurgeTasks")
+        .withIndex("by_appId", (q: any) => q.eq("appId", migration.fromAppId))
+        .collect(),
+      ctx.db
+        .query("shellSelections")
+        .withIndex("by_selectedAppId", (q: any) => q.eq("selectedAppId", migration.fromAppId))
+        .collect(),
+    ]);
+
+  await ctx.db.replace(app._id, buildAppReplacementDoc(app, migration.toAppId, now));
+
+  for (const version of versions) {
+    await ctx.db.patch(version._id, { appId: migration.toAppId });
+  }
+  for (const file of appFiles) {
+    await ctx.db.patch(file._id, { appId: migration.toAppId });
+  }
+  for (const job of jobs) {
+    await ctx.db.patch(job._id, { appId: migration.toAppId });
+  }
+  for (const run of pipelineRuns) {
+    await ctx.db.replace(run._id, buildPipelineRunReplacementDoc(run, migration.toAppId, now));
+  }
+  for (const stage of pipelineStages) {
+    await ctx.db.patch(stage._id, { appId: migration.toAppId });
+  }
+  for (const runtimeError of runtimeErrors) {
+    await ctx.db.patch(runtimeError._id, { appId: migration.toAppId });
+  }
+  for (const purgeTask of purgeTasks) {
+    await ctx.db.patch(purgeTask._id, { appId: migration.toAppId, updatedAt: now });
+  }
+  for (const selection of shellSelections) {
+    await ctx.db.patch(selection._id, {
+      selectedAppId: migration.toAppId,
+      updatedAt: now,
+    });
+  }
+}
+
+async function scrubLegacyTemplateIds(ctx: any): Promise<void> {
+  const now = Date.now();
+  const [apps, pipelineRuns] = await Promise.all([
+    ctx.db.query("apps").collect(),
+    ctx.db.query("pipelineRuns").collect(),
+  ]);
+
+  for (const app of apps) {
+    if (typeof app?.templateId !== "string" || !app.templateId.trim()) {
+      continue;
+    }
+    await ctx.db.replace(app._id, buildAppReplacementDoc(app, app.appId, now));
+  }
+
+  for (const run of pipelineRuns) {
+    if (typeof run?.templateId !== "string" || !run.templateId.trim()) {
+      continue;
+    }
+    await ctx.db.replace(run._id, buildPipelineRunReplacementDoc(run, run.appId, now));
+  }
+}
+
 async function deleteAppDataRecords(ctx: any, appId: string) {
   const pipelineStages = await ctx.db
     .query("pipelineStages")
@@ -272,7 +570,6 @@ export const getShellState = query({
     return {
       appId: app.appId,
       name: app.name,
-      templateId: app.templateId ?? defaultTemplateId,
       templateSourceStatus: app.templateSourceStatus ?? "unknown",
       templateSourcePath: app.templateSourcePath ?? null,
       templateSourceMessage: app.templateSourceMessage ?? null,
@@ -308,7 +605,7 @@ export const submitPrompt = mutation({
     if (app.templateSourceStatus === "missing") {
       throw new Error(
         app.templateSourceMessage ??
-          `App '${args.appId}' is still mountable from a previously built version, but its source template is missing locally. Restore it before submitting prompts.`,
+          `App '${args.appId}' is still mountable from a previously built version, but its source app is missing locally. Restore it before submitting prompts.`,
       );
     }
     const submittedAt = Date.now();
@@ -328,7 +625,6 @@ export const submitPrompt = mutation({
       jobId,
       prompt: args.prompt,
       status: "pending",
-      templateId: app.templateId ?? defaultTemplateId,
       submittedAt,
       updatedAt: submittedAt,
     });
@@ -557,7 +853,6 @@ export const listApps = query({
         return {
           appId: app.appId,
           name: app.name,
-          templateId: app.templateId ?? defaultTemplateId,
           templateSourceStatus: app.templateSourceStatus ?? "unknown",
           templateSourcePath: app.templateSourcePath ?? null,
           templateSourceMessage: app.templateSourceMessage ?? null,
@@ -883,7 +1178,6 @@ export const seedApp = mutation({
   args: {
     appId: v.string(),
     name: v.string(),
-    templateId: v.string(),
     files: v.array(
       v.object({
         path: v.string(),
@@ -925,7 +1219,6 @@ export const seedApp = mutation({
     const appId = await ctx.db.insert("apps", {
       appId: args.appId,
       name: args.name,
-      templateId: args.templateId,
       codexThreadId: null,
       openClawSessionId: null,
       templateSourceStatus: "unknown",
@@ -976,7 +1269,6 @@ export const getAppConfig = query({
     return {
       appId: app.appId,
       name: app.name,
-      templateId: app.templateId ?? defaultTemplateId,
       codexThreadId: app.codexThreadId ?? null,
       openClawSessionId: app.openClawSessionId ?? null,
     };
@@ -992,26 +1284,6 @@ export const listVersions = query({
       .collect();
 
     return versions.sort((left, right) => right.versionNumber - left.versionNumber);
-  },
-});
-
-export const setAppTemplate = mutation({
-  args: {
-    appId: v.string(),
-    templateId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const app = await getAppByIdOrThrow(ctx, args.appId);
-    await ctx.db.patch(app._id, {
-      templateId: args.templateId,
-      codexThreadId: null,
-      openClawSessionId: null,
-      templateSourceStatus: "unknown",
-      templateSourcePath: null,
-      templateSourceMessage: null,
-      templateSourceCheckedAt: null,
-      updatedAt: Date.now(),
-    });
   },
 });
 
@@ -1065,6 +1337,62 @@ export const setAppTemplateSourceStatus = mutation({
       templateSourceMessage: args.message,
       templateSourceCheckedAt: Date.now(),
     });
+  },
+});
+
+export const inspectLegacyAppIdMigration = query({
+  args: {},
+  handler: async (ctx) => {
+    const plan = await buildLegacyAppIdMigrationPlan(ctx);
+    const cleanup = await collectLegacyTemplateFieldCleanupSummary(ctx);
+    return {
+      ...plan,
+      cleanup,
+    };
+  },
+});
+
+export const migrateLegacyAppIds = mutation({
+  args: {
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const dryRun = args.dryRun ?? true;
+    const plan = await buildLegacyAppIdMigrationPlan(ctx);
+    const cleanup = await collectLegacyTemplateFieldCleanupSummary(ctx);
+    const hasChanges =
+      plan.migrations.length > 0 ||
+      cleanup.appDocs > 0 ||
+      cleanup.pipelineRuns > 0;
+
+    if (dryRun || !hasChanges) {
+      return {
+        dryRun,
+        migratedCount: 0,
+        cleanup,
+        ...plan,
+      };
+    }
+
+    if (plan.conflicts.length > 0) {
+      throw new Error(
+        `Legacy app-id migration has conflicts: ${plan.conflicts
+          .map((conflict) => `${conflict.fromAppId} -> ${conflict.toAppId} (${conflict.reason})`)
+          .join("; ")}`,
+      );
+    }
+
+    for (const migration of plan.migrations) {
+      await applyLegacyAppIdMigration(ctx, migration);
+    }
+    await scrubLegacyTemplateIds(ctx);
+
+    return {
+      dryRun: false,
+      migratedCount: plan.migrations.length,
+      cleanup,
+      ...plan,
+    };
   },
 });
 

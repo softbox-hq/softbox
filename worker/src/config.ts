@@ -1,6 +1,6 @@
 import { basename, resolve } from "node:path";
 import { defaultAppId } from "./shared/liveApp";
-import { getDefaultTemplateId } from "./templates";
+import { getDefaultWrappedAppId } from "./templates";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -39,7 +39,6 @@ export type WorkerConfig = {
   queueBackoffMs: number;
   r2UploadConcurrency: number;
   projectRoot: string;
-  seedTemplateId: string;
   openClawGatewayBaseUrl?: string;
   openClawGatewayToken?: string;
   openClawAgentId?: string;
@@ -59,6 +58,7 @@ export function loadWorkerConfig(): WorkerConfig {
   );
   const pollIntervalMs = parsePositiveNumber(process.env.WORKER_POLL_INTERVAL_MS, 1500);
   const openClawEnabled = isOpenClawCommand(agentCommand);
+  const defaultConfiguredAppId = getDefaultWrappedAppId(projectRoot);
   return {
     convexUrl: requireEnv("CONVEX_URL"),
     agentCommand,
@@ -73,7 +73,7 @@ export function loadWorkerConfig(): WorkerConfig {
     r2AccessKeyId: requireEnv("R2_ACCESS_KEY_ID"),
     r2SecretAccessKey: requireEnv("R2_SECRET_ACCESS_KEY"),
     r2PublicBaseUrl: requireEnv("R2_PUBLIC_BASE_URL").replace(/\/+$/, ""),
-    appId: process.env.APP_ID ?? defaultAppId,
+    appId: process.env.APP_ID?.trim() || defaultConfiguredAppId || defaultAppId,
     pollIntervalMs,
     staleJobTimeoutMs,
     queueName: process.env.BULLMQ_QUEUE_NAME ?? "softbox-jobs",
@@ -82,7 +82,6 @@ export function loadWorkerConfig(): WorkerConfig {
     queueBackoffMs: parsePositiveNumber(process.env.BULLMQ_QUEUE_BACKOFF_MS, 800),
     r2UploadConcurrency: parsePositiveNumber(process.env.R2_UPLOAD_CONCURRENCY, 6),
     projectRoot,
-    seedTemplateId: process.env.APP_TEMPLATE_ID?.trim() || getDefaultTemplateId(projectRoot),
     openClawGatewayBaseUrl: openClawEnabled
       ? (process.env.OPENCLAW_GATEWAY_BASE_URL?.trim() || "http://127.0.0.1:18789")
       : undefined,

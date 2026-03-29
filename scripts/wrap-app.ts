@@ -6,7 +6,6 @@ import { softboxConfigFileName } from "../worker/src/templates";
 
 type Args = {
   appPath: string;
-  templateId: string;
   force: boolean;
 };
 
@@ -22,22 +21,14 @@ const sourceExtensions = [".tsx", ".jsx", ".ts", ".js"];
 function parseArgs(argv: string[]): Args {
   const positional = argv.filter((arg) => !arg.startsWith("-"));
   const pathIndex = argv.indexOf("--path");
-  const idIndex = argv.indexOf("--id");
   const appPath = (pathIndex >= 0 ? argv[pathIndex + 1] : positional[0])?.trim();
-  const templateId = (idIndex >= 0 ? argv[idIndex + 1] : "")?.trim();
   const force = argv.includes("--force");
 
   if (!appPath) {
     throw new Error("Missing app path. Use --path apps/<name>.");
   }
-  if (!templateId) {
-    throw new Error("Missing template id. Use --id <template-id>.");
-  }
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(templateId)) {
-    throw new Error("Template id must match /^[a-z0-9][a-z0-9-]*$/.");
-  }
 
-  return { appPath, templateId, force };
+  return { appPath, force };
 }
 
 async function readPackageJson(appRoot: string): Promise<Record<string, unknown> | null> {
@@ -310,10 +301,9 @@ export function unmount() {
 `;
 }
 
-function buildSoftboxConfigSource(templateId: string, appName: string): string {
+function buildSoftboxConfigSource(appName: string): string {
   return `${JSON.stringify(
     {
-      templateId,
       label: appName,
       runtime: "react-vite",
     },
@@ -357,13 +347,15 @@ async function main(): Promise<void> {
   );
   await writeFileUnlessPresent(
     configPath,
-    buildSoftboxConfigSource(args.templateId, inspection.relativeAppRoot.split("/").pop() ?? args.templateId),
+    buildSoftboxConfigSource(
+      inspection.relativeAppRoot.split("/").pop() ?? "app",
+    ),
     args.force,
   );
   const tooling = await ensureAppTooling({
     projectRoot,
     appRoot: inspection.appRoot,
-    appName: inspection.relativeAppRoot.split("/").pop() ?? args.templateId,
+    appName: inspection.relativeAppRoot.split("/").pop() ?? "app",
     force: args.force,
   });
 
@@ -383,7 +375,7 @@ async function main(): Promise<void> {
     console.log(`[wrap-app] updated ${toRelativePath(projectRoot, resolve(inspection.appRoot, "package.json"))} with ui:screenshot`);
   }
   console.log(
-    `[wrap-app] next: set APP_TEMPLATE_ID=${args.templateId}, run 'pnpm run doctor', then 'pnpm seed'`,
+    `[wrap-app] next: set APP_ID=${inspection.relativeAppRoot.split("/").pop() ?? "app"}, run 'pnpm run doctor', then 'pnpm seed'`,
   );
 }
 

@@ -1342,9 +1342,6 @@ export function App() {
                             <div className="min-w-0 flex-1">
                               <p className="text-sm text-gray-100">{run.prompt}</p>
                               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                                <span className="rounded-md bg-black/20 px-2 py-1 font-medium text-gray-400">
-                                  {run.templateId ?? "unknown template"}
-                                </span>
                                 <span>{run.stages?.length ?? 0} stages</span>
                                 <span>{formatDuration(getRunDuration(run))}</span>
                               </div>
@@ -1513,9 +1510,6 @@ export function App() {
                                 <span className="rounded-md bg-black/20 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
                                   {app.appId}
                                 </span>
-                                <span className="rounded-md bg-white/5 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-gray-300 ring-1 ring-white/10">
-                                  {app.templateId ?? "unknown template"}
-                                </span>
                                 {app.templateSourceStatus === "missing" ? (
                                   <span className="rounded-md bg-amber-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-300 ring-1 ring-amber-500/20">
                                     Source missing
@@ -1539,7 +1533,7 @@ export function App() {
                               ) : app.templateSourceStatus === "missing" ? (
                                 <p className="mt-3 line-clamp-3 text-sm leading-6 text-amber-200/80">
                                   {app.templateSourceMessage ??
-                                    "Mounted version is still available, but the local source template is missing."}
+                                    "Mounted version is still available, but the local source app is missing."}
                                 </p>
                               ) : app.lastRuntimeError ? (
                                 <p className="mt-3 line-clamp-2 text-sm leading-6 text-amber-200/80">

@@ -22,8 +22,8 @@ const templateSourceStatus = v.union(
 export default defineSchema({
   apps: defineTable({
     appId: v.string(),
-    name: v.string(),
     templateId: v.optional(v.string()),
+    name: v.string(),
     codexThreadId: v.optional(v.union(v.string(), v.null())),
     openClawSessionId: v.optional(v.union(v.string(), v.null())),
     templateSourceStatus: v.optional(templateSourceStatus),
@@ -98,6 +98,7 @@ export default defineSchema({
   }).index("by_appId_and_createdAt", ["appId", "createdAt"]),
   pipelineRuns: defineTable({
     appId: v.string(),
+    templateId: v.optional(v.string()),
     jobId: v.id("jobs"),
     prompt: v.string(),
     status: v.union(
@@ -106,7 +107,6 @@ export default defineSchema({
       v.literal("failed"),
       v.literal("completed"),
     ),
-    templateId: v.optional(v.string()),
     versionId: v.optional(v.id("versions")),
     submittedAt: v.number(),
     claimedAt: v.optional(v.number()),

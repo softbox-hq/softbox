@@ -14,9 +14,9 @@ import { readLiveAppFiles } from "./filesystem";
 import { liveAppStateSchema } from "./shared/liveApp";
 import { R2Uploader } from "./r2";
 import {
-  getTemplateLabel,
-  inspectTemplateSource,
-  resolveTemplateRoot,
+  getWrappedAppLabel,
+  inspectWrappedAppSource,
+  resolveWrappedAppRoot,
 } from "./templates";
 
 function parseState(stateJson: string | null): LiveAppState | null {
@@ -103,7 +103,7 @@ export async function syncAppTemplateSourceStatuses(
 ): Promise<void> {
   const apps = await convex.listApps();
   for (const app of apps) {
-    const nextStatus = await inspectTemplateSource(config.projectRoot, app.templateId);
+    const nextStatus = await inspectWrappedAppSource(config.projectRoot, app.appId);
     if (
       (app.templateSourceStatus ?? "unknown") === nextStatus.status &&
       (app.templateSourcePath ?? null) === nextStatus.path &&
@@ -187,7 +187,7 @@ export async function processJobById(
   try {
     const shellState = await convex.getShellState(appId);
     const appConfig = await assertAppStillExists();
-    const templateSource = await inspectTemplateSource(config.projectRoot, appConfig.templateId);
+    const templateSource = await inspectWrappedAppSource(config.projectRoot, appConfig.appId);
     await convex.setAppTemplateSourceStatus({
       appId,
       status: templateSource.status,
@@ -197,11 +197,11 @@ export async function processJobById(
     if (templateSource.status === "missing") {
       throw new Error(
         templateSource.message ??
-          `App '${appId}' is still mountable from a previously built version, but its source template is missing locally.`,
+          `App '${appId}' is still mountable from a previously built version, but its source app is missing locally.`,
       );
     }
-    const liveAppRoot = resolveTemplateRoot(config.projectRoot, appConfig.templateId);
-    const liveAppLabel = getTemplateLabel(appConfig.templateId, config.projectRoot);
+    const liveAppRoot = resolveWrappedAppRoot(config.projectRoot, appConfig.appId);
+    const liveAppLabel = getWrappedAppLabel(appConfig.appId, config.projectRoot);
     const currentFiles = await readLiveAppFiles(liveAppRoot);
     const sourceBytes = countSourceBytes(currentFiles);
     const primaryTargetFiles = selectLikelyTargetFiles(

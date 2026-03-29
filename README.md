@@ -86,7 +86,7 @@ Notes:
 
 - the shell only needs `VITE_CONVEX_URL`
 - mounted app selection is stored in Convex, not in `.env.local`
-- the worker now processes jobs across apps; `APP_ID` and `APP_TEMPLATE_ID` are mainly defaults for `pnpm seed` and worker helper scripts
+- `APP_ID` is the only source id used by `pnpm seed` and worker helper scripts
 - queueing is handled by BullMQ in the worker process; Redis is the only extra service you need to run locally
 - `pnpm dev` starts Convex, the worker, and the shell together
 - use `pnpm run doctor` instead of `pnpm doctor` because `doctor` is a reserved pnpm command
@@ -94,10 +94,10 @@ Notes:
 Wrapping a new app:
 
 ```bash
-pnpm wrap-app -- --path apps/my-app --id myapp
+pnpm wrap-app -- --path apps/my-app
 ```
 
-That command creates the thin Softbox runtime bridge for a browser-first React/Vite app and writes `softbox.config.json` so the worker can discover it automatically. It does not make Next.js or server-heavy apps magically compatible.
+That command creates the thin Softbox runtime bridge for a browser-first React/Vite app and writes `softbox.config.json` so the worker can discover it automatically. The folder name under `/apps/<app-id>` is the canonical app id. It does not make Next.js or server-heavy apps magically compatible.
 
 Seed the demo app once:
 
@@ -105,12 +105,19 @@ Seed the demo app once:
 pnpm seed
 ```
 
-That seeds the bundled `apps/dashboard-example` template when `APP_TEMPLATE_ID=default`.
+That seeds the app selected by `APP_ID`, which defaults to `vite-default` in `.env.example`.
 After that, switch mounted apps from the shell UI instead of changing env vars.
+
+If you already have older local Convex data from the pre-migration `templateId` architecture, inspect it first and then apply the rewrite once:
+
+```bash
+pnpm worker:migrate-app-ids
+pnpm worker:migrate-app-ids -- --apply
+```
 
 Starting a new app:
 
-1. copy `apps/dashboard-example` to `apps/<your-app>`
+1. copy `apps/vite-default` to `apps/<your-app>`
 2. change `softbox.config.json`
 3. replace `src/App.tsx`
 4. keep `src/entry.tsx`, `src/defaultState.ts`, and `src/adapter/`
@@ -131,8 +138,8 @@ pnpm build:shell
 pnpm typecheck
 pnpm test
 pnpm seed
-pnpm wrap-app -- --path apps/my-app --id myapp
-pnpm worker:set-template -- --template-id myapp
+pnpm wrap-app -- --path apps/my-app
+pnpm worker:migrate-app-ids
 docker compose up -d redis
 ```
 

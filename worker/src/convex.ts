@@ -23,7 +23,6 @@ export type JobRecord = {
 export type AppConfigRecord = {
   appId: string;
   name: string;
-  templateId: string;
   codexThreadId?: string | null;
   openClawSessionId?: string | null;
 };
@@ -31,7 +30,6 @@ export type AppConfigRecord = {
 export type AppRecord = {
   appId: string;
   name: string;
-  templateId: string;
   templateSourceStatus?: "unknown" | "available" | "missing";
   templateSourcePath?: string | null;
   templateSourceMessage?: string | null;
@@ -56,6 +54,39 @@ export type SeedAppStateRecord = {
     runtimeErrors: number;
     versions: number;
     appFiles: number;
+  };
+};
+
+export type LegacyAppIdMigrationRecord = {
+  fromAppId: string;
+  toAppId: string;
+  name: string;
+  counts: {
+    versions: number;
+    appFiles: number;
+    jobs: number;
+    pipelineRuns: number;
+    pipelineStages: number;
+    runtimeErrors: number;
+    artifactPurgeTasks: number;
+    shellSelections: number;
+  };
+};
+
+export type LegacyAppIdMigrationConflictRecord = {
+  fromAppId: string;
+  toAppId: string;
+  reason: string;
+};
+
+export type LegacyAppIdMigrationPlanRecord = {
+  dryRun?: boolean;
+  migratedCount?: number;
+  migrations: LegacyAppIdMigrationRecord[];
+  conflicts: LegacyAppIdMigrationConflictRecord[];
+  cleanup: {
+    appDocs: number;
+    pipelineRuns: number;
   };
 };
 
@@ -98,6 +129,14 @@ export class ConvexRuntimeClient {
     return await this.client.query(convexApi.inspectSeedAppState as any, { appId });
   }
 
+  async inspectLegacyAppIdMigration(): Promise<LegacyAppIdMigrationPlanRecord> {
+    return await this.client.query(convexApi.inspectLegacyAppIdMigration as any, {});
+  }
+
+  async migrateLegacyAppIds(dryRun = true): Promise<LegacyAppIdMigrationPlanRecord> {
+    return await this.client.mutation(convexApi.migrateLegacyAppIds as any, { dryRun });
+  }
+
   async resetSeedAppState(appId: string): Promise<void> {
     await this.client.mutation(convexApi.resetSeedAppState as any, { appId });
   }
@@ -116,10 +155,6 @@ export class ConvexRuntimeClient {
 
   async recordArtifactPurgeFailure(args: { taskId: string; error: string }): Promise<void> {
     await this.client.mutation(convexApi.recordArtifactPurgeFailure as any, args);
-  }
-
-  async setAppTemplate(args: { appId: string; templateId: string }): Promise<void> {
-    await this.client.mutation(convexApi.setAppTemplate as any, args);
   }
 
   async setAppCodexThread(args: {
@@ -203,7 +238,6 @@ export class ConvexRuntimeClient {
   async seedApp(args: {
     appId: string;
     name: string;
-    templateId: string;
     files: SourceFile[];
     manifestUrl: string;
     buildLog: string;

@@ -196,7 +196,7 @@ apps/vite-default/AGENTS.md
 Fix:
 
 - prompt construction now uses the repo-relative app root derived from `liveAppRoot`
-- the prompt points to `apps/<template>/AGENTS.md` instead of `<label>/AGENTS.md`
+- the prompt points to `apps/<app-id>/AGENTS.md` instead of `<label>/AGENTS.md`
 
 ## About The `ws-stream ... falling back to HTTP` Log
 

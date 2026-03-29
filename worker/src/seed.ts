@@ -9,7 +9,7 @@ import { LiveAppBundler } from "./build";
 import { ConvexRuntimeClient } from "./convex";
 import { readLiveAppFiles } from "./filesystem";
 import { R2Uploader } from "./r2";
-import { getTemplateLabel, resolveTemplateRoot } from "./templates";
+import { getWrappedAppLabel, resolveWrappedAppRoot } from "./templates";
 
 function parseArgs(argv: string[]) {
   return {
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const liveAppRoot = resolveTemplateRoot(config.projectRoot, config.seedTemplateId);
+  const liveAppRoot = resolveWrappedAppRoot(config.projectRoot, config.appId);
   await ensureAppTooling({
     projectRoot: config.projectRoot,
     appRoot: liveAppRoot,
@@ -86,17 +86,16 @@ async function main(): Promise<void> {
 
   await convex.seedApp({
     appId: config.appId,
-    name: "Softbox",
-    templateId: config.seedTemplateId,
+    name: getWrappedAppLabel(config.appId, config.projectRoot),
     files,
     manifestUrl: `${config.r2PublicBaseUrl}/${manifestKeyForVersion(config.appId, 1)}`,
-    buildLog: "Seeded from template",
+    buildLog: "Seeded from source app",
     stateJson: buildResult.stateJson,
   });
 
   await bundler.dispose();
   console.log(
-    `Seeded app '${config.appId}' from template '${getTemplateLabel(config.seedTemplateId, config.projectRoot)}'`,
+    `Seeded app '${config.appId}' from source '${getWrappedAppLabel(config.appId, config.projectRoot)}'`,
   );
 }
 

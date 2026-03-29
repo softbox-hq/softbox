@@ -15,6 +15,15 @@ function App() {
             </p>
           </div>
         </header>
+
+        <div className="lorem-card" aria-label="Lorem ipsum block">
+          <p>
+            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer posuere erat a ante
+            venenatis dapibus posuere velit aliquet. Cras mattis consectetur purus sit amet
+            fermentum. Maecenas faucibus mollis interdum. Donec ullamcorper nulla non metus auctor
+            fringilla.
+          </p>
+        </div>
       </section>
     </main>
   )

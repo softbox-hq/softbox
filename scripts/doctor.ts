@@ -5,10 +5,10 @@ import net from "node:net";
 import { resolve } from "node:path";
 import "../worker/src/loadEnv";
 import {
-  defaultTemplateId,
-  discoverTemplates,
-  getDefaultTemplateId,
-  inspectTemplateSource,
+  defaultWrappedAppId,
+  discoverWrappedApps,
+  getDefaultWrappedAppId,
+  inspectWrappedAppSource,
   softboxConfigFileName,
 } from "../worker/src/templates";
 
@@ -147,7 +147,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const discovery = discoverTemplates(projectRoot);
+  const discovery = discoverWrappedApps(projectRoot);
   for (const issue of discovery.issues) {
     pushResult(
       results,
@@ -157,40 +157,40 @@ async function main(): Promise<void> {
     );
   }
 
-  if (discovery.templates.length === 0) {
+  if (discovery.apps.length === 0) {
     pushResult(
       results,
       "fail",
-      "templates",
+      "apps",
       `No wrapped apps are registered. Add '${softboxConfigFileName}' by running ` +
-        `'pnpm wrap-app -- --path apps/<name> --id <template-id>' on a supported app.`,
+        `'pnpm wrap-app -- --path apps/<name>' on a supported app.`,
     );
   }
 
-  for (const template of discovery.templates) {
-    const source = await inspectTemplateSource(projectRoot, template.templateId);
+  for (const app of discovery.apps) {
+    const source = await inspectWrappedAppSource(projectRoot, app.appId);
     pushResult(
       results,
       source.status === "available" ? "ok" : "fail",
-      `template:${template.templateId}`,
+      `app:${app.appId}`,
       source.status === "available"
-        ? `${template.relativeRoot} is ready for Softbox.`
-        : source.message ?? `${template.relativeRoot} is missing required runtime files.`,
+        ? `${app.relativeRoot} is ready for Softbox.`
+        : source.message ?? `${app.relativeRoot} is missing required runtime files.`,
     );
   }
 
-  const configuredTemplateId = readEnv("APP_TEMPLATE_ID") || getDefaultTemplateId(projectRoot);
+  const configuredAppId = readEnv("APP_ID") || getDefaultWrappedAppId(projectRoot);
   pushResult(
     results,
-    discovery.templates.some((template) => template.templateId === configuredTemplateId)
+    discovery.apps.some((app) => app.appId === configuredAppId)
       ? "ok"
       : "warn",
-    "APP_TEMPLATE_ID",
-    discovery.templates.some((template) => template.templateId === configuredTemplateId)
-      ? `Default seed template is '${configuredTemplateId}'.`
-      : configuredTemplateId === defaultTemplateId
-        ? `Still using fallback '${defaultTemplateId}'. Set APP_TEMPLATE_ID after wrapping an app.`
-        : `'${configuredTemplateId}' does not match any wrapped app.`,
+    "APP_ID",
+    discovery.apps.some((app) => app.appId === configuredAppId)
+      ? `Default seeded app is '${configuredAppId}'.`
+      : configuredAppId === defaultWrappedAppId
+        ? `Still using fallback '${defaultWrappedAppId}'. Set APP_ID after wrapping an app.`
+        : `'${configuredAppId}' does not match any wrapped app.`,
   );
 
   try {

@@ -1,5 +1,4 @@
 {
-  "templateId": "dashboard-example",
   "label": "dashboard-example",
   "runtime": "react-vite"
 }

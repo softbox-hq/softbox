@@ -1,5 +1,4 @@
 {
-  "templateId": "tictactoe-example",
   "label": "tictactoe-example",
   "runtime": "react-vite"
 }
