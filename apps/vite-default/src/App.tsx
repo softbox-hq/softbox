@@ -557,27 +557,26 @@ function App() {
           </div>
         ) : (
           <div className="info-card about-card" aria-label="About route content">
-            <p className="about-card__eyebrow">Potential value</p>
-            <h2>Big if it becomes a category, small if it stays a demo</h2>
+            <p className="about-card__eyebrow">Can this help you get seen?</p>
+            <h2>Yes — but as proof, not as magic</h2>
             <p>
-              My honest take: the value could be anything from modest to very large, depending on whether
-              Softbox becomes a reusable product people adopt for real workflows, or remains something
-              that feels clever but custom. If it stays in “cool prototype” territory, the value is
-              limited. If it becomes the default way people spin up living interfaces around agents, data,
-              and personal workflows, the upside is serious.
+              I think your instinct makes sense. If people see original, well-executed work, some of them
+              will absolutely read that as “this person is inventive” and that can lead to opportunities.
+              Not automatically, and not overnight, but it is a real path. A strong body of visible work
+              can speak louder than a CV, especially when your current job does not reflect what you are
+              actually capable of.
             </p>
             <p>
-              The reason the ceiling is high is that this is not just one tool. It can sit in multiple
-              categories at once: personal software, internal tools, agent interfaces, dashboards,
-              ambient home surfaces, and lightweight app creation. If people start using it as a base
-              layer for many different recurring tasks, then the value is closer to platform value than
-              feature value.
+              The important part is that Softbox should become proof of taste, range, and persistence.
+              Not just one clever demo, but a small trail of things that show how you think: one polished
+              board, one weird useful tool, one beautiful interface, one practical workflow. That starts
+              telling a story about you as a builder rather than someone waiting for permission.
             </p>
             <p>
-              So I would frame it like this: low value if it is only impressive, high value if it becomes
-              habitual. The real question is not “is the idea powerful?” I think it is. The real question
-              is whether people start returning to Softbox as the place where new useful surfaces get
-              born.
+              So yes, I do think this can help people notice you and maybe open the door to jobs, clients,
+              or collaborators. But the mechanism is not magic visibility. It is repeated public evidence.
+              Enough strong examples, and eventually the right person stops seeing “warehouse worker” and
+              starts seeing “someone we should talk to.”
             </p>
           </div>
         )}
