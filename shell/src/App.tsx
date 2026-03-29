@@ -1,6 +1,6 @@
 import { startTransition, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowUpFromLine, Check, Crosshair, Trash2, X } from "lucide-react";
+import { ArrowUpFromLine, Check, Crosshair, Trash2 } from "lucide-react";
 import { convexApi } from "@shared/convexApi";
 import type { LiveAppState } from "@shared/liveApp";
 import { defaultAppId } from "@shared/liveApp";
@@ -93,6 +93,17 @@ type InspectTarget = {
   };
 };
 
+type InspectRect = InspectTarget["rect"];
+
+type InspectRegion = {
+  id: string;
+  rect: InspectRect;
+  relativeRect: InspectRect;
+  devicePixelRatio: number;
+};
+
+type SelectionMode = "elements" | "pixels";
+
 const inspectPreferredTags = new Set([
   "a",
   "article",
@@ -115,7 +126,7 @@ const inspectPreferredTags = new Set([
   "textarea",
 ]);
 
-function clampRect(rect: DOMRect): InspectTarget["rect"] {
+function clampRect(rect: DOMRect): InspectRect {
   return {
     x: Math.max(0, rect.x),
     y: Math.max(0, rect.y),
@@ -263,27 +274,141 @@ function formatInspectSummary(target: InspectTarget) {
     .join(" · ");
 }
 
-function buildPromptWithInspectTarget(prompt: string, target: InspectTarget | null) {
-  const trimmedPrompt = prompt.trim();
-  if (!target) {
-    return trimmedPrompt;
-  }
-  const bounds = `x=${Math.round(target.rect.x)}, y=${Math.round(target.rect.y)}, w=${Math.round(target.rect.width)}, h=${Math.round(target.rect.height)}`;
-  return [
-    trimmedPrompt,
-    "",
-    "Selected UI target:",
-    `- selector: ${target.selector}`,
-    `- tag: ${target.tagName}`,
-    target.role ? `- role: ${target.role}` : null,
-    target.label ? `- text: ${target.label}` : null,
-    `- bounds: ${bounds}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+function isSameInspectTarget(left: InspectTarget, right: InspectTarget) {
+  return left.selector === right.selector;
 }
 
-function getInspectOverlayStyle(target: InspectTarget | null): CSSProperties | null {
+function clampValue(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function clampPointToRect(x: number, y: number, rect: DOMRect) {
+  return {
+    x: clampValue(x, rect.left, rect.right),
+    y: clampValue(y, rect.top, rect.bottom),
+  };
+}
+
+function createSelectionRect(
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  boundaryRect: DOMRect,
+): InspectRect {
+  const start = clampPointToRect(startX, startY, boundaryRect);
+  const end = clampPointToRect(endX, endY, boundaryRect);
+  const left = Math.min(start.x, end.x);
+  const top = Math.min(start.y, end.y);
+  const right = Math.max(start.x, end.x);
+  const bottom = Math.max(start.y, end.y);
+
+  return {
+    x: left,
+    y: top,
+    width: Math.max(0, right - left),
+    height: Math.max(0, bottom - top),
+  };
+}
+
+function createRelativeRect(rect: InspectRect, boundaryRect: DOMRect): InspectRect {
+  return {
+    x: Math.max(0, rect.x - boundaryRect.left),
+    y: Math.max(0, rect.y - boundaryRect.top),
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function createInspectRegion(id: string, rect: InspectRect, boundaryRect: DOMRect): InspectRegion {
+  return {
+    id,
+    rect,
+    relativeRect: createRelativeRect(rect, boundaryRect),
+    devicePixelRatio: window.devicePixelRatio || 1,
+  };
+}
+
+function isMeaningfulRegion(rect: InspectRect) {
+  return rect.width >= 8 && rect.height >= 8;
+}
+
+function isPointInsideRect(x: number, y: number, rect: InspectRect) {
+  return x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
+}
+
+function formatRectBounds(rect: InspectRect) {
+  return `x=${Math.round(rect.x)}, y=${Math.round(rect.y)}, w=${Math.round(rect.width)}, h=${Math.round(rect.height)}`;
+}
+
+function formatInspectRegionSummary(region: InspectRegion) {
+  return `pixels · ${Math.round(region.rect.width)}×${Math.round(region.rect.height)}`;
+}
+
+function toggleInspectTargetSelection(targets: InspectTarget[], target: InspectTarget) {
+  const existingIndex = targets.findIndex((current) => isSameInspectTarget(current, target));
+  if (existingIndex >= 0) {
+    return targets.filter((_, index) => index !== existingIndex);
+  }
+  return [...targets, target];
+}
+
+function buildPromptWithSelectionContext(
+  prompt: string,
+  targets: InspectTarget[],
+  regions: InspectRegion[],
+) {
+  const trimmedPrompt = prompt.trim();
+  if (targets.length === 0 && regions.length === 0) {
+    return trimmedPrompt;
+  }
+
+  const lines = [trimmedPrompt];
+
+  if (targets.length > 0) {
+    lines.push("");
+    lines.push(targets.length === 1 ? "Selected UI target:" : "Selected UI targets:");
+
+    for (const [index, target] of targets.entries()) {
+      if (targets.length > 1) {
+        lines.push(`Target ${index + 1}:`);
+      }
+      lines.push(`- selector: ${target.selector}`);
+      lines.push(`- tag: ${target.tagName}`);
+      if (target.role) {
+        lines.push(`- role: ${target.role}`);
+      }
+      if (target.label) {
+        lines.push(`- text: ${target.label}`);
+      }
+      lines.push(`- bounds: ${formatRectBounds(target.rect)}`);
+      if (index < targets.length - 1) {
+        lines.push("");
+      }
+    }
+  }
+
+  if (regions.length > 0) {
+    lines.push("");
+    lines.push(regions.length === 1 ? "Selected pixel region:" : "Selected pixel regions:");
+
+    for (const [index, region] of regions.entries()) {
+      if (regions.length > 1) {
+        lines.push(`Region ${index + 1}:`);
+      }
+      lines.push(`- viewport bounds (css px): ${formatRectBounds(region.rect)}`);
+      lines.push(`- app-local bounds (css px): ${formatRectBounds(region.relativeRect)}`);
+      lines.push(`- devicePixelRatio: ${region.devicePixelRatio}`);
+      if (index < regions.length - 1) {
+        lines.push("");
+      }
+    }
+  }
+
+  return lines.join("\n");
+}
+
+function getInspectOverlayStyle(target: { rect: InspectRect } | null): CSSProperties | null {
   if (!target) {
     return null;
   }
@@ -295,7 +420,7 @@ function getInspectOverlayStyle(target: InspectTarget | null): CSSProperties | n
   };
 }
 
-function getInspectBadgeStyle(target: InspectTarget | null): CSSProperties | null {
+function getInspectBadgeStyle(target: { rect: InspectRect } | null): CSSProperties | null {
   if (!target) {
     return null;
   }
@@ -352,9 +477,11 @@ export function App() {
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
   const [switchingVersionId, setSwitchingVersionId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const [inspectMode, setInspectMode] = useState(false);
+  const [selectionMode, setSelectionMode] = useState<SelectionMode | null>(null);
   const [hoveredTarget, setHoveredTarget] = useState<InspectTarget | null>(null);
-  const [selectedTarget, setSelectedTarget] = useState<InspectTarget | null>(null);
+  const [selectedTargets, setSelectedTargets] = useState<InspectTarget[]>([]);
+  const [draftRegion, setDraftRegion] = useState<InspectRegion | null>(null);
+  const [selectedRegions, setSelectedRegions] = useState<InspectRegion[]>([]);
   const [composerHidden, setComposerHidden] = useState(false);
 
   const runtimeStatus = getRuntimeStatus(shellState);
@@ -407,6 +534,8 @@ export function App() {
   const elapsedSeconds = Math.floor(elapsedMs / 1000);
   const queuedTooLong =
     latestPipelineRun?.status === "pending" && elapsedSeconds >= 60;
+  const inspectMode = selectionMode === "elements";
+  const pixelInspectMode = selectionMode === "pixels";
 
   useEffect(() => {
     if (!appsQuery || apps.length === 0 || shellSelection === undefined) {
@@ -448,25 +577,31 @@ export function App() {
     setSwitchingVersionId(null);
     setExpandedRunId(null);
     setDeletingRunId(null);
-    setInspectMode(false);
+    setSelectionMode(null);
     setHoveredTarget(null);
-    setSelectedTarget(null);
+    setSelectedTargets([]);
+    setDraftRegion(null);
+    setSelectedRegions([]);
   }, [appId]);
 
   useEffect(() => {
     if (!showEmptyState) {
       return;
     }
-    setInspectMode(false);
+    setSelectionMode(null);
     setHoveredTarget(null);
+    setSelectedTargets([]);
+    setDraftRegion(null);
+    setSelectedRegions([]);
   }, [showEmptyState]);
 
   useEffect(() => {
     if (!appsOpen && !pipelineOpen && !versionsOpen) {
       return;
     }
-    setInspectMode(false);
+    setSelectionMode(null);
     setHoveredTarget(null);
+    setDraftRegion(null);
   }, [appsOpen, pipelineOpen, versionsOpen]);
 
   useEffect(() => {
@@ -476,18 +611,25 @@ export function App() {
   }, [inspectMode]);
 
   useEffect(() => {
-    if (!inspectMode) {
+    if (!pixelInspectMode) {
+      setDraftRegion(null);
+    }
+  }, [pixelInspectMode]);
+
+  useEffect(() => {
+    if (!selectionMode) {
       return;
     }
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setInspectMode(false);
+        setSelectionMode(null);
         setHoveredTarget(null);
+        setDraftRegion(null);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [inspectMode]);
+  }, [selectionMode]);
 
   useEffect(() => {
     if (!inspectMode) {
@@ -536,9 +678,8 @@ export function App() {
       event.preventDefault();
       event.stopPropagation();
       const snapshot = snapshotInspectTarget(inspectable, activeLayer);
-      setSelectedTarget(snapshot);
+      setSelectedTargets((current) => toggleInspectTargetSelection(current, snapshot));
       setHoveredTarget(snapshot);
-      setInspectMode(false);
     };
 
     activeLayer.addEventListener("pointermove", handlePointerMove, true);
@@ -552,6 +693,167 @@ export function App() {
       activeLayer.removeEventListener("pointerdown", handlePointerDown, true);
     };
   }, [inspectMode, shellState?.activeVersion?._id]);
+
+  useEffect(() => {
+    if (!pixelInspectMode) {
+      return;
+    }
+    const host = hostRef.current;
+    if (!host) {
+      return;
+    }
+    const activeLayer = host.querySelector<HTMLElement>('[data-layer="active"]');
+    if (!activeLayer) {
+      return;
+    }
+
+    activeLayer.dataset.inspecting = "true";
+
+    let dragStart: { x: number; y: number } | null = null;
+    let dragBoundary: DOMRect | null = null;
+    let removeRegionId: string | null = null;
+
+    const finishDrag = () => {
+      dragStart = null;
+      dragBoundary = null;
+      removeRegionId = null;
+      setDraftRegion(null);
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof HTMLElement)) {
+        return;
+      }
+      const boundaryRect = activeLayer.getBoundingClientRect();
+      const start = clampPointToRect(event.clientX, event.clientY, boundaryRect);
+      const existingRegion = selectedRegions.find((region) =>
+        isPointInsideRect(start.x, start.y, region.rect),
+      );
+
+      dragStart = start;
+      dragBoundary = boundaryRect;
+      removeRegionId = existingRegion?.id ?? null;
+      setDraftRegion(createInspectRegion("draft", createSelectionRect(
+        start.x,
+        start.y,
+        start.x,
+        start.y,
+        boundaryRect,
+      ), boundaryRect));
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!dragStart || !dragBoundary) {
+        return;
+      }
+      const rect = createSelectionRect(
+        dragStart.x,
+        dragStart.y,
+        event.clientX,
+        event.clientY,
+        dragBoundary,
+      );
+      setDraftRegion(createInspectRegion("draft", rect, dragBoundary));
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      if (!dragStart || !dragBoundary) {
+        return;
+      }
+      const boundary = dragBoundary;
+      const rect = createSelectionRect(
+        dragStart.x,
+        dragStart.y,
+        event.clientX,
+        event.clientY,
+        boundary,
+      );
+
+      if (removeRegionId && !isMeaningfulRegion(rect)) {
+        setSelectedRegions((current) => current.filter((region) => region.id !== removeRegionId));
+      } else if (isMeaningfulRegion(rect)) {
+        const id = [
+          Date.now().toString(36),
+          Math.round(rect.x),
+          Math.round(rect.y),
+          Math.round(rect.width),
+          Math.round(rect.height),
+        ].join("-");
+        setSelectedRegions((current) => [...current, createInspectRegion(id, rect, boundary)]);
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      finishDrag();
+    };
+
+    const handlePointerCancel = () => {
+      finishDrag();
+    };
+
+    activeLayer.addEventListener("pointerdown", handlePointerDown, true);
+    window.addEventListener("pointermove", handlePointerMove, true);
+    window.addEventListener("pointerup", handlePointerUp, true);
+    window.addEventListener("pointercancel", handlePointerCancel, true);
+
+    return () => {
+      delete activeLayer.dataset.inspecting;
+      activeLayer.removeEventListener("pointerdown", handlePointerDown, true);
+      window.removeEventListener("pointermove", handlePointerMove, true);
+      window.removeEventListener("pointerup", handlePointerUp, true);
+      window.removeEventListener("pointercancel", handlePointerCancel, true);
+    };
+  }, [pixelInspectMode, selectedRegions, shellState?.activeVersion?._id]);
+
+  useEffect(() => {
+    if (selectedTargets.length === 0) {
+      return;
+    }
+    const host = hostRef.current;
+    if (!host) {
+      return;
+    }
+    const activeLayer = host.querySelector<HTMLElement>('[data-layer="active"]');
+    if (!activeLayer) {
+      return;
+    }
+
+    const refreshSelectedTargets = () => {
+      setSelectedTargets((current) => {
+        let changed = false;
+        const next = current.map((target) => {
+          const element = host.querySelector<HTMLElement>(target.selector);
+          if (!element || !activeLayer.contains(element)) {
+            return target;
+          }
+          const snapshot = snapshotInspectTarget(element, activeLayer);
+          const sameRect =
+            snapshot.rect.x === target.rect.x &&
+            snapshot.rect.y === target.rect.y &&
+            snapshot.rect.width === target.rect.width &&
+            snapshot.rect.height === target.rect.height;
+          if (!sameRect) {
+            changed = true;
+          }
+          return sameRect ? target : snapshot;
+        });
+        return changed ? next : current;
+      });
+    };
+
+    refreshSelectedTargets();
+    activeLayer.addEventListener("scroll", refreshSelectedTargets, { passive: true });
+    window.addEventListener("resize", refreshSelectedTargets);
+
+    return () => {
+      activeLayer.removeEventListener("scroll", refreshSelectedTargets);
+      window.removeEventListener("resize", refreshSelectedTargets);
+    };
+  }, [selectedTargets.length, shellState?.activeVersion?._id]);
 
   useEffect(() => {
     const isTypingTarget = (target: EventTarget | null) => {
@@ -579,8 +881,9 @@ export function App() {
       }
       event.preventDefault();
       setComposerHidden((current) => !current);
-      setInspectMode(false);
+      setSelectionMode(null);
       setHoveredTarget(null);
+      setDraftRegion(null);
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -632,6 +935,25 @@ export function App() {
         />
       </div>
 
+      {selectedTargets.length > 0 || selectedRegions.length > 0 ? (
+        <div className="pointer-events-none fixed inset-0 z-[11]">
+          {selectedTargets.map((target) => (
+            <div
+              key={target.selector}
+              className="absolute rounded-xl border border-amber-300/70 bg-amber-300/10 shadow-[0_0_0_1px_rgba(252,211,77,0.2)]"
+              style={getInspectOverlayStyle(target) ?? undefined}
+            />
+          ))}
+          {selectedRegions.map((region) => (
+            <div
+              key={region.id}
+              className="absolute rounded-xl border border-fuchsia-300/80 bg-fuchsia-300/10 shadow-[0_0_0_1px_rgba(232,121,249,0.22)]"
+              style={getInspectOverlayStyle(region) ?? undefined}
+            />
+          ))}
+        </div>
+      ) : null}
+
       {inspectMode && hoveredTarget ? (
         <div className="pointer-events-none fixed inset-0 z-[12]">
           <div
@@ -643,6 +965,21 @@ export function App() {
             style={getInspectBadgeStyle(hoveredTarget) ?? undefined}
           >
             {formatInspectSummary(hoveredTarget)}
+          </div>
+        </div>
+      ) : null}
+
+      {pixelInspectMode && draftRegion ? (
+        <div className="pointer-events-none fixed inset-0 z-[12]">
+          <div
+            className="absolute rounded-2xl border border-fuchsia-300/90 bg-fuchsia-400/10 shadow-[0_0_0_1px_rgba(217,70,239,0.28),0_18px_50px_rgba(134,25,143,0.2)]"
+            style={getInspectOverlayStyle(draftRegion) ?? undefined}
+          />
+          <div
+            className="absolute rounded-lg bg-fuchsia-300 px-2 py-1 text-[10px] font-semibold text-slate-950 shadow-lg"
+            style={getInspectBadgeStyle(draftRegion) ?? undefined}
+          >
+            {formatInspectRegionSummary(draftRegion)}
           </div>
         </div>
       ) : null}
@@ -668,6 +1005,16 @@ export function App() {
             </div>
           </div>
         </section>
+      ) : null}
+
+      {composerHidden ? (
+        <button
+          type="button"
+          onClick={() => setComposerHidden(false)}
+          className="fixed bottom-5 right-5 z-[13] rounded-full border border-white/10 bg-[#141414]/90 px-4 py-2 text-xs font-medium text-gray-100 shadow-2xl shadow-black/30 backdrop-blur-xl transition-colors hover:bg-[#202024]"
+        >
+          Show controls
+        </button>
       ) : null}
 
       <section
@@ -700,11 +1047,20 @@ export function App() {
               if (!prompt.trim() || promptDisabled) return;
               setSubmitting(true);
               try {
+                setSelectionMode(null);
+                setHoveredTarget(null);
+                setDraftRegion(null);
                 await submitPrompt({
                   appId,
-                  prompt: buildPromptWithInspectTarget(prompt, selectedTarget),
+                  prompt: buildPromptWithSelectionContext(
+                    prompt,
+                    selectedTargets,
+                    selectedRegions,
+                  ),
                 });
                 startTransition(() => setPrompt(""));
+                setSelectedTargets([]);
+                setSelectedRegions([]);
               } finally {
                 setSubmitting(false);
               }
@@ -737,34 +1093,19 @@ export function App() {
                   </p>
                 </div>
               ) : null}
-              {selectedTarget ? (
-                <div className="mb-3 rounded-xl bg-white/[0.04] px-3 py-2.5 text-xs leading-5 text-gray-300">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-gray-100">Selected element</p>
-                      <p className="mt-1 truncate text-gray-300">
-                        {formatInspectSummary(selectedTarget)}
-                      </p>
-                      <p className="mt-1 truncate font-mono text-[11px] text-gray-500">
-                        {selectedTarget.selector}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedTarget(null)}
-                      className="flex size-6 shrink-0 items-center justify-center rounded-md bg-white/[0.04] text-gray-400 transition-colors hover:bg-white/[0.08] hover:text-gray-200"
-                      aria-label="Clear selected element"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ) : null}
               {inspectMode ? (
                 <div className="mb-3 rounded-xl bg-cyan-400/10 px-3 py-2 text-xs leading-5 text-cyan-100">
                   <p className="font-semibold text-cyan-200">Inspect mode is on.</p>
                   <p className="mt-1 text-cyan-100/80">
-                    Click any mounted app element to attach it to the next prompt. Press Escape to cancel.
+                    Click mounted app elements to add or remove them from the next prompt. Selected targets stay highlighted on the app. Press Escape or click Inspect again when done.
+                  </p>
+                </div>
+              ) : null}
+              {pixelInspectMode ? (
+                <div className="mb-3 rounded-xl bg-fuchsia-400/10 px-3 py-2 text-xs leading-5 text-fuchsia-100">
+                  <p className="font-semibold text-fuchsia-200">Pixel mode is on.</p>
+                  <p className="mt-1 text-fuchsia-100/80">
+                    Drag across the mounted app to select a pixel region for the next prompt. Click an existing region to remove it. Press Escape or click Pixels again when done.
                   </p>
                 </div>
               ) : null}
@@ -833,8 +1174,11 @@ export function App() {
                     type="button"
                     disabled={noMountedApp || showEmptyState}
                     onClick={() => {
-                      setInspectMode((current) => !current);
+                      setSelectionMode((current) =>
+                        current === "elements" ? null : "elements",
+                      );
                       setHoveredTarget(null);
+                      setDraftRegion(null);
                     }}
                     className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                       inspectMode
@@ -844,6 +1188,26 @@ export function App() {
                   >
                     <Crosshair className="size-3.5" />
                     {inspectMode ? "Inspecting" : "Inspect"}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={noMountedApp || showEmptyState}
+                    onClick={() => {
+                      setSelectionMode((current) =>
+                        current === "pixels" ? null : "pixels",
+                      );
+                      setHoveredTarget(null);
+                      setDraftRegion(null);
+                    }}
+                    className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      pixelInspectMode
+                        ? "bg-fuchsia-300 text-slate-950 hover:bg-fuchsia-200"
+                        : "bg-[#1f1f1f] text-gray-300 hover:bg-[#2a2a2a]"
+                    }`}
+                  >
+                    <Crosshair className="size-3.5" />
+                    {pixelInspectMode ? "Pixels on" : "Pixels"}
                   </button>
 
                   {/* <button
@@ -927,15 +1291,15 @@ export function App() {
           className="fixed inset-0 z-20 bg-black/60 backdrop-blur-sm"
           onClick={() => setPipelineOpen(false)}
         >
-          <div className="flex min-h-screen">
+          <div className="flex h-screen">
             <section
-              className="flex min-h-screen w-full flex-col bg-[#0c0c0f]/98"
+              className="flex h-screen w-full flex-col overflow-hidden bg-[#0c0c0f]/98"
               role="dialog"
               aria-modal="true"
               aria-label="Pipeline runs"
               onClick={(event) => event.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-6 py-5 sm:px-8">
+              <div className="flex items-center justify-between border-b border-white/10 px-6 py-5 sm:px-8">
                 <div>
                   <p className="text-sm font-semibold text-white">Pipeline runs</p>
                   <p className="mt-1 text-xs text-gray-500">Detailed prompt-to-render timeline.</p>
@@ -949,7 +1313,7 @@ export function App() {
                 </button>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-8 sm:py-6">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-8 sm:py-6">
                 {latestPipelineRuns.length > 0 ? (
                   <div className="space-y-4">
                     {latestPipelineRuns.map((run: any) => {

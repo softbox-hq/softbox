@@ -19,6 +19,7 @@
     "test:watch": "vitest",
     "seed": "tsx worker/src/seed.ts",
     "wrap-app": "tsx scripts/wrap-app.ts",
+    "worker:agent-stage": "tsx worker/scripts/inspect-agent-stage.ts",
     "worker:set-template": "tsx worker/scripts/set-template.ts",
     "worker:queue-clear": "tsx worker/scripts/queue-clear.ts",
     "worker:state": "tsx worker/scripts/inspect-worker-state.ts",

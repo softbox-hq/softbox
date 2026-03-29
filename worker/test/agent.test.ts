@@ -5,6 +5,7 @@ import {
   buildClaudePrompt,
   countSourceBytes,
   diffEditedSourceFiles,
+  getCodexThreadKey,
   selectLikelyTargetFiles,
   summarizeClaudeOutput,
 } from "../src/agent";
@@ -84,6 +85,7 @@ describe("buildAgentArgs", () => {
     expect(
       buildAgentArgs(
         {
+          appId: "app-1",
           command: "claude",
           timeoutMs: 1000,
           projectRoot: "/tmp/project",
@@ -108,6 +110,7 @@ describe("buildCodexThreadOptions", () => {
   it("matches the SDK thread configuration used for Codex runs", () => {
     expect(
       buildCodexThreadOptions({
+        appId: "app-1",
         command: "codex",
         model: "gpt-5.4-mini",
         timeoutMs: 1000,
@@ -124,6 +127,24 @@ describe("buildCodexThreadOptions", () => {
       networkAccessEnabled: true,
       additionalDirectories: ["/tmp/project/live-app-template"],
     });
+  });
+});
+
+describe("getCodexThreadKey", () => {
+  it("uses the app identity so apps on the same template do not share a thread", () => {
+    expect(
+      getCodexThreadKey({
+        appId: "app-1",
+        projectRoot: "/tmp/project",
+        liveAppRoot: "/tmp/project/live-app-template",
+      }),
+    ).not.toBe(
+      getCodexThreadKey({
+        appId: "app-2",
+        projectRoot: "/tmp/project",
+        liveAppRoot: "/tmp/project/live-app-template",
+      }),
+    );
   });
 });
 

@@ -12,6 +12,7 @@ export const convexApi = {
   completeArtifactPurgeTask: "apps:completeArtifactPurgeTask",
   recordArtifactPurgeFailure: "apps:recordArtifactPurgeFailure",
   getAppConfig: "apps:getAppConfig",
+  setAppCodexThread: "apps:setAppCodexThread",
   setAppTemplate: "apps:setAppTemplate",
   setAppTemplateSourceStatus: "apps:setAppTemplateSourceStatus",
   getShellState: "apps:getShellState",

@@ -1,7 +1,9 @@
 import type { LiveAppState } from "./shared/liveApp";
 import type { WorkerConfig } from "./config";
 import {
+  buildAgentStageStartDetail,
   countSourceBytes,
+  formatAgentObservation,
   rewriteLiveAppFiles,
   selectLikelyTargetFiles,
 } from "./agent";
@@ -231,6 +233,15 @@ export async function processJobById(
         appId,
         key: "agent",
         status: "running",
+        detail: buildAgentStageStartDetail({
+          command: config.agentCommand,
+          model: config.agentModel,
+          timeoutMs: config.agentTimeoutMs,
+          requestChars: runningJob.prompt.trim().length,
+          editableFiles: currentFiles.length,
+          sourceBytes,
+          likelyTargetFiles: primaryTargetFiles,
+        }),
       });
     }
     logJob(
@@ -239,6 +250,7 @@ export async function processJobById(
     );
     const rewrite = await rewriteLiveAppFiles(
       {
+        appId,
         command: config.agentCommand,
         model: config.agentModel,
         timeoutMs: config.agentTimeoutMs,
@@ -253,6 +265,7 @@ export async function processJobById(
         latestBuildError: shellState?.lastBuildError ?? null,
         latestRuntimeError: shellState?.lastRuntimeError ?? null,
         currentState: parseState(shellState?.currentStateJson ?? null),
+        codexThreadId: appConfig.codexThreadId ?? null,
         primaryTargetFiles,
       },
     );
@@ -264,13 +277,24 @@ export async function processJobById(
       runningJob._id,
       `Claude summary ${JSON.stringify(rewrite.details)}`,
     );
+    logJob(
+      runningJob._id,
+      `agent observation\n${formatAgentObservation(rewrite.observation)}`,
+    );
     agentResult = rewrite.details;
+    if (rewrite.codexThreadId !== null && rewrite.codexThreadId !== (appConfig.codexThreadId ?? null)) {
+      await convex.setAppCodexThread({
+        appId,
+        threadId: rewrite.codexThreadId,
+      });
+    }
     if (runningJob.pipelineRunId) {
       await convex.recordPipelineStage({
         runId: runningJob.pipelineRunId,
         appId,
         key: "agent",
         status: "completed",
+        detail: formatAgentObservation(rewrite.observation),
       });
       await convex.recordPipelineStage({
         runId: runningJob.pipelineRunId,

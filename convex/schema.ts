@@ -24,6 +24,7 @@ export default defineSchema({
     appId: v.string(),
     name: v.string(),
     templateId: v.optional(v.string()),
+    codexThreadId: v.optional(v.union(v.string(), v.null())),
     templateSourceStatus: v.optional(templateSourceStatus),
     templateSourcePath: v.optional(v.union(v.string(), v.null())),
     templateSourceMessage: v.optional(v.union(v.string(), v.null())),

@@ -24,6 +24,7 @@ export type AppConfigRecord = {
   appId: string;
   name: string;
   templateId: string;
+  codexThreadId?: string | null;
 };
 
 export type AppRecord = {
@@ -118,6 +119,13 @@ export class ConvexRuntimeClient {
 
   async setAppTemplate(args: { appId: string; templateId: string }): Promise<void> {
     await this.client.mutation(convexApi.setAppTemplate as any, args);
+  }
+
+  async setAppCodexThread(args: {
+    appId: string;
+    threadId: string | null;
+  }): Promise<void> {
+    await this.client.mutation(convexApi.setAppCodexThread as any, args);
   }
 
   async setAppTemplateSourceStatus(args: {

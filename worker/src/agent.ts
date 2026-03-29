@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { performance } from "node:perf_hooks";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { Codex, type ThreadOptions } from "@openai/codex-sdk";
@@ -31,10 +32,12 @@ export type RewriteRequest = {
   latestBuildError: string | null;
   latestRuntimeError: string | null;
   currentState: LiveAppState | null;
+  codexThreadId?: string | null;
   primaryTargetFiles?: string[];
 };
 
 export type AgentCliConfig = {
+  appId: string;
   command: string;
   model?: string;
   timeoutMs: number;
@@ -43,14 +46,57 @@ export type AgentCliConfig = {
   liveAppLabel: string;
 };
 
+export type CodexThreadState = {
+  threadId: string | null;
+};
+
+export type AgentRunMode = "codex_sdk" | "cli";
+
+export type AgentRunMetrics = {
+  mode: AgentRunMode;
+  reusedThread: boolean | null;
+  argsCount: number | null;
+  stdoutChars: number;
+  stderrChars: number;
+  runMs: number;
+};
+
+export type AgentObservation = {
+  mode: AgentRunMode;
+  model: string | null;
+  command: string;
+  thread: "reused" | "new" | "n/a";
+  timeoutMs: number;
+  requestChars: number;
+  promptChars: number;
+  editableFiles: number;
+  sourceBytes: number;
+  likelyTargetFiles: string[];
+  timings: {
+    buildPromptMs: number;
+    agentRunMs: number;
+    rereadFilesMs: number;
+    diffMs: number;
+    summarizeMs: number;
+    totalRewriteMs: number;
+  };
+  output: {
+    stdoutChars: number;
+    stderrChars: number;
+    changedPaths: number;
+    writtenFiles: number;
+    deletedPaths: number;
+    changedPreview: string[];
+  };
+};
+
 function isCodexCommand(command: string): boolean {
   return basename(command).toLowerCase().startsWith("codex");
 }
 
-function getCodexThreadKey(config: AgentCliConfig): string {
+export function getCodexThreadKey(config: Pick<AgentCliConfig, "appId" | "projectRoot" | "liveAppRoot">): string {
   return [
-    config.command,
-    config.model ?? "",
+    config.appId,
     config.projectRoot,
     config.liveAppRoot,
   ].join("\u0000");
@@ -243,6 +289,61 @@ export function buildClaudePrompt(request: RewriteRequest): string {
   return sections.join("\n\n");
 }
 
+function formatMs(value: number): string {
+  return `${value.toFixed(1)}ms`;
+}
+
+export function buildAgentStageStartDetail(args: {
+  command: string;
+  model?: string;
+  timeoutMs: number;
+  requestChars: number;
+  editableFiles: number;
+  sourceBytes: number;
+  likelyTargetFiles: string[];
+}): string {
+  return [
+    "starting agent rewrite",
+    `- command: ${args.command}`,
+    `- model: ${args.model ?? "default"}`,
+    `- timeout_ms: ${args.timeoutMs}`,
+    `- request_chars: ${args.requestChars}`,
+    `- editable_files: ${args.editableFiles}`,
+    `- source_bytes: ${args.sourceBytes}`,
+    `- likely_targets: ${args.likelyTargetFiles.join(", ") || "none inferred"}`,
+  ].join("\n");
+}
+
+export function formatAgentObservation(observation: AgentObservation): string {
+  return [
+    "agent observation",
+    `- mode: ${observation.mode}`,
+    `- command: ${observation.command}`,
+    `- model: ${observation.model ?? "default"}`,
+    `- thread: ${observation.thread}`,
+    `- timeout_ms: ${observation.timeoutMs}`,
+    `- request_chars: ${observation.requestChars}`,
+    `- prompt_chars: ${observation.promptChars}`,
+    `- editable_files: ${observation.editableFiles}`,
+    `- source_bytes: ${observation.sourceBytes}`,
+    `- likely_targets: ${observation.likelyTargetFiles.join(", ") || "none inferred"}`,
+    "- timing:",
+    `  build_prompt: ${formatMs(observation.timings.buildPromptMs)}`,
+    `  agent_turn: ${formatMs(observation.timings.agentRunMs)}`,
+    `  reread_files: ${formatMs(observation.timings.rereadFilesMs)}`,
+    `  diff: ${formatMs(observation.timings.diffMs)}`,
+    `  summarize: ${formatMs(observation.timings.summarizeMs)}`,
+    `  total_rewrite: ${formatMs(observation.timings.totalRewriteMs)}`,
+    "- output:",
+    `  stdout_chars: ${observation.output.stdoutChars}`,
+    `  stderr_chars: ${observation.output.stderrChars}`,
+    `  changed_paths: ${observation.output.changedPaths}`,
+    `  written_files: ${observation.output.writtenFiles}`,
+    `  deleted_paths: ${observation.output.deletedPaths}`,
+    `  changed_preview: ${observation.output.changedPreview.join(", ") || "none"}`,
+  ].join("\n");
+}
+
 export function diffEditedSourceFiles(
   beforeFiles: SourceFile[],
   afterFiles: SourceFile[],
@@ -310,7 +411,7 @@ export function summarizeClaudeOutput(
 async function runAgentCli(
   config: AgentCliConfig,
   prompt: string,
-): Promise<{ stdout: string; stderr: string }> {
+): Promise<{ stdout: string; stderr: string; metrics: AgentRunMetrics; threadId: string | null }> {
   let tempDir: string | null = null;
   let outputFile: string | undefined;
 
@@ -324,8 +425,9 @@ async function runAgentCli(
     console.log(
       `[worker] invoking agent command ${config.command} with ${args.length} args`,
     );
+    const startedAt = performance.now();
 
-    return await new Promise<{ stdout: string; stderr: string }>(
+    return await new Promise<{ stdout: string; stderr: string; metrics: AgentRunMetrics; threadId: string | null }>(
       (resolve, reject) => {
         const child = spawn(config.command, args, {
           cwd: config.projectRoot,
@@ -382,7 +484,19 @@ async function runAgentCli(
                 finalStdout = stdout;
               }
             }
-            resolve({ stdout: finalStdout, stderr });
+            resolve({
+              stdout: finalStdout,
+              stderr,
+              threadId: null,
+              metrics: {
+                mode: "cli",
+                reusedThread: null,
+                argsCount: args.length,
+                stdoutChars: finalStdout.length,
+                stderrChars: stderr.length,
+                runMs: performance.now() - startedAt,
+              },
+            });
             return;
           }
 
@@ -412,18 +526,23 @@ async function runAgentCli(
 async function runCodexSdk(
   config: AgentCliConfig,
   prompt: string,
-): Promise<{ stdout: string; stderr: string }> {
+  threadState?: CodexThreadState | null,
+): Promise<{ stdout: string; stderr: string; metrics: AgentRunMetrics; threadId: string | null }> {
   const threadKey = getCodexThreadKey(config);
   let thread = codexThreads.get(threadKey);
   let reusedThread = true;
 
   if (!thread) {
-    reusedThread = false;
     const codex = new Codex({
       codexPathOverride: config.command,
       env: process.env as Record<string, string>,
     });
-    thread = codex.startThread(buildCodexThreadOptions(config));
+    if (threadState?.threadId) {
+      thread = codex.resumeThread(threadState.threadId, buildCodexThreadOptions(config));
+    } else {
+      reusedThread = false;
+      thread = codex.startThread(buildCodexThreadOptions(config));
+    }
     codexThreads.set(threadKey, thread);
   }
 
@@ -433,12 +552,22 @@ async function runCodexSdk(
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+  const startedAt = performance.now();
 
   try {
     const turn = await thread.run(prompt, { signal: controller.signal });
     return {
       stdout: turn.finalResponse,
       stderr: "",
+      threadId: thread.id,
+      metrics: {
+        mode: "codex_sdk",
+        reusedThread,
+        argsCount: null,
+        stdoutChars: turn.finalResponse.length,
+        stderrChars: 0,
+        runMs: performance.now() - startedAt,
+      },
     };
   } catch (error) {
     codexThreads.delete(threadKey);
@@ -449,7 +578,11 @@ async function runCodexSdk(
     }
     const message =
       error instanceof Error ? error.message : "Unknown Codex SDK error";
-    throw new Error(`Codex SDK run failed: ${message}`);
+    throw new Error(
+      threadState?.threadId
+        ? `Codex SDK failed while resuming thread ${threadState.threadId}: ${message}`
+        : `Codex SDK run failed: ${message}`,
+    );
   } finally {
     clearTimeout(timeout);
   }
@@ -458,9 +591,10 @@ async function runCodexSdk(
 async function runAgent(
   config: AgentCliConfig,
   prompt: string,
-): Promise<{ stdout: string; stderr: string }> {
+  threadState?: CodexThreadState | null,
+): Promise<{ stdout: string; stderr: string; metrics: AgentRunMetrics; threadId: string | null }> {
   if (isCodexCommand(config.command)) {
-    return runCodexSdk(config, prompt);
+    return runCodexSdk(config, prompt, threadState);
   }
 
   return runAgentCli(config, prompt);
@@ -472,23 +606,69 @@ export async function rewriteLiveAppFiles(
 ): Promise<{
   summary: string;
   details: ClaudeStructuredOutput;
+  observation: AgentObservation;
+  codexThreadId: string | null;
   files: SourceFile[];
   deletedPaths: string[];
   allFiles: SourceFile[];
 }> {
+  const totalStartedAt = performance.now();
+  const buildPromptStartedAt = performance.now();
   const prompt = buildClaudePrompt(request);
-  const result = await runAgent(config, prompt);
+  const buildPromptMs = performance.now() - buildPromptStartedAt;
+  const result = await runAgent(config, prompt, {
+    threadId: request.codexThreadId ?? null,
+  });
+  const rereadStartedAt = performance.now();
   const nextFiles = await readLiveAppFiles(config.liveAppRoot);
+  const rereadFilesMs = performance.now() - rereadStartedAt;
+  const diffStartedAt = performance.now();
   const diff = diffEditedSourceFiles(request.files, nextFiles);
+  const diffMs = performance.now() - diffStartedAt;
   const changedPaths = [
     ...diff.writtenFiles.map((file) => file.path),
     ...diff.deletedPaths,
   ].sort((left, right) => left.localeCompare(right));
+  const summarizeStartedAt = performance.now();
   const details = summarizeClaudeOutput(
     result.stdout,
     changedPaths,
     config.liveAppLabel,
   );
+  const summarizeMs = performance.now() - summarizeStartedAt;
+  const observation: AgentObservation = {
+    mode: result.metrics.mode,
+    model: config.model ?? null,
+    command: config.command,
+    thread:
+      result.metrics.reusedThread === null
+        ? "n/a"
+        : result.metrics.reusedThread
+          ? "reused"
+          : "new",
+    timeoutMs: config.timeoutMs,
+    requestChars: request.prompt.trim().length,
+    promptChars: prompt.length,
+    editableFiles: request.files.length,
+    sourceBytes: countSourceBytes(request.files),
+    likelyTargetFiles: request.primaryTargetFiles ?? [],
+    timings: {
+      buildPromptMs,
+      agentRunMs: result.metrics.runMs,
+      rereadFilesMs,
+      diffMs,
+      summarizeMs,
+      totalRewriteMs: performance.now() - totalStartedAt,
+    },
+    output: {
+      stdoutChars: result.metrics.stdoutChars,
+      stderrChars: result.metrics.stderrChars,
+      changedPaths: changedPaths.length,
+      writtenFiles: diff.writtenFiles.length,
+      deletedPaths: diff.deletedPaths.length,
+      changedPreview: changedPaths.slice(0, 8),
+    },
+  };
 
   if (changedPaths.length === 0) {
     return {
@@ -508,6 +688,8 @@ export async function rewriteLiveAppFiles(
             .filter(Boolean)
             .join("\n\n"),
       },
+      observation,
+      codexThreadId: result.threadId,
       files: [],
       deletedPaths: [],
       allFiles: nextFiles,
@@ -519,6 +701,8 @@ export async function rewriteLiveAppFiles(
       details.summary.trim() ||
       `Claude Code changed ${changedPaths.length} file(s)`,
     details,
+    observation,
+    codexThreadId: result.threadId,
     files: diff.writtenFiles,
     deletedPaths: diff.deletedPaths,
     allFiles: nextFiles,

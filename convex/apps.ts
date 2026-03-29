@@ -926,6 +926,7 @@ export const seedApp = mutation({
       appId: args.appId,
       name: args.name,
       templateId: args.templateId,
+      codexThreadId: null,
       templateSourceStatus: "unknown",
       templateSourcePath: null,
       templateSourceMessage: null,
@@ -975,6 +976,7 @@ export const getAppConfig = query({
       appId: app.appId,
       name: app.name,
       templateId: app.templateId ?? defaultTemplateId,
+      codexThreadId: app.codexThreadId ?? null,
     };
   },
 });
@@ -1000,11 +1002,28 @@ export const setAppTemplate = mutation({
     const app = await getAppByIdOrThrow(ctx, args.appId);
     await ctx.db.patch(app._id, {
       templateId: args.templateId,
+      codexThreadId: null,
       templateSourceStatus: "unknown",
       templateSourcePath: null,
       templateSourceMessage: null,
       templateSourceCheckedAt: null,
       updatedAt: Date.now(),
+    });
+  },
+});
+
+export const setAppCodexThread = mutation({
+  args: {
+    appId: v.string(),
+    threadId: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const app = await getAppById(ctx, args.appId);
+    if (!app) {
+      return;
+    }
+    await ctx.db.patch(app._id, {
+      codexThreadId: args.threadId,
     });
   },
 });
