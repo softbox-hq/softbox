@@ -19,7 +19,7 @@ function App() {
     <main className="app-shell">
       <header className="app-header">
         <p className="eyebrow">React Grid Study</p>
-        <h1>10,000 React cells on a 10px lattice</h1>
+        <h1>/home/fvrlak/ventures/softbox/apps/grid-example</h1>
         <p className="intro">
           The original <code>a.html</code> sketch is now rendered as React
           elements: a {columns} by {rows} matrix where every cell stays exactly{' '}
