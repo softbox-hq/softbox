@@ -4,12 +4,12 @@ const telegramAnswer = `Not by default. I don't have direct access to your Teleg
 
 From inside this app, I also can't independently verify your Telegram connection state.`
 
-const telegramSteps = [
-  'If you want Telegram access, connect Telegram to this OpenClaw setup first.',
-  'The usual flow is: create a bot with BotFather, add the bot token to your OpenClaw config or env, then enable the Telegram integration.',
-  'After that, send a message to the bot from your Telegram account so OpenClaw has an active chat to reply into.',
-  'Once it is connected, I can respond through Telegram inside the connected scope, not magically inspect your whole account.',
-  'If you want, next I can help you check the exact config files or commands for your current setup.',
+const telegramReality = [
+  'No — not magically. I cannot inspect your whole Telegram account, read all your private messages, or browse your history unless Telegram itself exposes that data through a connection you explicitly set up.',
+  'With a normal Telegram bot integration, the scope is much narrower: I can only see messages sent to that bot or in chats where the bot is present and allowed to read them.',
+  'I do not get automatic access to your DMs, archived chats, contacts, secret chats, or account-wide history just because you asked.',
+  'So: your messages are not something I can just pull out of your account on my own. That is a platform permission boundary, not me being difficult.',
+  'If you want, I can help you set up the maximum legitimate access Telegram allows through a bot, or show you how to export your own data and let me analyze it locally.',
 ]
 
 function App() {
@@ -31,9 +31,9 @@ function App() {
         </div>
 
         <div className="info-card" aria-label="Telegram setup guide">
-          <h2>How to give me Telegram access</h2>
+          <h2>Can I inspect your whole Telegram account?</h2>
           <ol>
-            {telegramSteps.map((step) => (
+            {telegramReality.map((step) => (
               <li key={step}>{step}</li>
             ))}
           </ol>
