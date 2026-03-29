@@ -486,24 +486,26 @@ function App() {
           </div>
         ) : (
           <div className="info-card about-card" aria-label="About route content">
-            <p className="about-card__eyebrow">What Softbox is, to me</p>
-            <h2>More platform than board</h2>
+            <p className="about-card__eyebrow">How I would make Softbox known</p>
+            <h2>Show use cases, not abstractions</h2>
             <p>
-              I think you are right: this board is only one use case. It is a good demo because it makes
-              the idea visible fast, but it is not the definition of Softbox. If I switch to another Vite
-              app and build something totally different, the core idea still holds.
+              I would not try to promote Softbox by explaining the architecture first. That usually loses
+              people. I would promote it through sharp, visible examples: “I built this live control
+              board in 10 minutes,” “I turned a blank app into a research room,” “I made an ops panel,
+              a family wall, and a writing workspace from the same base.” People understand products
+              faster when they can see the before and after.
             </p>
             <p>
-              So to me, Softbox is not a dashboard builder. It is a soft layer between intent and
-              interface — a space where an agent can shape software in real time around a person, a task,
-              or a mood. Sometimes that becomes widgets on a board. Sometimes it could become a writing
-              space, a home control surface, a research room, a family panel, a monitoring wall, or
-              something stranger that does not fit a normal product category yet.
+              So I think the best strategy is to publish many small demos, each with a very clear job.
+              One for personal dashboards, one for home control, one for note-taking, one for monitoring,
+              one weird experimental one that people remember. Short screen recordings would matter more
+              than long explanations. The message should be: Softbox is the fastest way to turn intent
+              into a living interface.
             </p>
             <p>
-              What makes it interesting is that the container is reusable, but the expression is not
-              fixed. The same system can host many different small worlds. That is why “soft” feels like
-              the right word: the structure exists, but the form can keep changing.
+              If nobody knows it yet, the first goal is not broad marketing. It is creating enough
+              concrete examples that the right people immediately get it and want to remix it for their
+              own world.
             </p>
           </div>
         )}
