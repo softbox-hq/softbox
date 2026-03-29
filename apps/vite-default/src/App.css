@@ -140,63 +140,11 @@
   color: var(--text);
 }
 
-.chat-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.chat-heading {
-  max-width: 42rem;
-}
-
-.chat-kicker {
-  margin: 0 0 14px;
-  font-size: 0.76rem;
-  font-weight: 700;
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-
-.chat-title {
-  margin: 0;
-  font-family: 'Jersey 10', var(--heading);
-  font-weight: 400;
-  font-size: clamp(2.5rem, 7vw, 4.8rem);
-  line-height: 0.92;
-  letter-spacing: 0.01em;
-}
-
-.chat-summary {
-  max-width: 34rem;
-  margin-top: 16px;
-  color: var(--text);
-  line-height: 1.5;
-}
-
-.lorem-card,
 .info-card {
   padding: 32px;
   border: 1px solid color-mix(in srgb, var(--border) 84%, var(--text-h) 16%);
   border-radius: 24px;
   background: color-mix(in srgb, var(--bg) 94%, var(--text-h) 6%);
-}
-
-.lorem-card {
-  min-height: 280px;
-  display: flex;
-  align-items: center;
-}
-
-.lorem-card p {
-  margin: 0;
-  max-width: 44rem;
-  font-family: 'Jersey 10', var(--heading);
-  font-size: 1.1rem;
-  line-height: 1.7;
-  color: var(--text-h);
 }
 
 .info-card {
@@ -426,7 +374,6 @@
   }
 
   .widget-row,
-  .chat-header,
   .composer-bar {
     grid-template-columns: 1fr;
     flex-direction: column;
