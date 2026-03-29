@@ -1526,6 +1526,13 @@ export function App() {
                                   ? `Active v${app.activeVersion.versionNumber} · ${app.activeVersion.runtimeHealth}`
                                   : "No active version"}
                               </p>
+                              {app.box ? (
+                                <p className="mt-1 text-xs text-gray-500">
+                                  {`Box ${app.box.agentId} · ${app.box.status} · ${app.box.model ?? "default"}${
+                                    app.box.lastRunAt ? ` · ${formatTimestamp(app.box.lastRunAt)}` : ""
+                                  }`}
+                                </p>
+                              ) : null}
                               {app.lastBuildError ? (
                                 <p className="mt-3 line-clamp-2 text-sm leading-6 text-rose-200/80">
                                   {app.lastBuildError}

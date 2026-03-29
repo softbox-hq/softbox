@@ -15,6 +15,20 @@ const pipelineStageStatus = v.union(
   v.literal("failed"),
 );
 
+const boxStatus = v.union(
+  v.literal("unknown"),
+  v.literal("ready"),
+  v.literal("running"),
+  v.literal("error"),
+);
+
+const boxPolicy = v.object({
+  transport: v.literal("ws_gateway"),
+  routingMode: v.union(v.literal("shared"), v.literal("per_app")),
+  workspaceIsolation: v.union(v.literal("repo_root"), v.literal("app_root")),
+  sessionKeyPrefix: v.string(),
+});
+
 const templateSourceStatus = v.union(
   v.literal("unknown"),
   v.literal("available"),
@@ -144,7 +158,22 @@ async function getArtifactPurgeTaskByAppId(ctx: any, appId: string) {
     .first();
 }
 
+async function getBoxByAppId(ctx: any, appId: string) {
+  return await ctx.db
+    .query("boxes")
+    .withIndex("by_appId", (q: any) => q.eq("appId", appId))
+    .first();
+}
+
+async function getBoxByBoxId(ctx: any, boxId: string) {
+  return await ctx.db
+    .query("boxes")
+    .withIndex("by_boxId", (q: any) => q.eq("boxId", boxId))
+    .first();
+}
+
 type LegacyAppIdMigrationCounts = {
+  boxes: number;
   versions: number;
   appFiles: number;
   jobs: number;
@@ -185,8 +214,12 @@ async function collectLegacyAppIdMigrationCounts(
   ctx: any,
   appId: string,
 ): Promise<LegacyAppIdMigrationCounts> {
-  const [versions, appFiles, jobs, pipelineRuns, pipelineStages, runtimeErrors, purgeTasks, shellSelections] =
+  const [boxes, versions, appFiles, jobs, pipelineRuns, pipelineStages, runtimeErrors, purgeTasks, shellSelections] =
     await Promise.all([
+      ctx.db
+        .query("boxes")
+        .withIndex("by_appId", (q: any) => q.eq("appId", appId))
+        .collect(),
       ctx.db
         .query("versions")
         .withIndex("by_appId_and_versionNumber", (q: any) => q.eq("appId", appId))
@@ -222,6 +255,7 @@ async function collectLegacyAppIdMigrationCounts(
     ]);
 
   return {
+    boxes: boxes.length,
     versions: versions.length,
     appFiles: appFiles.length,
     jobs: jobs.length,
@@ -354,8 +388,12 @@ async function applyLegacyAppIdMigration(ctx: any, migration: LegacyAppIdMigrati
   }
 
   const now = Date.now();
-  const [versions, appFiles, jobs, pipelineRuns, pipelineStages, runtimeErrors, purgeTasks, shellSelections] =
+  const [boxes, versions, appFiles, jobs, pipelineRuns, pipelineStages, runtimeErrors, purgeTasks, shellSelections] =
     await Promise.all([
+      ctx.db
+        .query("boxes")
+        .withIndex("by_appId", (q: any) => q.eq("appId", migration.fromAppId))
+        .collect(),
       ctx.db
         .query("versions")
         .withIndex("by_appId_and_versionNumber", (q: any) => q.eq("appId", migration.fromAppId))
@@ -392,6 +430,9 @@ async function applyLegacyAppIdMigration(ctx: any, migration: LegacyAppIdMigrati
 
   await ctx.db.replace(app._id, buildAppReplacementDoc(app, migration.toAppId, now));
 
+  for (const box of boxes) {
+    await ctx.db.patch(box._id, { appId: migration.toAppId, updatedAt: now });
+  }
   for (const version of versions) {
     await ctx.db.patch(version._id, { appId: migration.toAppId });
   }
@@ -444,6 +485,14 @@ async function scrubLegacyTemplateIds(ctx: any): Promise<void> {
 }
 
 async function deleteAppDataRecords(ctx: any, appId: string) {
+  const boxes = await ctx.db
+    .query("boxes")
+    .withIndex("by_appId", (q) => q.eq("appId", appId))
+    .collect();
+  for (const box of boxes) {
+    await ctx.db.delete(box._id);
+  }
+
   const pipelineStages = await ctx.db
     .query("pipelineStages")
     .withIndex("by_appId_and_startedAt", (q) => q.eq("appId", appId))
@@ -566,10 +615,29 @@ export const getShellState = query({
       .withIndex("by_appId_and_createdAt", (q) => q.eq("appId", args.appId))
       .order("desc")
       .first();
+    const box = await getBoxByAppId(ctx, args.appId);
 
     return {
       appId: app.appId,
       name: app.name,
+      box:
+        box
+          ? {
+              boxId: box.boxId,
+              appId: box.appId,
+              provider: box.provider,
+              agentId: box.agentId,
+              workspacePath: box.workspacePath,
+              sessionId: box.sessionId ?? null,
+              model: box.model ?? null,
+              status: box.status,
+              policy: box.policy,
+              lastRunAt: box.lastRunAt ?? null,
+              lastError: box.lastError ?? null,
+              createdAt: box.createdAt,
+              updatedAt: box.updatedAt,
+            }
+          : null,
       templateSourceStatus: app.templateSourceStatus ?? "unknown",
       templateSourcePath: app.templateSourcePath ?? null,
       templateSourceMessage: app.templateSourceMessage ?? null,
@@ -849,10 +917,29 @@ export const listApps = query({
         const activeVersion = app.activeVersionId
           ? await ctx.db.get(app.activeVersionId)
           : null;
+        const box = await getBoxByAppId(ctx, app.appId);
 
         return {
           appId: app.appId,
           name: app.name,
+          box:
+            box
+              ? {
+                  boxId: box.boxId,
+                  appId: box.appId,
+                  provider: box.provider,
+                  agentId: box.agentId,
+                  workspacePath: box.workspacePath,
+                  sessionId: box.sessionId ?? null,
+                  model: box.model ?? null,
+                  status: box.status,
+                  policy: box.policy,
+                  lastRunAt: box.lastRunAt ?? null,
+                  lastError: box.lastError ?? null,
+                  createdAt: box.createdAt,
+                  updatedAt: box.updatedAt,
+                }
+              : null,
           templateSourceStatus: app.templateSourceStatus ?? "unknown",
           templateSourcePath: app.templateSourcePath ?? null,
           templateSourceMessage: app.templateSourceMessage ?? null,
@@ -874,6 +961,14 @@ export const listApps = query({
     );
 
     return appsWithVersions.sort((left, right) => left.appId.localeCompare(right.appId));
+  },
+});
+
+export const listBoxes = query({
+  args: {},
+  handler: async (ctx) => {
+    const boxes = await ctx.db.query("boxes").collect();
+    return boxes.sort((left: any, right: any) => left.boxId.localeCompare(right.boxId));
   },
 });
 
@@ -1315,6 +1410,88 @@ export const setAppOpenClawSession = mutation({
     }
     await ctx.db.patch(app._id, {
       openClawSessionId: args.sessionId,
+    });
+
+    const box = await getBoxByAppId(ctx, args.appId);
+    if (box) {
+      await ctx.db.patch(box._id, {
+        sessionId: args.sessionId,
+        updatedAt: Date.now(),
+      });
+    }
+  },
+});
+
+export const upsertOpenClawBox = mutation({
+  args: {
+    boxId: v.string(),
+    appId: v.string(),
+    agentId: v.string(),
+    workspacePath: v.string(),
+    sessionId: v.optional(v.union(v.string(), v.null())),
+    model: v.union(v.string(), v.null()),
+    status: boxStatus,
+    policy: boxPolicy,
+    lastRunAt: v.optional(v.union(v.number(), v.null())),
+    lastError: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const app = await getAppById(ctx, args.appId);
+    if (!app) {
+      throw new Error(`Cannot upsert OpenClaw box for unknown app '${args.appId}'.`);
+    }
+
+    const now = Date.now();
+    const existing =
+      (await getBoxByBoxId(ctx, args.boxId)) ??
+      (await getBoxByAppId(ctx, args.appId));
+    const patch: Record<string, unknown> = {
+      boxId: args.boxId,
+      appId: args.appId,
+      provider: "openclaw",
+      agentId: args.agentId,
+      workspacePath: args.workspacePath,
+      model: args.model,
+      status: args.status,
+      policy: args.policy,
+      updatedAt: now,
+    };
+
+    if (Object.prototype.hasOwnProperty.call(args, "sessionId")) {
+      patch.sessionId = args.sessionId ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "lastRunAt")) {
+      patch.lastRunAt = args.lastRunAt ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "lastError")) {
+      patch.lastError = args.lastError ?? null;
+    }
+
+    if (existing) {
+      await ctx.db.patch(existing._id, patch);
+      return existing._id;
+    }
+
+    return await ctx.db.insert("boxes", {
+      provider: "openclaw",
+      boxId: args.boxId,
+      appId: args.appId,
+      agentId: args.agentId,
+      workspacePath: args.workspacePath,
+      sessionId: Object.prototype.hasOwnProperty.call(args, "sessionId")
+        ? (args.sessionId ?? null)
+        : null,
+      model: args.model,
+      status: args.status,
+      policy: args.policy,
+      lastRunAt: Object.prototype.hasOwnProperty.call(args, "lastRunAt")
+        ? (args.lastRunAt ?? null)
+        : null,
+      lastError: Object.prototype.hasOwnProperty.call(args, "lastError")
+        ? (args.lastError ?? null)
+        : null,
+      createdAt: now,
+      updatedAt: now,
     });
   },
 });

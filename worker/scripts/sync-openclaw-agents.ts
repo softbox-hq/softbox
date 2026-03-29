@@ -4,6 +4,8 @@ import { loadWorkerConfig } from "../src/config";
 import { ConvexRuntimeClient } from "../src/convex";
 import {
   buildConfiguredOpenClawAgentId,
+  buildOpenClawBoxId,
+  buildOpenClawBoxPolicy,
   createOpenClawAgent,
   deleteOpenClawAgent,
   isPerAppOpenClawRouting,
@@ -45,12 +47,20 @@ async function main(): Promise<void> {
   let hasConflict = false;
 
   for (const app of discovery.apps) {
+    const appConfig = await convex.getAppConfig(app.appId);
     const agentId = buildConfiguredOpenClawAgentId(app.appId, {
       agentIdPrefix: config.openClawAgentIdPrefix,
       agentId: config.openClawAgentId ?? null,
     });
     const expectedWorkspace = resolve(app.root);
+    const boxId = buildOpenClawBoxId(app.appId);
+    const boxPolicy = buildOpenClawBoxPolicy({
+      agentIdPrefix: config.openClawAgentIdPrefix,
+      agentId: config.openClawAgentId ?? null,
+      sessionKeyPrefix: config.openClawSessionKeyPrefix,
+    });
     const existingAgent = existingAgents.find((agent) => agent.id === agentId);
+    const canPersistBox = Boolean(appConfig);
 
     if (existingAgent) {
       const hasWorkspaceMismatch = existingAgent.workspace !== expectedWorkspace;
@@ -89,11 +99,37 @@ async function main(): Promise<void> {
           appId: app.appId,
           sessionId: null,
         });
+        if (canPersistBox) {
+          await convex.upsertOpenClawBox({
+            boxId,
+            appId: app.appId,
+            agentId,
+            workspacePath: expectedWorkspace,
+            sessionId: null,
+            model: expectedModel,
+            status: "ready",
+            policy: boxPolicy,
+            lastError: null,
+          });
+        }
         createdCount += 1;
         console.log(
           `[sync-openclaw-agents] repaired ${agentId} -> ${expectedWorkspace}${expectedModel ? ` (${expectedModel})` : ""} and cleared stored session`,
         );
       } else {
+        if (apply && canPersistBox) {
+          await convex.upsertOpenClawBox({
+            boxId,
+            appId: app.appId,
+            agentId,
+            workspacePath: expectedWorkspace,
+            sessionId: appConfig?.openClawSessionId ?? null,
+            model: expectedModel ?? existingAgent.model ?? null,
+            status: "ready",
+            policy: boxPolicy,
+            lastError: null,
+          });
+        }
         console.log(`[sync-openclaw-agents] ok ${agentId} -> ${expectedWorkspace}`);
       }
       continue;
@@ -117,10 +153,28 @@ async function main(): Promise<void> {
       appId: app.appId,
       sessionId: null,
     });
+    if (canPersistBox) {
+      await convex.upsertOpenClawBox({
+        boxId,
+        appId: app.appId,
+        agentId,
+        workspacePath: expectedWorkspace,
+        sessionId: null,
+        model: expectedModel,
+        status: "ready",
+        policy: boxPolicy,
+        lastError: null,
+      });
+    }
     createdCount += 1;
     console.log(
       `[sync-openclaw-agents] created ${agentId} -> ${expectedWorkspace}${expectedModel ? ` (${expectedModel})` : ""} and cleared stored session`,
     );
+    if (!canPersistBox) {
+      console.log(
+        `[sync-openclaw-agents] skipped box upsert for ${app.appId}; no Convex app record exists yet`,
+      );
+    }
   }
 
   if (hasConflict) {

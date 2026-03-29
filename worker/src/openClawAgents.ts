@@ -7,6 +7,13 @@ export type OpenClawRoutingConfig = {
   sessionKeyPrefix: string;
 };
 
+export type OpenClawBoxPolicy = {
+  transport: "ws_gateway";
+  routingMode: "shared" | "per_app";
+  workspaceIsolation: "repo_root" | "app_root";
+  sessionKeyPrefix: string;
+};
+
 export type OpenClawListedAgent = {
   id: string;
   workspace: string | null;
@@ -56,6 +63,10 @@ export function buildConfiguredOpenClawAgentId(
   );
 }
 
+export function buildOpenClawBoxId(appId: string): string {
+  return `openclaw:${appId}`;
+}
+
 export function normalizeOpenClawModelId(model: string | null | undefined): string | null {
   const normalized = readTrimmed(model);
   if (!normalized) {
@@ -68,6 +79,16 @@ export function normalizeOpenClawModelId(model: string | null | undefined): stri
     return `openai-codex/${normalized}`;
   }
   return normalized;
+}
+
+export function buildOpenClawBoxPolicy(config: OpenClawRoutingConfig): OpenClawBoxPolicy {
+  const routingMode = isPerAppOpenClawRouting(config) ? "per_app" : "shared";
+  return {
+    transport: "ws_gateway",
+    routingMode,
+    workspaceIsolation: routingMode === "per_app" ? "app_root" : "repo_root",
+    sessionKeyPrefix: config.sessionKeyPrefix,
+  };
 }
 
 function runOpenClawJsonCommand(

@@ -1,6 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import type { WorkerConfig } from "./config";
 import type { SourceFile } from "./filesystem";
+import type { OpenClawBoxPolicy } from "./openClawAgents";
 import { convexApi } from "./shared/convexApi";
 
 export type JobRecord = {
@@ -33,6 +34,23 @@ export type AppRecord = {
   templateSourceStatus?: "unknown" | "available" | "missing";
   templateSourcePath?: string | null;
   templateSourceMessage?: string | null;
+  box?: BoxRecord | null;
+};
+
+export type BoxRecord = {
+  boxId: string;
+  appId: string;
+  provider: "openclaw";
+  agentId: string;
+  workspacePath: string;
+  sessionId: string | null;
+  model: string | null;
+  status: "unknown" | "ready" | "running" | "error";
+  policy: OpenClawBoxPolicy;
+  lastRunAt: number | null;
+  lastError: string | null;
+  createdAt: number;
+  updatedAt: number;
 };
 
 export type ArtifactPurgeTaskRecord = {
@@ -62,6 +80,7 @@ export type LegacyAppIdMigrationRecord = {
   toAppId: string;
   name: string;
   counts: {
+    boxes: number;
     versions: number;
     appFiles: number;
     jobs: number;
@@ -121,6 +140,10 @@ export class ConvexRuntimeClient {
     return await this.client.query(convexApi.listApps as any, {});
   }
 
+  async listBoxes(): Promise<BoxRecord[]> {
+    return await this.client.query(convexApi.listBoxes as any, {});
+  }
+
   async getNextArtifactPurgeTask(): Promise<ArtifactPurgeTaskRecord | null> {
     return await this.client.query(convexApi.getNextArtifactPurgeTask as any, {});
   }
@@ -169,6 +192,21 @@ export class ConvexRuntimeClient {
     sessionId: string | null;
   }): Promise<void> {
     await this.client.mutation(convexApi.setAppOpenClawSession as any, args);
+  }
+
+  async upsertOpenClawBox(args: {
+    boxId: string;
+    appId: string;
+    agentId: string;
+    workspacePath: string;
+    sessionId?: string | null;
+    model: string | null;
+    status: "unknown" | "ready" | "running" | "error";
+    policy: OpenClawBoxPolicy;
+    lastRunAt?: number | null;
+    lastError?: string | null;
+  }): Promise<void> {
+    await this.client.mutation(convexApi.upsertOpenClawBox as any, args);
   }
 
   async setAppTemplateSourceStatus(args: {

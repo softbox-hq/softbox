@@ -4,6 +4,7 @@ import { ConvexRuntimeClient, type LegacyAppIdMigrationPlanRecord } from "../src
 
 function formatCounts(plan: LegacyAppIdMigrationPlanRecord["migrations"][number]["counts"]): string {
   return [
+    `${plan.boxes} box row(s)`,
     `${plan.versions} version(s)`,
     `${plan.appFiles} file row(s)`,
     `${plan.jobs} job(s)`,

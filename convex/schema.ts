@@ -13,6 +13,20 @@ const pipelineStageStatus = v.union(
   v.literal("failed"),
 );
 
+const boxStatus = v.union(
+  v.literal("unknown"),
+  v.literal("ready"),
+  v.literal("running"),
+  v.literal("error"),
+);
+
+const boxPolicy = v.object({
+  transport: v.literal("ws_gateway"),
+  routingMode: v.union(v.literal("shared"), v.literal("per_app")),
+  workspaceIsolation: v.union(v.literal("repo_root"), v.literal("app_root")),
+  sessionKeyPrefix: v.string(),
+});
+
 const templateSourceStatus = v.union(
   v.literal("unknown"),
   v.literal("available"),
@@ -37,6 +51,23 @@ export default defineSchema({
     lastRuntimeError: v.union(v.string(), v.null()),
     updatedAt: v.number(),
   }).index("by_appId", ["appId"]),
+  boxes: defineTable({
+    boxId: v.string(),
+    appId: v.string(),
+    provider: v.literal("openclaw"),
+    agentId: v.string(),
+    workspacePath: v.string(),
+    sessionId: v.union(v.string(), v.null()),
+    model: v.union(v.string(), v.null()),
+    status: boxStatus,
+    policy: boxPolicy,
+    lastRunAt: v.union(v.number(), v.null()),
+    lastError: v.union(v.string(), v.null()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_boxId", ["boxId"])
+    .index("by_appId", ["appId"]),
   shellSelections: defineTable({
     shellId: v.string(),
     selectedAppId: v.union(v.string(), v.null()),
