@@ -6,13 +6,12 @@
   place-items: center;
   padding: 32px;
   box-sizing: border-box;
-  transition: background-color 220ms ease;
 }
 
 .photo-widget {
   width: min(100%, 22rem);
   padding: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--border);
   border-radius: 28px;
   background: rgba(255, 255, 255, 0.84);
   box-shadow: var(--shadow);
@@ -41,8 +40,7 @@
   align-items: center;
   padding: 6px 10px;
   border-radius: 999px;
-  background: var(--accent-bg);
-  color: var(--accent);
+  background: rgba(255, 255, 255, 0.5);
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.08em;
