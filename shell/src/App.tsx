@@ -34,6 +34,27 @@ function formatTimestamp(timestamp: number | null | undefined) {
   }).format(timestamp);
 }
 
+function formatBoxSummary(box: {
+  engine: string;
+  engineProfile?: { name: string } | null;
+  providerProfile?: { name: string } | null;
+  agentId: string | null;
+  status: string;
+  model: string | null;
+  lastRunAt: number | null;
+}) {
+  const parts = [
+    `Box ${box.engineProfile?.name ?? box.engine}`,
+    box.providerProfile?.name ?? null,
+    box.agentId,
+    box.status,
+    box.model ?? "default",
+    box.lastRunAt ? formatTimestamp(box.lastRunAt) : null,
+  ].filter((value): value is string => Boolean(value));
+
+  return parts.join(" · ");
+}
+
 function getRunDuration(run: any) {
   if (run.completedAt && run.submittedAt) {
     return run.completedAt - run.submittedAt;
@@ -1528,9 +1549,7 @@ export function App() {
                               </p>
                               {app.box ? (
                                 <p className="mt-1 text-xs text-gray-500">
-                                  {`Box ${app.box.engine}${app.box.agentId ? ` · ${app.box.agentId}` : ""} · ${app.box.status} · ${app.box.model ?? "default"}${
-                                    app.box.lastRunAt ? ` · ${formatTimestamp(app.box.lastRunAt)}` : ""
-                                  }`}
+                                  {formatBoxSummary(app.box)}
                                 </p>
                               ) : null}
                               {app.lastBuildError ? (

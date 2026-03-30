@@ -7,6 +7,7 @@ import { convexApi } from "./shared/convexApi";
 export type JobRecord = {
   _id: string;
   appId: string;
+  boxId?: string | null;
   prompt: string;
   status: "pending" | "running" | "failed" | "completed";
   submittedAt: number;
@@ -26,6 +27,9 @@ export type AppConfigRecord = {
   name: string;
   codexThreadId?: string | null;
   openClawSessionId?: string | null;
+  box?: BoxRecord | null;
+  engineProfile?: EngineProfileRecord | null;
+  providerProfile?: ProviderProfileRecord | null;
 };
 
 export type AppRecord = {
@@ -43,16 +47,56 @@ export type BoxRecord = {
   subjectKind: string;
   appId: string | null;
   engine: string;
+  engineProfileId: string | null;
+  providerProfileId: string | null;
   agentId: string | null;
   targetPath: string | null;
   workspacePath: string | null;
   sessionId: string | null;
   provider: string | null;
   model: string | null;
+  engineProfile?: EngineProfileRecord | null;
+  providerProfile?: ProviderProfileRecord | null;
   status: BoxStatus;
   policy: BoxPolicy;
   lastRunAt: number | null;
   lastError: string | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type EngineProfileRecord = {
+  engineProfileId: string;
+  engine: string;
+  name: string;
+  description: string | null;
+  status: "ready" | "needs_setup" | "error";
+  isDefault: boolean;
+  config: {
+    gatewayBaseUrl?: string | null;
+    routingMode?: string | null;
+    sessionKeyPrefix?: string | null;
+    agentId?: string | null;
+    agentIdPrefix?: string | null;
+    tokenConfigured?: boolean;
+  };
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type ProviderProfileRecord = {
+  providerProfileId: string;
+  engineProfileId: string | null;
+  provider: string;
+  name: string;
+  description: string | null;
+  model: string | null;
+  status: "ready" | "needs_auth" | "error";
+  isDefault: boolean;
+  config: {
+    authMethod?: string | null;
+    authTarget?: string | null;
+  };
   createdAt: number;
   updatedAt: number;
 };
@@ -148,6 +192,14 @@ export class ConvexRuntimeClient {
     return await this.client.query(convexApi.listBoxes as any, {});
   }
 
+  async listEngineProfiles(): Promise<EngineProfileRecord[]> {
+    return await this.client.query(convexApi.listEngineProfiles as any, {});
+  }
+
+  async listProviderProfiles(): Promise<ProviderProfileRecord[]> {
+    return await this.client.query(convexApi.listProviderProfiles as any, {});
+  }
+
   async getNextArtifactPurgeTask(): Promise<ArtifactPurgeTaskRecord | null> {
     return await this.client.query(convexApi.getNextArtifactPurgeTask as any, {});
   }
@@ -204,6 +256,8 @@ export class ConvexRuntimeClient {
     subjectKind: string;
     appId?: string | null;
     engine: string;
+    engineProfileId?: string | null;
+    providerProfileId?: string | null;
     agentId?: string | null;
     targetPath?: string | null;
     workspacePath?: string | null;
@@ -216,6 +270,42 @@ export class ConvexRuntimeClient {
     lastError?: string | null;
   }): Promise<void> {
     await this.client.mutation(convexApi.upsertBox as any, args);
+  }
+
+  async upsertEngineProfile(args: {
+    engineProfileId: string;
+    engine: string;
+    name: string;
+    description?: string | null;
+    status: "ready" | "needs_setup" | "error";
+    isDefault: boolean;
+    config: {
+      gatewayBaseUrl?: string | null;
+      routingMode?: string | null;
+      sessionKeyPrefix?: string | null;
+      agentId?: string | null;
+      agentIdPrefix?: string | null;
+      tokenConfigured?: boolean;
+    };
+  }): Promise<void> {
+    await this.client.mutation(convexApi.upsertEngineProfile as any, args);
+  }
+
+  async upsertProviderProfile(args: {
+    providerProfileId: string;
+    engineProfileId?: string | null;
+    provider: string;
+    name: string;
+    description?: string | null;
+    model: string | null;
+    status: "ready" | "needs_auth" | "error";
+    isDefault: boolean;
+    config: {
+      authMethod?: string | null;
+      authTarget?: string | null;
+    };
+  }): Promise<void> {
+    await this.client.mutation(convexApi.upsertProviderProfile as any, args);
   }
 
   async setAppTemplateSourceStatus(args: {

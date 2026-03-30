@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { buildBoxId, inferProviderFromModel } from "../src/boxes";
 import { loadWorkerConfig } from "../src/config";
 import { ConvexRuntimeClient } from "../src/convex";
+import { ensureDefaultOpenClawProfiles } from "../src/engineProfiles";
 import {
   buildConfiguredOpenClawAgentId,
   buildOpenClawBoxPolicy,
@@ -19,6 +20,7 @@ async function main(): Promise<void> {
   const config = loadWorkerConfig();
   const convex = new ConvexRuntimeClient(config);
   const expectedModel = normalizeOpenClawModelId(config.agentModel ?? null);
+  const defaultProfiles = await ensureDefaultOpenClawProfiles(convex, config);
 
   if (!config.openClawAgentIdPrefix) {
     throw new Error(
@@ -106,6 +108,8 @@ async function main(): Promise<void> {
             subjectKind: "app",
             appId: app.appId,
             engine: "openclaw",
+            engineProfileId: defaultProfiles.engineProfileId,
+            providerProfileId: defaultProfiles.providerProfileId,
             agentId,
             targetPath: expectedWorkspace,
             workspacePath: expectedWorkspace,
@@ -129,6 +133,8 @@ async function main(): Promise<void> {
             subjectKind: "app",
             appId: app.appId,
             engine: "openclaw",
+            engineProfileId: defaultProfiles.engineProfileId,
+            providerProfileId: defaultProfiles.providerProfileId,
             agentId,
             targetPath: expectedWorkspace,
             workspacePath: expectedWorkspace,
@@ -170,6 +176,8 @@ async function main(): Promise<void> {
         subjectKind: "app",
         appId: app.appId,
         engine: "openclaw",
+        engineProfileId: defaultProfiles.engineProfileId,
+        providerProfileId: defaultProfiles.providerProfileId,
         agentId,
         targetPath: expectedWorkspace,
         workspacePath: expectedWorkspace,

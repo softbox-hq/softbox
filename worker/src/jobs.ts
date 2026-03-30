@@ -17,6 +17,7 @@ import {
 } from "./boxEngines";
 import { LiveAppBundler } from "./build";
 import { ConvexRuntimeClient } from "./convex";
+import { backfillOpenClawBoxProfiles, ensureDefaultOpenClawProfiles } from "./engineProfiles";
 import { readLiveAppFiles } from "./filesystem";
 import { liveAppStateSchema } from "./shared/liveApp";
 import { R2Uploader } from "./r2";
@@ -194,6 +195,10 @@ export async function processJobById(
 
   try {
     const shellState = await convex.getShellState(appId);
+    if (config.openClawGatewayBaseUrl && config.openClawGatewayToken) {
+      await ensureDefaultOpenClawProfiles(convex, config);
+    }
+    await backfillOpenClawBoxProfiles(convex, config);
     const appConfig = await assertAppStillExists();
     const templateSource = await inspectWrappedAppSource(config.projectRoot, appConfig.appId);
     await convex.setAppTemplateSourceStatus({

@@ -15,6 +15,16 @@ function parsePositiveNumber(value: string | undefined, fallback: number): numbe
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function normalizeR2Endpoint(endpoint: string): string {
+  const trimmed = endpoint.trim();
+  try {
+    const parsed = new URL(trimmed);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return trimmed.replace(/\/+$/, "");
+  }
+}
+
 function isOpenClawCommand(command: string): boolean {
   return basename(command.trim()).toLowerCase().startsWith("openclaw");
 }
@@ -79,7 +89,7 @@ export function loadWorkerConfig(): WorkerConfig {
       undefined,
     agentTimeoutMs,
     redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
-    r2Endpoint: requireEnv("R2_ENDPOINT"),
+    r2Endpoint: normalizeR2Endpoint(requireEnv("R2_ENDPOINT")),
     r2Bucket: requireEnv("R2_BUCKET"),
     r2AccessKeyId: requireEnv("R2_ACCESS_KEY_ID"),
     r2SecretAccessKey: requireEnv("R2_SECRET_ACCESS_KEY"),

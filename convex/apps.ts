@@ -22,6 +22,32 @@ const boxStatus = v.union(
   v.literal("error"),
 );
 
+const engineProfileStatus = v.union(
+  v.literal("ready"),
+  v.literal("needs_setup"),
+  v.literal("error"),
+);
+
+const providerProfileStatus = v.union(
+  v.literal("ready"),
+  v.literal("needs_auth"),
+  v.literal("error"),
+);
+
+const engineProfileConfig = v.object({
+  gatewayBaseUrl: v.optional(v.union(v.string(), v.null())),
+  routingMode: v.optional(v.union(v.string(), v.null())),
+  sessionKeyPrefix: v.optional(v.union(v.string(), v.null())),
+  agentId: v.optional(v.union(v.string(), v.null())),
+  agentIdPrefix: v.optional(v.union(v.string(), v.null())),
+  tokenConfigured: v.optional(v.boolean()),
+});
+
+const providerProfileConfig = v.object({
+  authMethod: v.optional(v.union(v.string(), v.null())),
+  authTarget: v.optional(v.union(v.string(), v.null())),
+});
+
 const boxPolicy = v.object({
   transport: v.optional(v.string()),
   routingMode: v.optional(v.string()),
@@ -177,7 +203,59 @@ async function getBoxByBoxId(ctx: any, boxId: string) {
     .first();
 }
 
-function serializeBox(box: any) {
+async function getEngineProfileById(ctx: any, engineProfileId: string) {
+  return await ctx.db
+    .query("engineProfiles")
+    .withIndex("by_engineProfileId", (q: any) => q.eq("engineProfileId", engineProfileId))
+    .first();
+}
+
+async function getProviderProfileById(ctx: any, providerProfileId: string) {
+  return await ctx.db
+    .query("providerProfiles")
+    .withIndex("by_providerProfileId", (q: any) => q.eq("providerProfileId", providerProfileId))
+    .first();
+}
+
+function serializeEngineProfile(profile: any) {
+  if (!profile) {
+    return null;
+  }
+
+  return {
+    engineProfileId: profile.engineProfileId,
+    engine: profile.engine,
+    name: profile.name,
+    description: profile.description ?? null,
+    status: profile.status,
+    isDefault: profile.isDefault === true,
+    config: profile.config ?? {},
+    createdAt: profile.createdAt,
+    updatedAt: profile.updatedAt,
+  };
+}
+
+function serializeProviderProfile(profile: any) {
+  if (!profile) {
+    return null;
+  }
+
+  return {
+    providerProfileId: profile.providerProfileId,
+    engineProfileId: profile.engineProfileId ?? null,
+    provider: profile.provider,
+    name: profile.name,
+    description: profile.description ?? null,
+    model: profile.model ?? null,
+    status: profile.status,
+    isDefault: profile.isDefault === true,
+    config: profile.config ?? {},
+    createdAt: profile.createdAt,
+    updatedAt: profile.updatedAt,
+  };
+}
+
+function serializeBox(box: any, related?: { engineProfile?: any; providerProfile?: any }) {
   if (!box) {
     return null;
   }
@@ -188,12 +266,16 @@ function serializeBox(box: any) {
     subjectKind: box.subjectKind ?? "app",
     appId: box.appId ?? null,
     engine: box.engine ?? box.provider ?? "openclaw",
+    engineProfileId: box.engineProfileId ?? null,
+    providerProfileId: box.providerProfileId ?? null,
     agentId: box.agentId ?? null,
     targetPath: box.targetPath ?? box.workspacePath ?? null,
     workspacePath: box.workspacePath ?? box.targetPath ?? null,
     sessionId: box.sessionId ?? null,
     provider: box.provider ?? null,
     model: box.model ?? null,
+    engineProfile: serializeEngineProfile(related?.engineProfile ?? null),
+    providerProfile: serializeProviderProfile(related?.providerProfile ?? null),
     status: box.status,
     policy: box.policy ?? {},
     lastRunAt: box.lastRunAt ?? null,
@@ -647,11 +729,18 @@ export const getShellState = query({
       .order("desc")
       .first();
     const box = await getBoxByAppId(ctx, args.appId);
+    const engineProfile =
+      box?.engineProfileId ? await getEngineProfileById(ctx, box.engineProfileId) : null;
+    const providerProfile =
+      box?.providerProfileId ? await getProviderProfileById(ctx, box.providerProfileId) : null;
 
     return {
       appId: app.appId,
       name: app.name,
-      box: serializeBox(box),
+      box: serializeBox(box, {
+        engineProfile,
+        providerProfile,
+      }),
       templateSourceStatus: app.templateSourceStatus ?? "unknown",
       templateSourcePath: app.templateSourcePath ?? null,
       templateSourceMessage: app.templateSourceMessage ?? null,
@@ -680,6 +769,7 @@ export const getShellState = query({
 export const submitPrompt = mutation({
   args: {
     appId: v.string(),
+    boxId: v.optional(v.union(v.string(), v.null())),
     prompt: v.string(),
   },
   handler: async (ctx, args) => {
@@ -697,6 +787,7 @@ export const submitPrompt = mutation({
     });
     const jobId = await ctx.db.insert("jobs", {
       appId: args.appId,
+      boxId: args.boxId ?? null,
       prompt: args.prompt,
       status: "pending",
       submittedAt,
@@ -704,6 +795,7 @@ export const submitPrompt = mutation({
     });
     const pipelineRunId = await ctx.db.insert("pipelineRuns", {
       appId: args.appId,
+      boxId: args.boxId ?? null,
       jobId,
       prompt: args.prompt,
       status: "pending",
@@ -926,6 +1018,14 @@ export const listApps = query({
   args: {},
   handler: async (ctx) => {
     const apps = await ctx.db.query("apps").collect();
+    const engineProfiles = await ctx.db.query("engineProfiles").collect();
+    const providerProfiles = await ctx.db.query("providerProfiles").collect();
+    const engineProfilesById = new Map(
+      engineProfiles.map((profile: any) => [profile.engineProfileId, profile]),
+    );
+    const providerProfilesById = new Map(
+      providerProfiles.map((profile: any) => [profile.providerProfileId, profile]),
+    );
     const appsWithVersions = await Promise.all(
       apps.map(async (app: any) => {
         const activeVersion = app.activeVersionId
@@ -936,7 +1036,12 @@ export const listApps = query({
         return {
           appId: app.appId,
           name: app.name,
-          box: serializeBox(box),
+          box: serializeBox(box, {
+            engineProfile:
+              box?.engineProfileId ? engineProfilesById.get(box.engineProfileId) ?? null : null,
+            providerProfile:
+              box?.providerProfileId ? providerProfilesById.get(box.providerProfileId) ?? null : null,
+          }),
           templateSourceStatus: app.templateSourceStatus ?? "unknown",
           templateSourcePath: app.templateSourcePath ?? null,
           templateSourceMessage: app.templateSourceMessage ?? null,
@@ -965,10 +1070,55 @@ export const listBoxes = query({
   args: {},
   handler: async (ctx) => {
     const boxes = await ctx.db.query("boxes").collect();
+    const engineProfiles = await ctx.db.query("engineProfiles").collect();
+    const providerProfiles = await ctx.db.query("providerProfiles").collect();
+    const engineProfilesById = new Map(
+      engineProfiles.map((profile: any) => [profile.engineProfileId, profile]),
+    );
+    const providerProfilesById = new Map(
+      providerProfiles.map((profile: any) => [profile.providerProfileId, profile]),
+    );
     return boxes
-      .map((box: any) => serializeBox(box))
+      .map((box: any) =>
+        serializeBox(box, {
+          engineProfile:
+            box?.engineProfileId ? engineProfilesById.get(box.engineProfileId) ?? null : null,
+          providerProfile:
+            box?.providerProfileId ? providerProfilesById.get(box.providerProfileId) ?? null : null,
+        }),
+      )
       .filter((box): box is NonNullable<ReturnType<typeof serializeBox>> => Boolean(box))
       .sort((left, right) => left.boxId.localeCompare(right.boxId));
+  },
+});
+
+export const listEngineProfiles = query({
+  args: {},
+  handler: async (ctx) => {
+    const profiles = await ctx.db.query("engineProfiles").collect();
+    return profiles
+      .map((profile: any) => serializeEngineProfile(profile))
+      .filter(
+        (
+          profile,
+        ): profile is NonNullable<ReturnType<typeof serializeEngineProfile>> => Boolean(profile),
+      )
+      .sort((left, right) => left.engineProfileId.localeCompare(right.engineProfileId));
+  },
+});
+
+export const listProviderProfiles = query({
+  args: {},
+  handler: async (ctx) => {
+    const profiles = await ctx.db.query("providerProfiles").collect();
+    return profiles
+      .map((profile: any) => serializeProviderProfile(profile))
+      .filter(
+        (
+          profile,
+        ): profile is NonNullable<ReturnType<typeof serializeProviderProfile>> => Boolean(profile),
+      )
+      .sort((left, right) => left.providerProfileId.localeCompare(right.providerProfileId));
   },
 });
 
@@ -1361,11 +1511,23 @@ export const getAppConfig = query({
       return null;
     }
 
+    const box = await getBoxByAppId(ctx, args.appId);
+    const engineProfile =
+      box?.engineProfileId ? await getEngineProfileById(ctx, box.engineProfileId) : null;
+    const providerProfile =
+      box?.providerProfileId ? await getProviderProfileById(ctx, box.providerProfileId) : null;
+
     return {
       appId: app.appId,
       name: app.name,
       codexThreadId: app.codexThreadId ?? null,
       openClawSessionId: app.openClawSessionId ?? null,
+      box: serializeBox(box, {
+        engineProfile,
+        providerProfile,
+      }),
+      engineProfile: serializeEngineProfile(engineProfile),
+      providerProfile: serializeProviderProfile(providerProfile),
     };
   },
 });
@@ -1422,6 +1584,82 @@ export const setAppOpenClawSession = mutation({
   },
 });
 
+export const upsertEngineProfile = mutation({
+  args: {
+    engineProfileId: v.string(),
+    engine: v.string(),
+    name: v.string(),
+    description: v.optional(v.union(v.string(), v.null())),
+    status: engineProfileStatus,
+    isDefault: v.boolean(),
+    config: engineProfileConfig,
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const existing = await getEngineProfileById(ctx, args.engineProfileId);
+    const patch = {
+      engineProfileId: args.engineProfileId,
+      engine: args.engine,
+      name: args.name,
+      description: args.description ?? null,
+      status: args.status,
+      isDefault: args.isDefault,
+      config: args.config,
+      updatedAt: now,
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, patch);
+      return existing._id;
+    }
+
+    return await ctx.db.insert("engineProfiles", {
+      ...patch,
+      createdAt: now,
+    });
+  },
+});
+
+export const upsertProviderProfile = mutation({
+  args: {
+    providerProfileId: v.string(),
+    engineProfileId: v.optional(v.union(v.string(), v.null())),
+    provider: v.string(),
+    name: v.string(),
+    description: v.optional(v.union(v.string(), v.null())),
+    model: v.union(v.string(), v.null()),
+    status: providerProfileStatus,
+    isDefault: v.boolean(),
+    config: providerProfileConfig,
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const existing = await getProviderProfileById(ctx, args.providerProfileId);
+    const patch = {
+      providerProfileId: args.providerProfileId,
+      engineProfileId: args.engineProfileId ?? null,
+      provider: args.provider,
+      name: args.name,
+      description: args.description ?? null,
+      model: args.model,
+      status: args.status,
+      isDefault: args.isDefault,
+      config: args.config,
+      updatedAt: now,
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, patch);
+      return existing._id;
+    }
+
+    return await ctx.db.insert("providerProfiles", {
+      ...patch,
+      createdAt: now,
+    });
+  },
+});
+
 export const upsertBox = mutation({
   args: {
     boxId: v.string(),
@@ -1429,6 +1667,8 @@ export const upsertBox = mutation({
     subjectKind: v.string(),
     appId: v.optional(v.union(v.string(), v.null())),
     engine: v.string(),
+    engineProfileId: v.optional(v.union(v.string(), v.null())),
+    providerProfileId: v.optional(v.union(v.string(), v.null())),
     agentId: v.optional(v.union(v.string(), v.null())),
     targetPath: v.optional(v.union(v.string(), v.null())),
     workspacePath: v.optional(v.union(v.string(), v.null())),
@@ -1448,6 +1688,24 @@ export const upsertBox = mutation({
         throw new Error(`Cannot upsert box for unknown app '${normalizedAppId}'.`);
       }
     }
+    const normalizedEngineProfileId = args.engineProfileId ?? null;
+    const normalizedProviderProfileId = args.providerProfileId ?? null;
+
+    if (normalizedEngineProfileId) {
+      const engineProfile = await getEngineProfileById(ctx, normalizedEngineProfileId);
+      if (!engineProfile) {
+        throw new Error(`Cannot upsert box with unknown engine profile '${normalizedEngineProfileId}'.`);
+      }
+    }
+
+    if (normalizedProviderProfileId) {
+      const providerProfile = await getProviderProfileById(ctx, normalizedProviderProfileId);
+      if (!providerProfile) {
+        throw new Error(
+          `Cannot upsert box with unknown provider profile '${normalizedProviderProfileId}'.`,
+        );
+      }
+    }
 
     const now = Date.now();
     const existing =
@@ -1463,6 +1721,8 @@ export const upsertBox = mutation({
       subjectKind: args.subjectKind,
       appId: normalizedAppId,
       engine: args.engine,
+      engineProfileId: normalizedEngineProfileId,
+      providerProfileId: normalizedProviderProfileId,
       agentId: args.agentId ?? null,
       targetPath,
       workspacePath: args.workspacePath ?? targetPath,
@@ -1494,6 +1754,8 @@ export const upsertBox = mutation({
       subjectKind: args.subjectKind,
       appId: normalizedAppId,
       engine: args.engine,
+      engineProfileId: normalizedEngineProfileId,
+      providerProfileId: normalizedProviderProfileId,
       agentId: args.agentId ?? null,
       targetPath,
       workspacePath: args.workspacePath ?? targetPath,

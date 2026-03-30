@@ -12,6 +12,7 @@ import {
   reclaimStaleRunningJobs,
   syncAppTemplateSourceStatuses,
 } from "./jobs";
+import { backfillOpenClawBoxProfiles } from "./engineProfiles";
 import { R2Uploader } from "./r2";
 
 function queueJobId(jobId: string): string {
@@ -124,6 +125,20 @@ async function main(): Promise<void> {
   const bundler = new LiveAppBundler(config);
   const uploader = new R2Uploader(config);
   const redisHelpState = { shown: false };
+
+  try {
+    const profileBackfill = await backfillOpenClawBoxProfiles(convex, config);
+    if (profileBackfill.updatedBoxes > 0) {
+      console.log(
+        `[worker] backfilled ${profileBackfill.updatedBoxes} OpenClaw box profile link(s) using ${profileBackfill.engineProfileId} / ${profileBackfill.providerProfileId}`,
+      );
+    }
+  } catch (error) {
+    console.warn(
+      "[worker] failed to backfill OpenClaw box profiles",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 
   const queue = new Queue(config.queueName, {
     connection: {

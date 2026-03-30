@@ -39,6 +39,16 @@ function readEnv(name: string): string {
   return process.env[name]?.trim() ?? "";
 }
 
+function normalizeR2Endpoint(endpoint: string): string {
+  const trimmed = endpoint.trim();
+  try {
+    const parsed = new URL(trimmed);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return trimmed.replace(/\/+$/, "");
+  }
+}
+
 function parseRedisTarget(redisUrl: string): { host: string; port: number } {
   const parsed = new URL(redisUrl);
   if (parsed.protocol !== "redis:" && parsed.protocol !== "rediss:") {
@@ -126,6 +136,19 @@ async function main(): Promise<void> {
       readEnv(envName) ? "ok" : "fail",
       envName,
       readEnv(envName) ? "Configured." : "Missing required value.",
+    );
+  }
+
+  const r2Endpoint = readEnv("R2_ENDPOINT");
+  if (r2Endpoint) {
+    const normalizedR2Endpoint = normalizeR2Endpoint(r2Endpoint);
+    pushResult(
+      results,
+      r2Endpoint === normalizedR2Endpoint ? "ok" : "fail",
+      "R2 endpoint format",
+      r2Endpoint === normalizedR2Endpoint
+        ? `Using account endpoint '${normalizedR2Endpoint}'.`
+        : `R2_ENDPOINT should be the account endpoint only. Use '${normalizedR2Endpoint}', not '${r2Endpoint}'.`,
     );
   }
 

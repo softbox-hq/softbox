@@ -20,6 +20,32 @@ const boxStatus = v.union(
   v.literal("error"),
 );
 
+const engineProfileStatus = v.union(
+  v.literal("ready"),
+  v.literal("needs_setup"),
+  v.literal("error"),
+);
+
+const providerProfileStatus = v.union(
+  v.literal("ready"),
+  v.literal("needs_auth"),
+  v.literal("error"),
+);
+
+const engineProfileConfig = v.object({
+  gatewayBaseUrl: v.optional(v.union(v.string(), v.null())),
+  routingMode: v.optional(v.union(v.string(), v.null())),
+  sessionKeyPrefix: v.optional(v.union(v.string(), v.null())),
+  agentId: v.optional(v.union(v.string(), v.null())),
+  agentIdPrefix: v.optional(v.union(v.string(), v.null())),
+  tokenConfigured: v.optional(v.boolean()),
+});
+
+const providerProfileConfig = v.object({
+  authMethod: v.optional(v.union(v.string(), v.null())),
+  authTarget: v.optional(v.union(v.string(), v.null())),
+});
+
 const boxPolicy = v.object({
   transport: v.optional(v.string()),
   routingMode: v.optional(v.string()),
@@ -39,6 +65,37 @@ const templateSourceStatus = v.union(
 );
 
 export default defineSchema({
+  engineProfiles: defineTable({
+    engineProfileId: v.string(),
+    engine: v.string(),
+    name: v.string(),
+    description: v.optional(v.union(v.string(), v.null())),
+    status: engineProfileStatus,
+    isDefault: v.boolean(),
+    config: engineProfileConfig,
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_engineProfileId", ["engineProfileId"])
+    .index("by_engine", ["engine"])
+    .index("by_engine_and_isDefault", ["engine", "isDefault"]),
+  providerProfiles: defineTable({
+    providerProfileId: v.string(),
+    engineProfileId: v.union(v.string(), v.null()),
+    provider: v.string(),
+    name: v.string(),
+    description: v.optional(v.union(v.string(), v.null())),
+    model: v.union(v.string(), v.null()),
+    status: providerProfileStatus,
+    isDefault: v.boolean(),
+    config: providerProfileConfig,
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_providerProfileId", ["providerProfileId"])
+    .index("by_engineProfileId", ["engineProfileId"])
+    .index("by_provider", ["provider"])
+    .index("by_provider_and_isDefault", ["provider", "isDefault"]),
   apps: defineTable({
     appId: v.string(),
     templateId: v.optional(v.string()),
@@ -62,6 +119,8 @@ export default defineSchema({
     subjectKind: v.optional(v.string()),
     appId: v.union(v.string(), v.null()),
     engine: v.optional(v.string()),
+    engineProfileId: v.optional(v.union(v.string(), v.null())),
+    providerProfileId: v.optional(v.union(v.string(), v.null())),
     agentId: v.union(v.string(), v.null()),
     targetPath: v.optional(v.union(v.string(), v.null())),
     workspacePath: v.union(v.string(), v.null()),
@@ -95,6 +154,7 @@ export default defineSchema({
     .index("by_appId_and_path", ["appId", "path"]),
   jobs: defineTable({
     appId: v.string(),
+    boxId: v.optional(v.union(v.string(), v.null())),
     prompt: v.string(),
     status: v.union(
       v.literal("pending"),
@@ -139,6 +199,7 @@ export default defineSchema({
   }).index("by_appId_and_createdAt", ["appId", "createdAt"]),
   pipelineRuns: defineTable({
     appId: v.string(),
+    boxId: v.optional(v.union(v.string(), v.null())),
     templateId: v.optional(v.string()),
     jobId: v.id("jobs"),
     prompt: v.string(),

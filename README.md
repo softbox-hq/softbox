@@ -115,6 +115,12 @@ pnpm worker:migrate-app-ids
 pnpm worker:migrate-app-ids -- --apply
 ```
 
+If you already have existing OpenClaw box rows and want to attach them to the new engine/provider profile tables, run:
+
+```bash
+pnpm worker:backfill-box-profiles
+```
+
 Starting a new app:
 
 1. copy `apps/vite-default` to `apps/<your-app>`
@@ -139,6 +145,7 @@ pnpm typecheck
 pnpm test
 pnpm seed
 pnpm wrap-app -- --path apps/my-app
+pnpm worker:backfill-box-profiles
 pnpm worker:migrate-app-ids
 pnpm worker:openclaw-sync-agents
 docker compose up -d redis
