@@ -398,9 +398,9 @@ function App() {
 
   const routeMeta = useMemo(
     () => ({
-      '/': { label: 'Home', title: 'Home' },
-      '/dashboard': { label: 'Dashboard', title: 'Dashboard' },
-      '/about': { label: 'About', title: 'About' },
+      '/': { label: 'Home', title: 'Test' },
+      '/dashboard': { label: 'Dashboard', title: 'Test' },
+      '/about': { label: 'About', title: 'Test' },
     })[route],
     [route],
   )
