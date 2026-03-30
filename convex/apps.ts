@@ -189,11 +189,31 @@ async function getArtifactPurgeTaskByAppId(ctx: any, appId: string) {
     .first();
 }
 
-async function getBoxByAppId(ctx: any, appId: string) {
-  return await ctx.db
+function sortBoxesForApp(boxes: any[], appId: string) {
+  return [...boxes].sort((left, right) => {
+    const leftPrimary = left.boxId === `${left.engine ?? "openclaw"}:${appId}` ? 0 : 1;
+    const rightPrimary = right.boxId === `${right.engine ?? "openclaw"}:${appId}` ? 0 : 1;
+    if (leftPrimary !== rightPrimary) {
+      return leftPrimary - rightPrimary;
+    }
+    if ((left.createdAt ?? 0) !== (right.createdAt ?? 0)) {
+      return (left.createdAt ?? 0) - (right.createdAt ?? 0);
+    }
+    return String(left.boxId).localeCompare(String(right.boxId));
+  });
+}
+
+async function getBoxesByAppId(ctx: any, appId: string) {
+  const boxes = await ctx.db
     .query("boxes")
     .withIndex("by_appId", (q: any) => q.eq("appId", appId))
-    .first();
+    .collect();
+  return sortBoxesForApp(boxes, appId);
+}
+
+async function getBoxByAppId(ctx: any, appId: string) {
+  const boxes = await getBoxesByAppId(ctx, appId);
+  return boxes[0] ?? null;
 }
 
 async function getBoxByBoxId(ctx: any, boxId: string) {
@@ -215,6 +235,58 @@ async function getProviderProfileById(ctx: any, providerProfileId: string) {
     .query("providerProfiles")
     .withIndex("by_providerProfileId", (q: any) => q.eq("providerProfileId", providerProfileId))
     .first();
+}
+
+async function serializeBoxesWithProfiles(ctx: any, boxes: any[]) {
+  const engineProfileIds = Array.from(
+    new Set(
+      boxes
+        .map((box) => box?.engineProfileId ?? null)
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  );
+  const providerProfileIds = Array.from(
+    new Set(
+      boxes
+        .map((box) => box?.providerProfileId ?? null)
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  );
+
+  const [engineProfiles, providerProfiles] = await Promise.all([
+    Promise.all(engineProfileIds.map((engineProfileId) => getEngineProfileById(ctx, engineProfileId))),
+    Promise.all(providerProfileIds.map((providerProfileId) => getProviderProfileById(ctx, providerProfileId))),
+  ]);
+
+  const engineProfilesById = new Map(
+    engineProfiles
+      .filter((profile): profile is NonNullable<typeof profile> => Boolean(profile))
+      .map((profile) => [profile.engineProfileId, profile]),
+  );
+  const providerProfilesById = new Map(
+    providerProfiles
+      .filter((profile): profile is NonNullable<typeof profile> => Boolean(profile))
+      .map((profile) => [profile.providerProfileId, profile]),
+  );
+
+  return boxes.map((box) =>
+    serializeBox(box, {
+      engineProfile:
+        box?.engineProfileId ? engineProfilesById.get(box.engineProfileId) ?? null : null,
+      providerProfile:
+        box?.providerProfileId ? providerProfilesById.get(box.providerProfileId) ?? null : null,
+    }),
+  );
+}
+
+function selectBoxFromSerializedList(boxes: any[], boxId?: string | null) {
+  if (!boxes.length) {
+    return null;
+  }
+  if (!boxId) {
+    return boxes[0] ?? null;
+  }
+  return boxes.find((box) => box?.boxId === boxId) ?? boxes[0] ?? null;
 }
 
 function serializeEngineProfile(profile: any) {
@@ -676,7 +748,10 @@ async function upsertShellSelection(
 }
 
 export const getShellState = query({
-  args: { appId: v.string() },
+  args: {
+    appId: v.string(),
+    boxId: v.optional(v.union(v.string(), v.null())),
+  },
   handler: async (ctx, args) => {
     const app = await ctx.db
       .query("apps")
@@ -728,19 +803,24 @@ export const getShellState = query({
       .withIndex("by_appId_and_createdAt", (q) => q.eq("appId", args.appId))
       .order("desc")
       .first();
-    const box = await getBoxByAppId(ctx, args.appId);
-    const engineProfile =
-      box?.engineProfileId ? await getEngineProfileById(ctx, box.engineProfileId) : null;
-    const providerProfile =
-      box?.providerProfileId ? await getProviderProfileById(ctx, box.providerProfileId) : null;
+    const serializedBoxes = await serializeBoxesWithProfiles(
+      ctx,
+      await getBoxesByAppId(ctx, args.appId),
+    );
+    const primaryBox = serializedBoxes[0] ?? null;
+    const box = selectBoxFromSerializedList(serializedBoxes, args.boxId ?? null);
+    const engineProfile = box?.engineProfile ?? null;
+    const providerProfile = box?.providerProfile ?? null;
 
     return {
       appId: app.appId,
       name: app.name,
-      box: serializeBox(box, {
-        engineProfile,
-        providerProfile,
-      }),
+      box,
+      boxes: serializedBoxes,
+      primaryBox,
+      boxCount: serializedBoxes.length,
+      engineProfile,
+      providerProfile,
       templateSourceStatus: app.templateSourceStatus ?? "unknown",
       templateSourcePath: app.templateSourcePath ?? null,
       templateSourceMessage: app.templateSourceMessage ?? null,
@@ -779,6 +859,12 @@ export const submitPrompt = mutation({
         app.templateSourceMessage ??
           `App '${args.appId}' is still mountable from a previously built version, but its source app is missing locally. Restore it before submitting prompts.`,
       );
+    }
+    if (args.boxId) {
+      const box = await getBoxByBoxId(ctx, args.boxId);
+      if (!box || box.appId !== args.appId) {
+        throw new Error(`Box '${args.boxId}' does not belong to app '${args.appId}'.`);
+      }
     }
     const submittedAt = Date.now();
     await ctx.db.patch(app._id, {
@@ -1018,30 +1104,24 @@ export const listApps = query({
   args: {},
   handler: async (ctx) => {
     const apps = await ctx.db.query("apps").collect();
-    const engineProfiles = await ctx.db.query("engineProfiles").collect();
-    const providerProfiles = await ctx.db.query("providerProfiles").collect();
-    const engineProfilesById = new Map(
-      engineProfiles.map((profile: any) => [profile.engineProfileId, profile]),
-    );
-    const providerProfilesById = new Map(
-      providerProfiles.map((profile: any) => [profile.providerProfileId, profile]),
-    );
     const appsWithVersions = await Promise.all(
       apps.map(async (app: any) => {
         const activeVersion = app.activeVersionId
           ? await ctx.db.get(app.activeVersionId)
           : null;
-        const box = await getBoxByAppId(ctx, app.appId);
+        const boxes = await serializeBoxesWithProfiles(
+          ctx,
+          await getBoxesByAppId(ctx, app.appId),
+        );
+        const primaryBox = boxes[0] ?? null;
 
         return {
           appId: app.appId,
           name: app.name,
-          box: serializeBox(box, {
-            engineProfile:
-              box?.engineProfileId ? engineProfilesById.get(box.engineProfileId) ?? null : null,
-            providerProfile:
-              box?.providerProfileId ? providerProfilesById.get(box.providerProfileId) ?? null : null,
-          }),
+          box: primaryBox,
+          boxes,
+          primaryBox,
+          boxCount: boxes.length,
           templateSourceStatus: app.templateSourceStatus ?? "unknown",
           templateSourcePath: app.templateSourcePath ?? null,
           templateSourceMessage: app.templateSourceMessage ?? null,
@@ -1500,7 +1580,10 @@ export const seedApp = mutation({
 });
 
 export const getAppConfig = query({
-  args: { appId: v.string() },
+  args: {
+    appId: v.string(),
+    boxId: v.optional(v.union(v.string(), v.null())),
+  },
   handler: async (ctx, args) => {
     const app = await ctx.db
       .query("apps")
@@ -1511,21 +1594,23 @@ export const getAppConfig = query({
       return null;
     }
 
-    const box = await getBoxByAppId(ctx, args.appId);
-    const engineProfile =
-      box?.engineProfileId ? await getEngineProfileById(ctx, box.engineProfileId) : null;
-    const providerProfile =
-      box?.providerProfileId ? await getProviderProfileById(ctx, box.providerProfileId) : null;
+    const serializedBoxes = await serializeBoxesWithProfiles(
+      ctx,
+      await getBoxesByAppId(ctx, args.appId),
+    );
+    const primaryBox = serializedBoxes[0] ?? null;
+    const box = selectBoxFromSerializedList(serializedBoxes, args.boxId ?? null);
+    const engineProfile = box?.engineProfile ?? null;
+    const providerProfile = box?.providerProfile ?? null;
 
     return {
       appId: app.appId,
       name: app.name,
       codexThreadId: app.codexThreadId ?? null,
       openClawSessionId: app.openClawSessionId ?? null,
-      box: serializeBox(box, {
-        engineProfile,
-        providerProfile,
-      }),
+      box,
+      boxes: serializedBoxes,
+      primaryBox,
       engineProfile: serializeEngineProfile(engineProfile),
       providerProfile: serializeProviderProfile(providerProfile),
     };
@@ -1708,9 +1793,7 @@ export const upsertBox = mutation({
     }
 
     const now = Date.now();
-    const existing =
-      (await getBoxByBoxId(ctx, args.boxId)) ??
-      (normalizedAppId ? await getBoxByAppId(ctx, normalizedAppId) : null);
+    const existing = await getBoxByBoxId(ctx, args.boxId);
     const targetPath =
       args.targetPath ??
       args.workspacePath ??
@@ -1775,6 +1858,157 @@ export const upsertBox = mutation({
       createdAt: now,
       updatedAt: now,
     });
+  },
+});
+
+export const updateBoxPolicy = mutation({
+  args: {
+    boxId: v.string(),
+    role: v.optional(v.union(v.string(), v.null())),
+    instructions: v.optional(v.union(v.string(), v.null())),
+    readOnly: v.optional(v.boolean()),
+    proposalOnly: v.optional(v.boolean()),
+    canPromote: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const box = await getBoxByBoxId(ctx, args.boxId);
+    if (!box) {
+      throw new Error(`Box '${args.boxId}' does not exist.`);
+    }
+
+    const policy = {
+      ...(box.policy ?? {}),
+    } as Record<string, unknown>;
+
+    if (Object.prototype.hasOwnProperty.call(args, "role")) {
+      policy.role = args.role ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "instructions")) {
+      policy.instructions = args.instructions ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "readOnly")) {
+      policy.readOnly = args.readOnly === true;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "proposalOnly")) {
+      policy.proposalOnly = args.proposalOnly === true;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "canPromote")) {
+      policy.canPromote = args.canPromote === true;
+    }
+
+    await ctx.db.patch(box._id, {
+      policy,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+function normalizeBoxScope(scope: string) {
+  const normalized = scope
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  if (!normalized) {
+    throw new Error("Box scope must contain at least one letter or number.");
+  }
+
+  return normalized;
+}
+
+function buildScopedBoxId(engine: string, appId: string, scope: string) {
+  return `${engine}:${appId}:${scope}`;
+}
+
+export const createBox = mutation({
+  args: {
+    appId: v.string(),
+    scope: v.string(),
+    sourceBoxId: v.optional(v.union(v.string(), v.null())),
+    role: v.optional(v.union(v.string(), v.null())),
+    instructions: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const app = await getAppByIdOrThrow(ctx, args.appId);
+    const scope = normalizeBoxScope(args.scope);
+    const sourceBox =
+      (args.sourceBoxId ? await getBoxByBoxId(ctx, args.sourceBoxId) : null) ??
+      (await getBoxByAppId(ctx, args.appId));
+
+    if (sourceBox && sourceBox.appId !== args.appId) {
+      throw new Error(`Source box '${args.sourceBoxId}' does not belong to app '${args.appId}'.`);
+    }
+
+    const engine = sourceBox?.engine ?? "openclaw";
+    const boxId = buildScopedBoxId(engine, args.appId, scope);
+    const existing = await getBoxByBoxId(ctx, boxId);
+    if (existing) {
+      throw new Error(`Box '${boxId}' already exists.`);
+    }
+
+    const now = Date.now();
+    const policy = {
+      ...(sourceBox?.policy ?? {}),
+      role:
+        Object.prototype.hasOwnProperty.call(args, "role")
+          ? (args.role ?? scope)
+          : (sourceBox?.policy?.role ?? scope),
+      instructions:
+        Object.prototype.hasOwnProperty.call(args, "instructions")
+          ? (args.instructions ?? null)
+          : (sourceBox?.policy?.instructions ?? null),
+    };
+
+    return await ctx.db.insert("boxes", {
+      boxId,
+      subjectId: args.appId,
+      subjectKind: sourceBox?.subjectKind ?? "app",
+      appId: app.appId,
+      engine,
+      engineProfileId: sourceBox?.engineProfileId ?? null,
+      providerProfileId: sourceBox?.providerProfileId ?? null,
+      agentId: sourceBox?.agentId ?? null,
+      targetPath: sourceBox?.targetPath ?? sourceBox?.workspacePath ?? null,
+      workspacePath: sourceBox?.workspacePath ?? sourceBox?.targetPath ?? null,
+      sessionId: null,
+      provider: sourceBox?.provider ?? null,
+      model: sourceBox?.model ?? null,
+      status: "ready",
+      policy,
+      lastRunAt: null,
+      lastError: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
+export const deleteBox = mutation({
+  args: {
+    boxId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const box = await getBoxByBoxId(ctx, args.boxId);
+    if (!box) {
+      return;
+    }
+    if (!box.appId) {
+      throw new Error(`Box '${args.boxId}' is not attached to an app.`);
+    }
+
+    const boxes = await getBoxesByAppId(ctx, box.appId);
+    if (boxes.length <= 1) {
+      throw new Error("Cannot delete the last box for an app.");
+    }
+
+    const primaryBox = boxes[0] ?? null;
+    if (primaryBox?._id === box._id) {
+      throw new Error("Cannot delete the primary box. Create another box and promote that behavior instead.");
+    }
+
+    await ctx.db.delete(box._id);
   },
 });
 

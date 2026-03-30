@@ -28,6 +28,8 @@ export type AppConfigRecord = {
   codexThreadId?: string | null;
   openClawSessionId?: string | null;
   box?: BoxRecord | null;
+  boxes?: BoxRecord[];
+  primaryBox?: BoxRecord | null;
   engineProfile?: EngineProfileRecord | null;
   providerProfile?: ProviderProfileRecord | null;
 };
@@ -39,6 +41,9 @@ export type AppRecord = {
   templateSourcePath?: string | null;
   templateSourceMessage?: string | null;
   box?: BoxRecord | null;
+  boxes?: BoxRecord[];
+  primaryBox?: BoxRecord | null;
+  boxCount?: number;
 };
 
 export type BoxRecord = {
@@ -180,8 +185,11 @@ export class ConvexRuntimeClient {
     return await this.client.query(convexApi.listStaleRunningJobs as any, { staleBefore });
   }
 
-  async getAppConfig(appId: string): Promise<AppConfigRecord | null> {
-    return await this.client.query(convexApi.getAppConfig as any, { appId });
+  async getAppConfig(appId: string, boxId?: string | null): Promise<AppConfigRecord | null> {
+    return await this.client.query(convexApi.getAppConfig as any, {
+      appId,
+      boxId: boxId ?? null,
+    });
   }
 
   async listApps(): Promise<AppRecord[]> {
@@ -272,6 +280,31 @@ export class ConvexRuntimeClient {
     await this.client.mutation(convexApi.upsertBox as any, args);
   }
 
+  async createBox(args: {
+    appId: string;
+    scope: string;
+    sourceBoxId?: string | null;
+    role?: string | null;
+    instructions?: string | null;
+  }): Promise<void> {
+    await this.client.mutation(convexApi.createBox as any, args);
+  }
+
+  async deleteBox(args: { boxId: string }): Promise<void> {
+    await this.client.mutation(convexApi.deleteBox as any, args);
+  }
+
+  async updateBoxPolicy(args: {
+    boxId: string;
+    role?: string | null;
+    instructions?: string | null;
+    readOnly?: boolean;
+    proposalOnly?: boolean;
+    canPromote?: boolean;
+  }): Promise<void> {
+    await this.client.mutation(convexApi.updateBoxPolicy as any, args);
+  }
+
   async upsertEngineProfile(args: {
     engineProfileId: string;
     engine: string;
@@ -329,8 +362,11 @@ export class ConvexRuntimeClient {
     }));
   }
 
-  async getShellState(appId: string): Promise<any> {
-    return await this.client.query(convexApi.getShellState as any, { appId });
+  async getShellState(appId: string, boxId?: string | null): Promise<any> {
+    return await this.client.query(convexApi.getShellState as any, {
+      appId,
+      boxId: boxId ?? null,
+    });
   }
 
   async recordReadyVersion(args: {

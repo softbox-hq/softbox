@@ -40,11 +40,21 @@ export type RewriteRequest = {
   currentState: LiveAppState | null;
   codexThreadId?: string | null;
   openClawSessionId?: string | null;
+  boxContext?: {
+    boxId: string;
+    engine: string;
+    role?: string | null;
+    instructions?: string | null;
+    readOnly?: boolean;
+    proposalOnly?: boolean;
+    canPromote?: boolean;
+  } | null;
   primaryTargetFiles?: string[];
 };
 
 export type AgentCliConfig = {
   appId: string;
+  boxId?: string | null;
   command: string;
   model?: string;
   timeoutMs: number;
@@ -116,8 +126,9 @@ function isOpenClawCommand(command: string): boolean {
   return basename(command).toLowerCase().startsWith("openclaw");
 }
 
-export function getCodexThreadKey(config: Pick<AgentCliConfig, "appId" | "projectRoot" | "liveAppRoot">): string {
+export function getCodexThreadKey(config: Pick<AgentCliConfig, "appId" | "boxId" | "projectRoot" | "liveAppRoot">): string {
   return [
+    config.boxId ?? config.appId,
     config.appId,
     config.projectRoot,
     config.liveAppRoot,
@@ -125,7 +136,7 @@ export function getCodexThreadKey(config: Pick<AgentCliConfig, "appId" | "projec
 }
 
 export function buildOpenClawSessionKey(
-  config: Pick<AgentCliConfig, "appId"> & {
+  config: Pick<AgentCliConfig, "appId" | "boxId"> & {
     openClaw: {
       agentId: string;
       sessionKeyPrefix: string;
@@ -134,10 +145,10 @@ export function buildOpenClawSessionKey(
 ): string {
   const agentId = normalizeOpenClawSessionSegment(config.openClaw.agentId);
   const prefix = normalizeOpenClawSessionSegment(config.openClaw.sessionKeyPrefix);
-  const appId = normalizeOpenClawSessionSegment(config.appId);
+  const sessionTarget = normalizeOpenClawSessionSegment(config.boxId ?? config.appId);
   const restSegments = [
     prefix !== agentId ? prefix : null,
-    appId,
+    sessionTarget,
   ].filter((value): value is string => Boolean(value));
   return `agent:${agentId}:${restSegments.join(":")}`;
 }
@@ -329,8 +340,27 @@ export function buildClaudePrompt(request: RewriteRequest): string {
     request.liveAppInstructionsPath ?? `${request.liveAppLabel}/AGENTS.md`;
   const sections = [
     `Read ${instructionsPath} before making changes.`,
-    `User request:\n${request.prompt}`,
   ];
+
+  if (request.boxContext) {
+    const behaviorLines = [
+      `- box_id: ${request.boxContext.boxId}`,
+      `- engine: ${request.boxContext.engine}`,
+      request.boxContext.role ? `- role: ${request.boxContext.role}` : null,
+      request.boxContext.readOnly ? "- read_only: true" : null,
+      request.boxContext.proposalOnly ? "- proposal_only: true" : null,
+      request.boxContext.canPromote ? "- can_promote: true" : null,
+      request.boxContext.instructions
+        ? `- instructions:\n${request.boxContext.instructions}`
+        : null,
+    ].filter((line): line is string => Boolean(line));
+
+    if (behaviorLines.length) {
+      sections.push(`Box context:\n${behaviorLines.join("\n")}`);
+    }
+  }
+
+  sections.push(`User request:\n${request.prompt}`);
 
   if (request.primaryTargetFiles?.length) {
     sections.push(

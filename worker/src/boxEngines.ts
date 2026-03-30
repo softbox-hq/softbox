@@ -53,12 +53,62 @@ export function resolveBoxEngineContext(args: {
   const { config, appId, liveAppRoot, appConfig } = args;
 
   const box = appConfig.box ?? null;
+  if (!box) {
+    return null;
+  }
+  const primaryBoxId = appConfig.primaryBox?.boxId ?? null;
+  const isPrimaryBox = primaryBoxId ? box.boxId === primaryBoxId : true;
+
   const engineProfile = appConfig.engineProfile ?? null;
   const providerProfile = appConfig.providerProfile ?? null;
-  const engine = box?.engine ?? engineProfile?.engine ?? "openclaw";
+  const engine = box.engine ?? engineProfile?.engine ?? "openclaw";
+  const defaultPolicy =
+    engine === "openclaw"
+      ? buildOpenClawBoxPolicy({
+          agentId: config.openClawAgentId ?? null,
+          agentIdPrefix: config.openClawAgentIdPrefix ?? null,
+          sessionKeyPrefix: config.openClawSessionKeyPrefix,
+        })
+      : {};
+  const policy = {
+    ...defaultPolicy,
+    ...(box.policy ?? {}),
+  };
+  const workspacePath =
+    box.workspacePath ??
+    box.targetPath ??
+    liveAppRoot;
+  const targetPath = box.targetPath ?? workspacePath;
+  const model = normalizeOpenClawModelId(
+    providerProfile?.model ?? box.model ?? config.agentModel ?? null,
+  );
+  const context: BoxEngineContext = {
+    boxId: box.boxId,
+    subjectId: box.subjectId ?? appId,
+    subjectKind: box.subjectKind ?? "app",
+    appId: box.appId ?? appId,
+    engine,
+    engineProfileId: box.engineProfileId ?? engineProfile?.engineProfileId ?? null,
+    providerProfileId: box.providerProfileId ?? providerProfile?.providerProfileId ?? null,
+    agentId: box.agentId ?? null,
+    targetPath,
+    workspacePath,
+    sessionId:
+      box.sessionId ??
+      (isPrimaryBox
+        ? (engine === "openclaw" ? appConfig.openClawSessionId : appConfig.codexThreadId)
+        : null) ??
+      null,
+    provider: box.provider ?? providerProfile?.provider ?? inferProviderFromModel(model),
+    model: box.model ?? model,
+    engineProfile,
+    providerProfile,
+    policy,
+    rewriteConfigPatch: {},
+  };
 
   if (engine !== "openclaw") {
-    return null;
+    return context;
   }
 
   const routing = resolveOpenClawRouting({
@@ -68,46 +118,48 @@ export function resolveBoxEngineContext(args: {
   });
 
   if (!routing.baseUrl || !routing.token || (!routing.agentId && !routing.agentIdPrefix)) {
-    return null;
+    return context;
   }
 
   const agentId = buildConfiguredOpenClawAgentId(appId, {
     agentId: routing.agentId ?? null,
     agentIdPrefix: routing.agentIdPrefix ?? null,
   });
-  const policy = {
+  const routedPolicy = {
     ...buildOpenClawBoxPolicy({
       agentId: routing.agentId ?? null,
       agentIdPrefix: routing.agentIdPrefix ?? null,
       sessionKeyPrefix: routing.sessionKeyPrefix ?? config.openClawSessionKeyPrefix,
     }),
-    ...(box?.policy ?? {}),
+    ...(box.policy ?? {}),
   };
-  const workspacePath =
-    (routing.routingMode ?? policy.routingMode) === "per_app"
+  const routedWorkspacePath =
+    box.workspacePath ??
+    box.targetPath ??
+    ((routing.routingMode ?? routedPolicy.routingMode) === "per_app"
       ? liveAppRoot
-      : (routing.routingMode ?? policy.routingMode) === "shared"
+      : (routing.routingMode ?? routedPolicy.routingMode) === "shared"
         ? config.projectRoot
-        : null;
-  const model = normalizeOpenClawModelId(providerProfile?.model ?? box?.model ?? routing.model ?? null);
+        : null);
+  const routedModel = normalizeOpenClawModelId(providerProfile?.model ?? box.model ?? routing.model ?? null);
 
   return {
-    boxId: box?.boxId ?? buildBoxId("openclaw", appId),
-    subjectId: box?.subjectId ?? appId,
-    subjectKind: box?.subjectKind ?? "app",
-    appId: box?.appId ?? appId,
+    boxId: box.boxId ?? buildBoxId("openclaw", appId),
+    subjectId: box.subjectId ?? appId,
+    subjectKind: box.subjectKind ?? "app",
+    appId: box.appId ?? appId,
     engine,
-    engineProfileId: box?.engineProfileId ?? engineProfile?.engineProfileId ?? defaultOpenClawEngineProfileId,
-    providerProfileId: box?.providerProfileId ?? providerProfile?.providerProfileId ?? null,
-    agentId: box?.agentId ?? agentId,
-    targetPath: box?.targetPath ?? workspacePath,
-    workspacePath,
-    sessionId: box?.sessionId ?? appConfig.openClawSessionId ?? null,
-    provider: box?.provider ?? providerProfile?.provider ?? inferProviderFromModel(model),
-    model: box?.model ?? model,
+    engineProfileId: box.engineProfileId ?? engineProfile?.engineProfileId ?? defaultOpenClawEngineProfileId,
+    providerProfileId: box.providerProfileId ?? providerProfile?.providerProfileId ?? null,
+    agentId: box.agentId ?? agentId,
+    targetPath: box.targetPath ?? routedWorkspacePath,
+    workspacePath: routedWorkspacePath,
+    sessionId: box.sessionId ?? (isPrimaryBox ? appConfig.openClawSessionId ?? null : null),
+    provider: box.provider ?? providerProfile?.provider ?? inferProviderFromModel(routedModel),
+    model: box.model ?? routedModel,
     engineProfile,
     providerProfile,
-    policy: box?.policy ?? policy,
+    policy: routedPolicy,
     rewriteConfigPatch: {
       openClaw: {
         baseUrl: routing.baseUrl,

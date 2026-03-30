@@ -1,4 +1,5 @@
 import type { LiveAppState } from "./shared/liveApp";
+import { basename } from "node:path";
 import type { WorkerConfig } from "./config";
 import {
   buildAgentStageStartDetail,
@@ -11,7 +12,6 @@ import { manifestKeyForVersion } from "./artifacts";
 import {
   buildFailedBoxRunUpdate,
   buildSuccessfulBoxRunUpdate,
-  persistBoxEngineSession,
   persistBoxRunUpdate,
   resolveBoxEngineContext,
 } from "./boxEngines";
@@ -175,9 +175,13 @@ export async function processJobById(
   }
 
   const appId = runningJob.appId;
+  const selectedBoxId = runningJob.boxId ?? null;
+  const agentCommandName = basename(config.agentCommand).toLowerCase();
+  const usesCodexThread = agentCommandName.startsWith("codex");
+  const usesOpenClawSession = agentCommandName.startsWith("openclaw");
   const startedAt = Date.now();
   const assertAppStillExists = async () => {
-    const appConfig = await convex.getAppConfig(appId);
+    const appConfig = await convex.getAppConfig(appId, selectedBoxId);
     if (!appConfig) {
       throw new Error(`App '${appId}' was deleted during processing.`);
     }
@@ -194,12 +198,14 @@ export async function processJobById(
   let boxEngineContext: ReturnType<typeof resolveBoxEngineContext> = null;
 
   try {
-    const shellState = await convex.getShellState(appId);
+    const shellState = await convex.getShellState(appId, selectedBoxId);
     if (config.openClawGatewayBaseUrl && config.openClawGatewayToken) {
       await ensureDefaultOpenClawProfiles(convex, config);
     }
     await backfillOpenClawBoxProfiles(convex, config);
     const appConfig = await assertAppStillExists();
+    const selectedPrimaryBoxId = appConfig.primaryBox?.boxId ?? null;
+    const shouldUseMirroredAppSession = !selectedBoxId || selectedBoxId === selectedPrimaryBoxId;
     const templateSource = await inspectWrappedAppSource(config.projectRoot, appConfig.appId);
     await convex.setAppTemplateSourceStatus({
       appId,
@@ -276,6 +282,7 @@ export async function processJobById(
     const rewrite = await rewriteLiveAppFiles(
       {
         appId,
+        boxId: boxEngineContext?.boxId ?? selectedBoxId,
         command: config.agentCommand,
         model: config.agentModel,
         timeoutMs: config.agentTimeoutMs,
@@ -291,8 +298,31 @@ export async function processJobById(
         latestBuildError: shellState?.lastBuildError ?? null,
         latestRuntimeError: shellState?.lastRuntimeError ?? null,
         currentState: parseState(shellState?.currentStateJson ?? null),
-        codexThreadId: appConfig.codexThreadId ?? null,
-        openClawSessionId: appConfig.openClawSessionId ?? null,
+        codexThreadId:
+          usesCodexThread
+            ? (
+                boxEngineContext?.sessionId ??
+                (shouldUseMirroredAppSession ? appConfig.codexThreadId ?? null : null)
+              )
+            : (appConfig.codexThreadId ?? null),
+        openClawSessionId:
+          usesOpenClawSession
+            ? (
+                boxEngineContext?.sessionId ??
+                (shouldUseMirroredAppSession ? appConfig.openClawSessionId ?? null : null)
+              )
+            : (appConfig.openClawSessionId ?? null),
+        boxContext: boxEngineContext
+          ? {
+              boxId: boxEngineContext.boxId,
+              engine: boxEngineContext.engine,
+              role: boxEngineContext.policy.role ?? null,
+              instructions: boxEngineContext.policy.instructions ?? null,
+              readOnly: boxEngineContext.policy.readOnly === true,
+              proposalOnly: boxEngineContext.policy.proposalOnly === true,
+              canPromote: boxEngineContext.policy.canPromote === true,
+            }
+          : null,
         primaryTargetFiles,
       },
     );
@@ -309,7 +339,17 @@ export async function processJobById(
       `agent observation\n${formatAgentObservation(rewrite.observation)}`,
     );
     agentResult = rewrite.details;
-    if (rewrite.codexThreadId !== null && rewrite.codexThreadId !== (appConfig.codexThreadId ?? null)) {
+    const resolvedSessionId = usesOpenClawSession
+      ? (rewrite.openClawSessionId ?? boxEngineContext?.sessionId ?? null)
+      : usesCodexThread
+        ? (rewrite.codexThreadId ?? boxEngineContext?.sessionId ?? null)
+        : null;
+    const isPrimaryBox = !boxEngineContext || boxEngineContext.boxId === selectedPrimaryBoxId;
+    if (
+      rewrite.codexThreadId !== null &&
+      rewrite.codexThreadId !== (appConfig.codexThreadId ?? null) &&
+      isPrimaryBox
+    ) {
       await convex.setAppCodexThread({
         appId,
         threadId: rewrite.codexThreadId,
@@ -317,13 +357,13 @@ export async function processJobById(
     }
     if (
       rewrite.openClawSessionId !== null &&
-      rewrite.openClawSessionId !== (appConfig.openClawSessionId ?? null)
+      rewrite.openClawSessionId !== (appConfig.openClawSessionId ?? null) &&
+      isPrimaryBox
     ) {
-      await persistBoxEngineSession(
-        convex,
-        boxEngineContext,
-        rewrite.openClawSessionId,
-      );
+      await convex.setAppOpenClawSession({
+        appId,
+        sessionId: rewrite.openClawSessionId,
+      });
     }
     if (boxEngineContext) {
       await persistBoxRunUpdate(
@@ -332,7 +372,7 @@ export async function processJobById(
         buildSuccessfulBoxRunUpdate({
           context: boxEngineContext,
           observation: rewrite.observation,
-          sessionId: rewrite.openClawSessionId ?? appConfig.openClawSessionId ?? null,
+          sessionId: resolvedSessionId,
         }),
       );
     }

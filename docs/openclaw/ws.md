@@ -154,7 +154,7 @@ The transport implementation is in `worker/src/agent.ts`.
 
 ## Session Reuse
 
-Softbox uses OpenClaw sessions per app.
+Softbox uses OpenClaw sessions per box.
 
 Two pieces matter:
 
@@ -163,32 +163,123 @@ Two pieces matter:
 Softbox now uses the canonical OpenClaw agent-scoped session-key shape:
 
 ```text
-agent:<agentId>:<prefix-or-app-scope>
+agent:<agentId>:<prefix-or-box-scope>
 ```
 
-For example:
+For the default box on an app:
 
 ```text
 agent:softbox:softbox:test-app
 ```
 
-This matters because arbitrary keys like `softbox:test-app` were rejected by the gateway with an agent/session mismatch error.
+For a secondary box:
+
+```text
+agent:softbox-vite-default:softbox:openclaw-vite-default-critic
+```
+
+This matters because:
+
+- arbitrary keys like `softbox:test-app` were rejected by the gateway with an agent/session mismatch error
+- multiple boxes on the same app need different session keys so they do not collapse into one shared conversation
 
 ### Persisted session id
 
-Softbox persists the OpenClaw `sessionId` per app in Convex as:
+Softbox persists the OpenClaw `sessionId` on the selected box in Convex as:
+
+- `boxes.sessionId`
+
+For the primary/default box, the app record still mirrors the same value in:
 
 - `apps.openClawSessionId`
 
-That id is saved after a successful run and sent back on the next run.
+That mirror exists for backward compatibility with older runtime flows.
 
 Behavior:
 
-- if there is no saved OpenClaw session id, the next run creates one
-- if there is a saved OpenClaw session id, Softbox attempts to reuse it
+- if the selected box has no saved OpenClaw session id, the next run creates one
+- if the selected box has a saved OpenClaw session id, Softbox attempts to reuse it
 - if OpenClaw returns a different session id while resuming, Softbox throws
 
 This matches the same "no silent fallback" rule used for Codex thread reuse.
+
+## Pairing Required
+
+One additional real-world failure showed up after the WS path was already working:
+
+```text
+gateway connect failed: GatewayClientRequestError: pairing required
+Gateway call failed: Error: gateway closed (1008): pairing required
+```
+
+This is a different class of problem from:
+
+- HTTP `/v1/responses` scope failures
+- OpenClaw internal `ws-stream ... falling back to HTTP` warnings
+
+It means the local OpenClaw client/device is not approved for the scopes required by `openclaw gateway call agent`.
+
+### Symptoms
+
+- Softbox pipeline fails in the agent stage with `pairing required`
+- `openclaw devices list` shows a pending request
+- the paired device only has `operator.read`
+- the pending request asks for broader scopes like `operator.write`, `operator.admin`, `operator.approvals`, and `operator.pairing`
+
+Example device-state snapshot:
+
+```text
+Pending (1)
+... scopes: operator.admin, operator.read, operator.write, operator.approvals, operator.pairing
+
+Paired (1)
+... scopes: operator.read
+```
+
+### What Did Not Work Reliably
+
+Using an explicit gateway URL for approval:
+
+```bash
+openclaw devices approve --latest --url ws://127.0.0.1:18789 --token ...
+```
+
+This stayed on the gated gateway path and still failed with `pairing required`.
+
+Also note:
+
+- if the token is pasted incorrectly or split across lines, OpenClaw reports `gateway token mismatch`
+- `openclaw config set gateway.remote.token ...` can still be useful, but it was not sufficient by itself
+
+### What Worked
+
+The local-fallback approval path:
+
+```bash
+openclaw devices approve --latest
+```
+
+OpenClaw fell back to local approval mode and approved the pending request successfully.
+
+After that:
+
+```bash
+openclaw devices list
+```
+
+showed:
+
+- no pending pairing requests
+- the paired device upgraded to the required operator scopes
+
+### Practical Rule
+
+If Softbox fails with `pairing required`:
+
+1. run `openclaw devices list`
+2. if there is a pending request, run `openclaw devices approve --latest`
+3. verify the paired device now has write/admin/operator scopes
+4. retry the Softbox run
 
 ## Pipeline Observation Changes
 

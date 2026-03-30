@@ -34,6 +34,34 @@ describe("buildClaudePrompt", () => {
     expect(prompt).not.toContain("live-app-template/src/");
     expect(prompt).not.toContain("Current editable files");
   });
+
+  it("includes selected box behavior when a box is targeted", () => {
+    const prompt = buildClaudePrompt({
+      prompt: "Who are you?",
+      files: [{ path: "src/App.tsx", content: "export default function App() { return null; }" }],
+      liveAppLabel: "vite-default",
+      liveAppInstructionsPath: "apps/vite-default/AGENTS.md",
+      latestBuildError: null,
+      latestRuntimeError: null,
+      currentState: null,
+      boxContext: {
+        boxId: "openclaw:vite-default:critic",
+        engine: "openclaw",
+        role: "critic",
+        instructions: "Identify yourself as the critic box before doing anything else.",
+        readOnly: true,
+        proposalOnly: true,
+        canPromote: false,
+      },
+      primaryTargetFiles: ["src/App.tsx"],
+    });
+
+    expect(prompt).toContain("box_id: openclaw:vite-default:critic");
+    expect(prompt).toContain("role: critic");
+    expect(prompt).toContain("read_only: true");
+    expect(prompt).toContain("proposal_only: true");
+    expect(prompt).toContain("Identify yourself as the critic box");
+  });
 });
 
 describe("selectLikelyTargetFiles", () => {
@@ -153,6 +181,24 @@ describe("getCodexThreadKey", () => {
       }),
     );
   });
+
+  it("uses the box identity so boxes on the same app do not share a thread", () => {
+    expect(
+      getCodexThreadKey({
+        appId: "vite-default",
+        boxId: "openclaw:vite-default:critic",
+        projectRoot: "/tmp/project",
+        liveAppRoot: "/tmp/project/live-app-template",
+      }),
+    ).not.toBe(
+      getCodexThreadKey({
+        appId: "vite-default",
+        boxId: "openclaw:vite-default:reviewer",
+        projectRoot: "/tmp/project",
+        liveAppRoot: "/tmp/project/live-app-template",
+      }),
+    );
+  });
 });
 
 describe("buildOpenClawSessionKey", () => {
@@ -166,6 +212,19 @@ describe("buildOpenClawSessionKey", () => {
         },
       }),
     ).toBe("agent:softbox:softbox");
+  });
+
+  it("creates a deterministic per-box session key when boxId is provided", () => {
+    expect(
+      buildOpenClawSessionKey({
+        appId: "softbox",
+        boxId: "openclaw:softbox:critic",
+        openClaw: {
+          agentId: "softbox",
+          sessionKeyPrefix: "softbox",
+        },
+      }),
+    ).toBe("agent:softbox:openclaw-softbox-critic");
   });
 });
 

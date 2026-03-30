@@ -35,6 +35,8 @@ function formatTimestamp(timestamp: number | null | undefined) {
 }
 
 function formatBoxSummary(box: {
+  boxId: string;
+  appId?: string | null;
   engine: string;
   engineProfile?: { name: string } | null;
   providerProfile?: { name: string } | null;
@@ -53,6 +55,32 @@ function formatBoxSummary(box: {
   ].filter((value): value is string => Boolean(value));
 
   return parts.join(" · ");
+}
+
+function isPrimaryBox(box: { boxId: string; engine: string; appId?: string | null }) {
+  if (!box.appId) {
+    return false;
+  }
+  return box.boxId === `${box.engine}:${box.appId}`;
+}
+
+function formatBoxLabel(box: {
+  boxId: string;
+  appId?: string | null;
+  policy?: { role?: string | null } | null;
+}) {
+  const explicitRole = box.policy?.role?.trim();
+  if (explicitRole) {
+    return explicitRole;
+  }
+
+  const appId = box.appId?.trim();
+  if (appId && box.boxId.endsWith(`:${appId}`)) {
+    return "default";
+  }
+
+  const segments = box.boxId.split(":");
+  return segments.slice(2).join(":") || segments[segments.length - 1] || box.boxId;
 }
 
 function getRunDuration(run: any) {
@@ -468,9 +496,10 @@ export function App() {
       ? null
       : apps[0]?.appId ?? defaultAppId;
   const selectedApp = appId ? apps.find((app) => app.appId === appId) ?? null : null;
+  const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
   const shellState = useQuery(
     convexApi.getShellState as any,
-    appId ? { appId } : "skip",
+    appId ? { appId, boxId: selectedBoxId ?? null } : "skip",
   ) as any;
   const versions = (useQuery(
     convexApi.listVersions as any,
@@ -478,6 +507,9 @@ export function App() {
   ) as any[]) ?? [];
   const setSelectedAppMutation = useMutation(convexApi.setSelectedApp as any);
   const deleteAppMutation = useMutation(convexApi.deleteApp as any);
+  const createBoxMutation = useMutation(convexApi.createBox as any);
+  const deleteBoxMutation = useMutation(convexApi.deleteBox as any);
+  const updateBoxPolicyMutation = useMutation(convexApi.updateBoxPolicy as any);
   const deletePipelineRunMutation = useMutation(convexApi.deletePipelineRun as any);
   const submitPrompt = useMutation(convexApi.submitPrompt as any);
   const publishStateMutation = useMutation(convexApi.publishState as any);
@@ -496,6 +528,7 @@ export function App() {
   const [switchingAppId, setSwitchingAppId] = useState<string | null>(null);
   const [deletingAppId, setDeletingAppId] = useState<string | null>(null);
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
+  const [boxActionKey, setBoxActionKey] = useState<string | null>(null);
   const [switchingVersionId, setSwitchingVersionId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [selectionMode, setSelectionMode] = useState<SelectionMode | null>(null);
@@ -506,6 +539,19 @@ export function App() {
   const [composerHidden, setComposerHidden] = useState(false);
 
   const runtimeStatus = getRuntimeStatus(shellState);
+  const currentBoxes =
+    (shellState?.boxes as any[] | undefined) ??
+    (selectedApp?.boxes as any[] | undefined) ??
+    (selectedApp?.box ? [selectedApp.box] : []);
+  const primaryBox =
+    shellState?.primaryBox ??
+    selectedApp?.primaryBox ??
+    selectedApp?.box ??
+    currentBoxes[0] ??
+    null;
+  const selectedBox =
+    currentBoxes.find((box: any) => box.boxId === selectedBoxId) ??
+    primaryBox;
   const lastBuildError = shellState?.lastBuildError ?? null;
   const hasActiveVersion = Boolean(shellState?.activeVersion);
   const showEmptyState =
@@ -557,6 +603,7 @@ export function App() {
     latestPipelineRun?.status === "pending" && elapsedSeconds >= 60;
   const inspectMode = selectionMode === "elements";
   const pixelInspectMode = selectionMode === "pixels";
+  const boxIdsSignature = currentBoxes.map((box: any) => box.boxId).join("|");
 
   useEffect(() => {
     if (!appsQuery || apps.length === 0 || shellSelection === undefined) {
@@ -603,7 +650,21 @@ export function App() {
     setSelectedTargets([]);
     setDraftRegion(null);
     setSelectedRegions([]);
+    setSelectedBoxId(null);
   }, [appId]);
+
+  useEffect(() => {
+    if (currentBoxes.length === 0) {
+      if (selectedBoxId !== null) {
+        setSelectedBoxId(null);
+      }
+      return;
+    }
+    if (selectedBoxId && currentBoxes.some((box: any) => box.boxId === selectedBoxId)) {
+      return;
+    }
+    setSelectedBoxId(primaryBox?.boxId ?? currentBoxes[0]?.boxId ?? null);
+  }, [boxIdsSignature, currentBoxes, primaryBox?.boxId, selectedBoxId]);
 
   useEffect(() => {
     if (!showEmptyState) {
@@ -1073,6 +1134,7 @@ export function App() {
                 setDraftRegion(null);
                 await submitPrompt({
                   appId,
+                  boxId: selectedBox?.boxId ?? primaryBox?.boxId ?? null,
                   prompt: buildPromptWithSelectionContext(
                     prompt,
                     selectedTargets,
@@ -1262,6 +1324,26 @@ export function App() {
                   >
                     {selectedApp?.appId ?? appId ?? "No app"}
                   </button>
+
+                  <label className="flex h-7 items-center gap-2 rounded-lg bg-[#1f1f1f] px-2.5 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                    <span>Box</span>
+                    <select
+                      value={selectedBox?.boxId ?? ""}
+                      onChange={(event) => setSelectedBoxId(event.target.value || null)}
+                      disabled={currentBoxes.length === 0 || noMountedApp}
+                      className="h-5 rounded bg-transparent px-1 text-xs font-medium normal-case text-gray-200 outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {currentBoxes.length === 0 ? (
+                        <option value="">No box</option>
+                      ) : (
+                        currentBoxes.map((box: any) => (
+                          <option key={box.boxId} value={box.boxId}>
+                            {formatBoxLabel(box)}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </label>
 
                   <button
                     type="button"
@@ -1516,6 +1598,7 @@ export function App() {
                       const isSwitching = switchingAppId === app.appId;
                       const isDeleting = deletingAppId === app.appId;
                       const appActionPending = Boolean(switchingAppId) || Boolean(deletingAppId);
+                      const appBoxes = (app.boxes as any[] | undefined) ?? (app.box ? [app.box] : []);
 
                       return (
                         <article
@@ -1547,10 +1630,144 @@ export function App() {
                                   ? `Active v${app.activeVersion.versionNumber} · ${app.activeVersion.runtimeHealth}`
                                   : "No active version"}
                               </p>
-                              {app.box ? (
-                                <p className="mt-1 text-xs text-gray-500">
-                                  {formatBoxSummary(app.box)}
-                                </p>
+                              {appBoxes.length > 0 ? (
+                                <div className="mt-3 space-y-2">
+                                  {appBoxes.map((box: any) => {
+                                    const boxBusy = boxActionKey === box.boxId;
+                                    const boxIsPrimary = isPrimaryBox(box);
+                                    return (
+                                      <div
+                                        key={box.boxId}
+                                        className="rounded-xl border border-white/6 bg-black/20 px-3 py-3"
+                                      >
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <span className="text-xs font-semibold text-gray-200">
+                                            {formatBoxLabel(box)}
+                                          </span>
+                                          {boxIsPrimary ? (
+                                            <span className="rounded-md bg-white/6 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                                              Primary
+                                            </span>
+                                          ) : null}
+                                          {isCurrent && selectedBox?.boxId === box.boxId ? (
+                                            <span className="rounded-md bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-300 ring-1 ring-cyan-500/20">
+                                              Selected
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                        <p className="mt-1 text-xs text-gray-500">
+                                          {formatBoxSummary(box)}
+                                        </p>
+                                        {(box.policy?.instructions || box.lastError) ? (
+                                          <p className="mt-2 line-clamp-2 text-xs leading-5 text-gray-500">
+                                            {box.lastError ?? box.policy?.instructions}
+                                          </p>
+                                        ) : null}
+                                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                                          {isCurrent ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => setSelectedBoxId(box.boxId)}
+                                              className="inline-flex h-8 items-center rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-2.5 text-[11px] font-medium text-cyan-200 transition-colors hover:bg-cyan-500/20"
+                                            >
+                                              Use
+                                            </button>
+                                          ) : null}
+                                          <button
+                                            type="button"
+                                            disabled={Boolean(boxActionKey)}
+                                            onClick={async () => {
+                                              const nextRole = window.prompt(
+                                                `Role for ${box.boxId}`,
+                                                box.policy?.role ?? "",
+                                              );
+                                              if (nextRole === null) {
+                                                return;
+                                              }
+                                              const nextInstructions = window.prompt(
+                                                `Instructions for ${box.boxId}`,
+                                                box.policy?.instructions ?? "",
+                                              );
+                                              if (nextInstructions === null) {
+                                                return;
+                                              }
+                                              setBoxActionKey(box.boxId);
+                                              try {
+                                                await updateBoxPolicyMutation({
+                                                  boxId: box.boxId,
+                                                  role: nextRole.trim() || null,
+                                                  instructions: nextInstructions.trim() || null,
+                                                  readOnly: box.policy?.readOnly === true,
+                                                  proposalOnly: box.policy?.proposalOnly === true,
+                                                  canPromote: box.policy?.canPromote === true,
+                                                });
+                                              } finally {
+                                                setBoxActionKey(null);
+                                              }
+                                            }}
+                                            className="inline-flex h-8 items-center rounded-lg border border-white/10 bg-[#1a1a1f] px-2.5 text-[11px] font-medium text-gray-300 transition-colors hover:bg-[#25252b] disabled:cursor-wait disabled:opacity-50"
+                                          >
+                                            {boxBusy ? "Saving..." : "Edit"}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={Boolean(boxActionKey)}
+                                            onClick={async () => {
+                                              const scope = window.prompt(
+                                                `New box scope cloned from ${box.boxId}`,
+                                                "",
+                                              );
+                                              if (!scope) {
+                                                return;
+                                              }
+                                              setBoxActionKey(box.boxId);
+                                              try {
+                                                await createBoxMutation({
+                                                  appId: app.appId,
+                                                  sourceBoxId: box.boxId,
+                                                  scope,
+                                                  role: box.policy?.role ?? null,
+                                                  instructions: box.policy?.instructions ?? null,
+                                                });
+                                              } finally {
+                                                setBoxActionKey(null);
+                                              }
+                                            }}
+                                            className="inline-flex h-8 items-center rounded-lg border border-white/10 bg-[#1a1a1f] px-2.5 text-[11px] font-medium text-gray-300 transition-colors hover:bg-[#25252b] disabled:cursor-wait disabled:opacity-50"
+                                          >
+                                            Clone
+                                          </button>
+                                          {!boxIsPrimary ? (
+                                            <button
+                                              type="button"
+                                              disabled={Boolean(boxActionKey)}
+                                              onClick={async () => {
+                                                const confirmed = window.confirm(
+                                                  `Delete box '${box.boxId}'?`,
+                                                );
+                                                if (!confirmed) {
+                                                  return;
+                                                }
+                                                setBoxActionKey(box.boxId);
+                                                try {
+                                                  await deleteBoxMutation({ boxId: box.boxId });
+                                                  if (selectedBoxId === box.boxId) {
+                                                    setSelectedBoxId(app.primaryBox?.boxId ?? null);
+                                                  }
+                                                } finally {
+                                                  setBoxActionKey(null);
+                                                }
+                                              }}
+                                              className="inline-flex h-8 items-center rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 text-[11px] font-medium text-rose-200 transition-colors hover:bg-rose-500/20 disabled:cursor-wait disabled:opacity-50"
+                                            >
+                                              Delete box
+                                            </button>
+                                          ) : null}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               ) : null}
                               {app.lastBuildError ? (
                                 <p className="mt-3 line-clamp-2 text-sm leading-6 text-rose-200/80">
@@ -1569,6 +1786,35 @@ export function App() {
                             </div>
 
                             <div className="shrink-0">
+                              <div className="mb-2 flex justify-end">
+                                <button
+                                  type="button"
+                                  disabled={Boolean(boxActionKey)}
+                                  onClick={async () => {
+                                    const scope = window.prompt(`New box scope for ${app.appId}`, "");
+                                    if (!scope) {
+                                      return;
+                                    }
+                                    const role = window.prompt("Role (optional)", scope) ?? null;
+                                    const instructions = window.prompt("Instructions (optional)", "") ?? null;
+                                    setBoxActionKey(`create:${app.appId}`);
+                                    try {
+                                      await createBoxMutation({
+                                        appId: app.appId,
+                                        sourceBoxId: app.primaryBox?.boxId ?? app.box?.boxId ?? null,
+                                        scope,
+                                        role: role?.trim() || null,
+                                        instructions: instructions?.trim() || null,
+                                      });
+                                    } finally {
+                                      setBoxActionKey(null);
+                                    }
+                                  }}
+                                  className="inline-flex h-8 items-center rounded-lg border border-white/10 bg-[#1a1a1f] px-2.5 text-[11px] font-medium text-gray-300 transition-colors hover:bg-[#25252b] disabled:cursor-wait disabled:opacity-50"
+                                >
+                                  New box
+                                </button>
+                              </div>
                               {isCurrent ? (
                                 <div className="flex items-center gap-2">
                                   <span className="inline-flex h-9 items-center rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 text-xs font-medium text-cyan-300">
