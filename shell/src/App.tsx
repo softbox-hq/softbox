@@ -83,6 +83,12 @@ function formatBoxLabel(box: {
   return segments.slice(2).join(":") || segments[segments.length - 1] || box.boxId;
 }
 
+function toggleStringSelection(values: string[], value: string) {
+  return values.includes(value)
+    ? values.filter((current) => current !== value)
+    : [...values, value];
+}
+
 function getRunDuration(run: any) {
   if (run.completedAt && run.submittedAt) {
     return run.completedAt - run.submittedAt;
@@ -497,6 +503,7 @@ export function App() {
       : apps[0]?.appId ?? defaultAppId;
   const selectedApp = appId ? apps.find((app) => app.appId === appId) ?? null : null;
   const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
+  const [selectedTargetBoxIds, setSelectedTargetBoxIds] = useState<string[]>([]);
   const shellState = useQuery(
     convexApi.getShellState as any,
     appId ? { appId, boxId: selectedBoxId ?? null } : "skip",
@@ -552,6 +559,18 @@ export function App() {
   const selectedBox =
     currentBoxes.find((box: any) => box.boxId === selectedBoxId) ??
     primaryBox;
+  const promptTargetBoxIds = Array.from(
+    new Set(
+      (selectedTargetBoxIds.length > 0
+        ? selectedTargetBoxIds
+        : [selectedBox?.boxId ?? primaryBox?.boxId ?? null]
+      ).filter(
+        (boxId): boxId is string =>
+          typeof boxId === "string" &&
+          currentBoxes.some((box: any) => box.boxId === boxId),
+      ),
+    ),
+  );
   const lastBuildError = shellState?.lastBuildError ?? null;
   const hasActiveVersion = Boolean(shellState?.activeVersion);
   const showEmptyState =
@@ -651,6 +670,7 @@ export function App() {
     setDraftRegion(null);
     setSelectedRegions([]);
     setSelectedBoxId(null);
+    setSelectedTargetBoxIds([]);
   }, [appId]);
 
   useEffect(() => {
@@ -658,13 +678,48 @@ export function App() {
       if (selectedBoxId !== null) {
         setSelectedBoxId(null);
       }
+      if (selectedTargetBoxIds.length > 0) {
+        setSelectedTargetBoxIds([]);
+      }
       return;
     }
     if (selectedBoxId && currentBoxes.some((box: any) => box.boxId === selectedBoxId)) {
       return;
     }
     setSelectedBoxId(primaryBox?.boxId ?? currentBoxes[0]?.boxId ?? null);
-  }, [boxIdsSignature, currentBoxes, primaryBox?.boxId, selectedBoxId]);
+  }, [boxIdsSignature, currentBoxes, primaryBox?.boxId, selectedBoxId, selectedTargetBoxIds.length]);
+
+  useEffect(() => {
+    const validTargetBoxIds = selectedTargetBoxIds.filter((boxId) =>
+      currentBoxes.some((box: any) => box.boxId === boxId),
+    );
+    const defaultTargetBoxId = selectedBox?.boxId ?? primaryBox?.boxId ?? null;
+
+    if (validTargetBoxIds.length === 0) {
+      if (defaultTargetBoxId) {
+        setSelectedTargetBoxIds([defaultTargetBoxId]);
+      } else if (selectedTargetBoxIds.length > 0) {
+        setSelectedTargetBoxIds([]);
+      }
+      return;
+    }
+
+    if (
+      validTargetBoxIds.length !== selectedTargetBoxIds.length ||
+      validTargetBoxIds.some((boxId, index) => boxId !== selectedTargetBoxIds[index])
+    ) {
+      setSelectedTargetBoxIds(validTargetBoxIds);
+    }
+  }, [boxIdsSignature, currentBoxes, primaryBox?.boxId, selectedBox?.boxId, selectedTargetBoxIds]);
+
+  useEffect(() => {
+    if (!selectedBox?.boxId) {
+      return;
+    }
+    if (selectedTargetBoxIds.length === 1 && selectedTargetBoxIds[0] !== selectedBox.boxId) {
+      setSelectedTargetBoxIds([selectedBox.boxId]);
+    }
+  }, [selectedBox?.boxId, selectedTargetBoxIds]);
 
   useEffect(() => {
     if (!showEmptyState) {
@@ -1132,15 +1187,27 @@ export function App() {
                 setSelectionMode(null);
                 setHoveredTarget(null);
                 setDraftRegion(null);
-                await submitPrompt({
-                  appId,
-                  boxId: selectedBox?.boxId ?? primaryBox?.boxId ?? null,
-                  prompt: buildPromptWithSelectionContext(
-                    prompt,
-                    selectedTargets,
-                    selectedRegions,
+                const promptWithContext = buildPromptWithSelectionContext(
+                  prompt,
+                  selectedTargets,
+                  selectedRegions,
+                );
+                const targetBoxIds =
+                  promptTargetBoxIds.length > 0
+                    ? promptTargetBoxIds
+                    : [selectedBox?.boxId ?? primaryBox?.boxId ?? null].filter(
+                        (boxId): boxId is string => typeof boxId === "string" && boxId.length > 0,
+                      );
+
+                await Promise.all(
+                  (targetBoxIds.length > 0 ? targetBoxIds : [null]).map((boxId) =>
+                    submitPrompt({
+                      appId,
+                      boxId,
+                      prompt: promptWithContext,
+                    }),
                   ),
-                });
+                );
                 startTransition(() => setPrompt(""));
                 setSelectedTargets([]);
                 setSelectedRegions([]);
@@ -1344,6 +1411,40 @@ export function App() {
                       )}
                     </select>
                   </label>
+
+                  <div className="flex min-h-7 items-center gap-1.5 rounded-lg bg-[#1f1f1f] px-2 py-1">
+                    <span className="px-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                      Send
+                    </span>
+                    {currentBoxes.length > 0 ? (
+                      currentBoxes.map((box: any) => {
+                        const targeted = promptTargetBoxIds.includes(box.boxId);
+                        return (
+                          <button
+                            key={box.boxId}
+                            type="button"
+                            disabled={noMountedApp}
+                            onClick={() =>
+                              setSelectedTargetBoxIds((current) => {
+                                const next = toggleStringSelection(current, box.boxId);
+                                return next.length > 0 ? next : [box.boxId];
+                              })
+                            }
+                            className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                              targeted
+                                ? "bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500/25"
+                                : "bg-black/20 text-gray-400 hover:bg-[#2a2a2a] hover:text-gray-300"
+                            }`}
+                            title={box.boxId}
+                          >
+                            {formatBoxLabel(box)}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <span className="px-1 text-[11px] text-gray-500">No box</span>
+                    )}
+                  </div>
 
                   <button
                     type="button"
@@ -1652,6 +1753,11 @@ export function App() {
                                           {isCurrent && selectedBox?.boxId === box.boxId ? (
                                             <span className="rounded-md bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-300 ring-1 ring-cyan-500/20">
                                               Selected
+                                            </span>
+                                          ) : null}
+                                          {isCurrent && promptTargetBoxIds.includes(box.boxId) ? (
+                                            <span className="rounded-md bg-fuchsia-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-fuchsia-300 ring-1 ring-fuchsia-500/20">
+                                              Targeted
                                             </span>
                                           ) : null}
                                         </div>
