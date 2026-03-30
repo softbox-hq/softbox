@@ -21,9 +21,9 @@
     margin: 0;
     min-height: 100vh;
     background:
-      radial-gradient(ellipse 80% 50% at 20% -10%, rgba(6, 182, 212, 0.08), transparent),
-      radial-gradient(ellipse 60% 40% at 80% 100%, rgba(20, 184, 166, 0.06), transparent),
-      #020617;
+      radial-gradient(ellipse 80% 50% at 20% -10%, rgba(255, 255, 255, 0.04), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, rgba(255, 255, 255, 0.025), transparent),
+      #000000;
     color: #e2e8f0;
     font-family: var(--font-sans);
   }

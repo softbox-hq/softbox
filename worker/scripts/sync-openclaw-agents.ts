@@ -1,10 +1,10 @@
 import "../src/loadEnv";
 import { resolve } from "node:path";
+import { buildBoxId, inferProviderFromModel } from "../src/boxes";
 import { loadWorkerConfig } from "../src/config";
 import { ConvexRuntimeClient } from "../src/convex";
 import {
   buildConfiguredOpenClawAgentId,
-  buildOpenClawBoxId,
   buildOpenClawBoxPolicy,
   createOpenClawAgent,
   deleteOpenClawAgent,
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
       agentId: config.openClawAgentId ?? null,
     });
     const expectedWorkspace = resolve(app.root);
-    const boxId = buildOpenClawBoxId(app.appId);
+    const boxId = buildBoxId("openclaw", app.appId);
     const boxPolicy = buildOpenClawBoxPolicy({
       agentIdPrefix: config.openClawAgentIdPrefix,
       agentId: config.openClawAgentId ?? null,
@@ -100,12 +100,17 @@ async function main(): Promise<void> {
           sessionId: null,
         });
         if (canPersistBox) {
-          await convex.upsertOpenClawBox({
+          await convex.upsertBox({
             boxId,
+            subjectId: app.appId,
+            subjectKind: "app",
             appId: app.appId,
+            engine: "openclaw",
             agentId,
+            targetPath: expectedWorkspace,
             workspacePath: expectedWorkspace,
             sessionId: null,
+            provider: inferProviderFromModel(expectedModel),
             model: expectedModel,
             status: "ready",
             policy: boxPolicy,
@@ -118,12 +123,17 @@ async function main(): Promise<void> {
         );
       } else {
         if (apply && canPersistBox) {
-          await convex.upsertOpenClawBox({
+          await convex.upsertBox({
             boxId,
+            subjectId: app.appId,
+            subjectKind: "app",
             appId: app.appId,
+            engine: "openclaw",
             agentId,
+            targetPath: expectedWorkspace,
             workspacePath: expectedWorkspace,
             sessionId: appConfig?.openClawSessionId ?? null,
+            provider: inferProviderFromModel(expectedModel ?? existingAgent.model ?? null),
             model: expectedModel ?? existingAgent.model ?? null,
             status: "ready",
             policy: boxPolicy,
@@ -154,12 +164,17 @@ async function main(): Promise<void> {
       sessionId: null,
     });
     if (canPersistBox) {
-      await convex.upsertOpenClawBox({
+      await convex.upsertBox({
         boxId,
+        subjectId: app.appId,
+        subjectKind: "app",
         appId: app.appId,
+        engine: "openclaw",
         agentId,
+        targetPath: expectedWorkspace,
         workspacePath: expectedWorkspace,
         sessionId: null,
+        provider: inferProviderFromModel(expectedModel),
         model: expectedModel,
         status: "ready",
         policy: boxPolicy,

@@ -1528,7 +1528,7 @@ export function App() {
                               </p>
                               {app.box ? (
                                 <p className="mt-1 text-xs text-gray-500">
-                                  {`Box ${app.box.agentId} · ${app.box.status} · ${app.box.model ?? "default"}${
+                                  {`Box ${app.box.engine}${app.box.agentId ? ` · ${app.box.agentId}` : ""} · ${app.box.status} · ${app.box.model ?? "default"}${
                                     app.box.lastRunAt ? ` · ${formatTimestamp(app.box.lastRunAt)}` : ""
                                   }`}
                                 </p>

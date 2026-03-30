@@ -8,15 +8,16 @@ import {
   selectLikelyTargetFiles,
 } from "./agent";
 import { manifestKeyForVersion } from "./artifacts";
+import {
+  buildFailedBoxRunUpdate,
+  buildSuccessfulBoxRunUpdate,
+  persistBoxEngineSession,
+  persistBoxRunUpdate,
+  resolveBoxEngineContext,
+} from "./boxEngines";
 import { LiveAppBundler } from "./build";
 import { ConvexRuntimeClient } from "./convex";
 import { readLiveAppFiles } from "./filesystem";
-import { buildConfiguredOpenClawAgentId } from "./openClawAgents";
-import {
-  buildOpenClawBoxId,
-  buildOpenClawBoxPolicy,
-  normalizeOpenClawModelId,
-} from "./openClawAgents";
 import { liveAppStateSchema } from "./shared/liveApp";
 import { R2Uploader } from "./r2";
 import {
@@ -189,10 +190,7 @@ export async function processJobById(
         notes?: string;
       }
     | undefined;
-  let openClawBoxId: string | null = null;
-  let openClawAgentId: string | null = null;
-  let openClawWorkspacePath: string | null = null;
-  let openClawBoxPolicy: ReturnType<typeof buildOpenClawBoxPolicy> | null = null;
+  let boxEngineContext: ReturnType<typeof resolveBoxEngineContext> = null;
 
   try {
     const shellState = await convex.getShellState(appId);
@@ -214,30 +212,12 @@ export async function processJobById(
     const liveAppLabel = getWrappedAppLabel(appConfig.appId, config.projectRoot);
     const currentFiles = await readLiveAppFiles(liveAppRoot);
     const sourceBytes = countSourceBytes(currentFiles);
-    openClawAgentId =
-      config.openClawGatewayBaseUrl &&
-      config.openClawGatewayToken &&
-      (config.openClawAgentId || config.openClawAgentIdPrefix)
-        ? buildConfiguredOpenClawAgentId(appId, {
-            agentId: config.openClawAgentId ?? null,
-            agentIdPrefix: config.openClawAgentIdPrefix ?? null,
-          })
-        : null;
-    openClawBoxPolicy =
-      openClawAgentId !== null
-        ? buildOpenClawBoxPolicy({
-            agentId: config.openClawAgentId ?? null,
-            agentIdPrefix: config.openClawAgentIdPrefix ?? null,
-            sessionKeyPrefix: config.openClawSessionKeyPrefix,
-          })
-        : null;
-    openClawWorkspacePath =
-      openClawBoxPolicy?.routingMode === "per_app"
-        ? liveAppRoot
-        : openClawBoxPolicy?.routingMode === "shared"
-          ? config.projectRoot
-          : null;
-    openClawBoxId = openClawAgentId !== null ? buildOpenClawBoxId(appId) : null;
+    boxEngineContext = resolveBoxEngineContext({
+      config,
+      appId,
+      liveAppRoot,
+      appConfig,
+    });
     const primaryTargetFiles = selectLikelyTargetFiles(
       runningJob.prompt,
       currentFiles,
@@ -260,25 +240,11 @@ export async function processJobById(
       runningJob._id,
       `agent targets: ${primaryTargetFiles.join(", ") || "none inferred"}`,
     );
-    if (
-      openClawBoxId &&
-      openClawAgentId &&
-      openClawWorkspacePath &&
-      openClawBoxPolicy
-    ) {
-      await convex.upsertOpenClawBox({
-        boxId: openClawBoxId,
-        appId,
-        agentId: openClawAgentId,
-        workspacePath: openClawWorkspacePath,
-        sessionId: appConfig.openClawSessionId ?? null,
-        model: normalizeOpenClawModelId(config.agentModel ?? null),
-        status: "running",
-        policy: openClawBoxPolicy,
-        lastRunAt: Date.now(),
-        lastError: null,
-      });
-    }
+    await persistBoxRunUpdate(convex, boxEngineContext, {
+      status: "running",
+      lastRunAt: Date.now(),
+      lastError: null,
+    });
 
     if (runningJob.pipelineRunId) {
       await convex.recordPipelineStage({
@@ -289,7 +255,7 @@ export async function processJobById(
         detail: buildAgentStageStartDetail({
           command: config.agentCommand,
           model: config.agentModel,
-          agentId: openClawAgentId,
+          agentId: boxEngineContext?.agentId ?? null,
           timeoutMs: config.agentTimeoutMs,
           requestChars: runningJob.prompt.trim().length,
           editableFiles: currentFiles.length,
@@ -311,18 +277,7 @@ export async function processJobById(
         projectRoot: config.projectRoot,
         liveAppRoot,
         liveAppLabel,
-        openClaw:
-          config.openClawGatewayBaseUrl &&
-          config.openClawGatewayToken &&
-          (config.openClawAgentId || config.openClawAgentIdPrefix)
-            ? {
-                baseUrl: config.openClawGatewayBaseUrl,
-                token: config.openClawGatewayToken,
-                agentId: config.openClawAgentId ?? null,
-                agentIdPrefix: config.openClawAgentIdPrefix ?? null,
-                sessionKeyPrefix: config.openClawSessionKeyPrefix,
-              }
-            : undefined,
+        ...boxEngineContext?.rewriteConfigPatch,
       },
       {
         prompt: runningJob.prompt,
@@ -359,29 +314,22 @@ export async function processJobById(
       rewrite.openClawSessionId !== null &&
       rewrite.openClawSessionId !== (appConfig.openClawSessionId ?? null)
     ) {
-      await convex.setAppOpenClawSession({
-        appId,
-        sessionId: rewrite.openClawSessionId,
-      });
+      await persistBoxEngineSession(
+        convex,
+        boxEngineContext,
+        rewrite.openClawSessionId,
+      );
     }
-    if (
-      openClawBoxId &&
-      rewrite.observation.agentId &&
-      openClawWorkspacePath &&
-      openClawBoxPolicy
-    ) {
-      await convex.upsertOpenClawBox({
-        boxId: openClawBoxId,
-        appId,
-        agentId: rewrite.observation.agentId,
-        workspacePath: openClawWorkspacePath,
-        sessionId: rewrite.openClawSessionId ?? appConfig.openClawSessionId ?? null,
-        model: normalizeOpenClawModelId(rewrite.observation.model),
-        status: "ready",
-        policy: openClawBoxPolicy,
-        lastRunAt: Date.now(),
-        lastError: null,
-      });
+    if (boxEngineContext) {
+      await persistBoxRunUpdate(
+        convex,
+        boxEngineContext,
+        buildSuccessfulBoxRunUpdate({
+          context: boxEngineContext,
+          observation: rewrite.observation,
+          sessionId: rewrite.openClawSessionId ?? appConfig.openClawSessionId ?? null,
+        }),
+      );
     }
     if (runningJob.pipelineRunId) {
       await convex.recordPipelineStage({
@@ -488,25 +436,12 @@ export async function processJobById(
     const message = error instanceof Error ? error.stack ?? error.message : String(error);
     logJob(runningJob._id, `failed after ${Date.now() - startedAt}ms`);
     console.error(message);
-    if (
-      openClawBoxId &&
-      openClawAgentId &&
-      openClawWorkspacePath &&
-      openClawBoxPolicy
-    ) {
-      await convex
-        .upsertOpenClawBox({
-          boxId: openClawBoxId,
-          appId,
-          agentId: openClawAgentId,
-          workspacePath: openClawWorkspacePath,
-          model: normalizeOpenClawModelId(config.agentModel ?? null),
-          status: "error",
-          policy: openClawBoxPolicy,
-          lastRunAt: Date.now(),
-          lastError: message,
-        })
-        .catch(() => undefined);
+    if (boxEngineContext) {
+      await persistBoxRunUpdate(
+        convex,
+        boxEngineContext,
+        buildFailedBoxRunUpdate(boxEngineContext, message),
+      ).catch(() => undefined);
     }
     if (runningJob.pipelineRunId) {
       for (const key of ["agent", "build", "upload", "publish"] as const) {

@@ -1,16 +1,10 @@
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
+import type { BoxPolicy } from "./boxes";
 
 export type OpenClawRoutingConfig = {
   agentId?: string | null;
   agentIdPrefix?: string | null;
-  sessionKeyPrefix: string;
-};
-
-export type OpenClawBoxPolicy = {
-  transport: "ws_gateway";
-  routingMode: "shared" | "per_app";
-  workspaceIsolation: "repo_root" | "app_root";
   sessionKeyPrefix: string;
 };
 
@@ -63,10 +57,6 @@ export function buildConfiguredOpenClawAgentId(
   );
 }
 
-export function buildOpenClawBoxId(appId: string): string {
-  return `openclaw:${appId}`;
-}
-
 export function normalizeOpenClawModelId(model: string | null | undefined): string | null {
   const normalized = readTrimmed(model);
   if (!normalized) {
@@ -81,7 +71,7 @@ export function normalizeOpenClawModelId(model: string | null | undefined): stri
   return normalized;
 }
 
-export function buildOpenClawBoxPolicy(config: OpenClawRoutingConfig): OpenClawBoxPolicy {
+export function buildOpenClawBoxPolicy(config: OpenClawRoutingConfig): BoxPolicy {
   const routingMode = isPerAppOpenClawRouting(config) ? "per_app" : "shared";
   return {
     transport: "ws_gateway",
@@ -179,7 +169,7 @@ export async function listOpenClawAgents(args: {
     "agents",
     "list",
     "--json",
-  ]);
+  ], 30_000);
   const parsed = JSON.parse(result.stdout) as unknown;
   if (!Array.isArray(parsed)) {
     throw new Error("OpenClaw agents list returned invalid JSON.");

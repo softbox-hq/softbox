@@ -21,10 +21,15 @@ const boxStatus = v.union(
 );
 
 const boxPolicy = v.object({
-  transport: v.literal("ws_gateway"),
-  routingMode: v.union(v.literal("shared"), v.literal("per_app")),
-  workspaceIsolation: v.union(v.literal("repo_root"), v.literal("app_root")),
-  sessionKeyPrefix: v.string(),
+  transport: v.optional(v.string()),
+  routingMode: v.optional(v.string()),
+  workspaceIsolation: v.optional(v.string()),
+  sessionKeyPrefix: v.optional(v.string()),
+  role: v.optional(v.union(v.string(), v.null())),
+  instructions: v.optional(v.union(v.string(), v.null())),
+  readOnly: v.optional(v.boolean()),
+  proposalOnly: v.optional(v.boolean()),
+  canPromote: v.optional(v.boolean()),
 });
 
 const templateSourceStatus = v.union(
@@ -53,11 +58,15 @@ export default defineSchema({
   }).index("by_appId", ["appId"]),
   boxes: defineTable({
     boxId: v.string(),
-    appId: v.string(),
-    provider: v.literal("openclaw"),
-    agentId: v.string(),
-    workspacePath: v.string(),
+    subjectId: v.optional(v.string()),
+    subjectKind: v.optional(v.string()),
+    appId: v.union(v.string(), v.null()),
+    engine: v.optional(v.string()),
+    agentId: v.union(v.string(), v.null()),
+    targetPath: v.optional(v.union(v.string(), v.null())),
+    workspacePath: v.union(v.string(), v.null()),
     sessionId: v.union(v.string(), v.null()),
+    provider: v.union(v.string(), v.null()),
     model: v.union(v.string(), v.null()),
     status: boxStatus,
     policy: boxPolicy,
@@ -67,7 +76,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_boxId", ["boxId"])
-    .index("by_appId", ["appId"]),
+    .index("by_appId", ["appId"])
+    .index("by_subjectId", ["subjectId"]),
   shellSelections: defineTable({
     shellId: v.string(),
     selectedAppId: v.union(v.string(), v.null()),

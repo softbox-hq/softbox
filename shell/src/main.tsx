@@ -15,7 +15,7 @@ if (!convexUrl) {
           minHeight: "100vh",
           display: "grid",
           placeItems: "center",
-          background: "#0f172a",
+          background: "#000000",
           color: "#e2e8f0",
           fontFamily:
             'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -28,7 +28,7 @@ if (!convexUrl) {
             width: "100%",
             borderRadius: "16px",
             padding: "24px",
-            background: "rgba(15, 23, 42, 0.92)",
+            background: "rgba(10, 10, 10, 0.92)",
             border: "1px solid rgba(148, 163, 184, 0.18)",
           }}
         >

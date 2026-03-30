@@ -17,7 +17,7 @@ export const convexApi = {
   getAppConfig: "apps:getAppConfig",
   setAppCodexThread: "apps:setAppCodexThread",
   setAppOpenClawSession: "apps:setAppOpenClawSession",
-  upsertOpenClawBox: "apps:upsertOpenClawBox",
+  upsertBox: "apps:upsertBox",
   setAppTemplateSourceStatus: "apps:setAppTemplateSourceStatus",
   getShellState: "apps:getShellState",
   listVersions: "apps:listVersions",

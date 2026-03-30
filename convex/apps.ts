@@ -23,10 +23,15 @@ const boxStatus = v.union(
 );
 
 const boxPolicy = v.object({
-  transport: v.literal("ws_gateway"),
-  routingMode: v.union(v.literal("shared"), v.literal("per_app")),
-  workspaceIsolation: v.union(v.literal("repo_root"), v.literal("app_root")),
-  sessionKeyPrefix: v.string(),
+  transport: v.optional(v.string()),
+  routingMode: v.optional(v.string()),
+  workspaceIsolation: v.optional(v.string()),
+  sessionKeyPrefix: v.optional(v.string()),
+  role: v.optional(v.union(v.string(), v.null())),
+  instructions: v.optional(v.union(v.string(), v.null())),
+  readOnly: v.optional(v.boolean()),
+  proposalOnly: v.optional(v.boolean()),
+  canPromote: v.optional(v.boolean()),
 });
 
 const templateSourceStatus = v.union(
@@ -170,6 +175,32 @@ async function getBoxByBoxId(ctx: any, boxId: string) {
     .query("boxes")
     .withIndex("by_boxId", (q: any) => q.eq("boxId", boxId))
     .first();
+}
+
+function serializeBox(box: any) {
+  if (!box) {
+    return null;
+  }
+
+  return {
+    boxId: box.boxId,
+    subjectId: box.subjectId ?? box.appId,
+    subjectKind: box.subjectKind ?? "app",
+    appId: box.appId ?? null,
+    engine: box.engine ?? box.provider ?? "openclaw",
+    agentId: box.agentId ?? null,
+    targetPath: box.targetPath ?? box.workspacePath ?? null,
+    workspacePath: box.workspacePath ?? box.targetPath ?? null,
+    sessionId: box.sessionId ?? null,
+    provider: box.provider ?? null,
+    model: box.model ?? null,
+    status: box.status,
+    policy: box.policy ?? {},
+    lastRunAt: box.lastRunAt ?? null,
+    lastError: box.lastError ?? null,
+    createdAt: box.createdAt,
+    updatedAt: box.updatedAt,
+  };
 }
 
 type LegacyAppIdMigrationCounts = {
@@ -620,24 +651,7 @@ export const getShellState = query({
     return {
       appId: app.appId,
       name: app.name,
-      box:
-        box
-          ? {
-              boxId: box.boxId,
-              appId: box.appId,
-              provider: box.provider,
-              agentId: box.agentId,
-              workspacePath: box.workspacePath,
-              sessionId: box.sessionId ?? null,
-              model: box.model ?? null,
-              status: box.status,
-              policy: box.policy,
-              lastRunAt: box.lastRunAt ?? null,
-              lastError: box.lastError ?? null,
-              createdAt: box.createdAt,
-              updatedAt: box.updatedAt,
-            }
-          : null,
+      box: serializeBox(box),
       templateSourceStatus: app.templateSourceStatus ?? "unknown",
       templateSourcePath: app.templateSourcePath ?? null,
       templateSourceMessage: app.templateSourceMessage ?? null,
@@ -922,24 +936,7 @@ export const listApps = query({
         return {
           appId: app.appId,
           name: app.name,
-          box:
-            box
-              ? {
-                  boxId: box.boxId,
-                  appId: box.appId,
-                  provider: box.provider,
-                  agentId: box.agentId,
-                  workspacePath: box.workspacePath,
-                  sessionId: box.sessionId ?? null,
-                  model: box.model ?? null,
-                  status: box.status,
-                  policy: box.policy,
-                  lastRunAt: box.lastRunAt ?? null,
-                  lastError: box.lastError ?? null,
-                  createdAt: box.createdAt,
-                  updatedAt: box.updatedAt,
-                }
-              : null,
+          box: serializeBox(box),
           templateSourceStatus: app.templateSourceStatus ?? "unknown",
           templateSourcePath: app.templateSourcePath ?? null,
           templateSourceMessage: app.templateSourceMessage ?? null,
@@ -968,7 +965,10 @@ export const listBoxes = query({
   args: {},
   handler: async (ctx) => {
     const boxes = await ctx.db.query("boxes").collect();
-    return boxes.sort((left: any, right: any) => left.boxId.localeCompare(right.boxId));
+    return boxes
+      .map((box: any) => serializeBox(box))
+      .filter((box): box is NonNullable<ReturnType<typeof serializeBox>> => Boolean(box))
+      .sort((left, right) => left.boxId.localeCompare(right.boxId));
   },
 });
 
@@ -1422,13 +1422,18 @@ export const setAppOpenClawSession = mutation({
   },
 });
 
-export const upsertOpenClawBox = mutation({
+export const upsertBox = mutation({
   args: {
     boxId: v.string(),
-    appId: v.string(),
-    agentId: v.string(),
-    workspacePath: v.string(),
+    subjectId: v.string(),
+    subjectKind: v.string(),
+    appId: v.optional(v.union(v.string(), v.null())),
+    engine: v.string(),
+    agentId: v.optional(v.union(v.string(), v.null())),
+    targetPath: v.optional(v.union(v.string(), v.null())),
+    workspacePath: v.optional(v.union(v.string(), v.null())),
     sessionId: v.optional(v.union(v.string(), v.null())),
+    provider: v.optional(v.union(v.string(), v.null())),
     model: v.union(v.string(), v.null()),
     status: boxStatus,
     policy: boxPolicy,
@@ -1436,21 +1441,32 @@ export const upsertOpenClawBox = mutation({
     lastError: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
-    const app = await getAppById(ctx, args.appId);
-    if (!app) {
-      throw new Error(`Cannot upsert OpenClaw box for unknown app '${args.appId}'.`);
+    const normalizedAppId = args.appId ?? null;
+    if (normalizedAppId) {
+      const app = await getAppById(ctx, normalizedAppId);
+      if (!app) {
+        throw new Error(`Cannot upsert box for unknown app '${normalizedAppId}'.`);
+      }
     }
 
     const now = Date.now();
     const existing =
       (await getBoxByBoxId(ctx, args.boxId)) ??
-      (await getBoxByAppId(ctx, args.appId));
+      (normalizedAppId ? await getBoxByAppId(ctx, normalizedAppId) : null);
+    const targetPath =
+      args.targetPath ??
+      args.workspacePath ??
+      null;
     const patch: Record<string, unknown> = {
       boxId: args.boxId,
-      appId: args.appId,
-      provider: "openclaw",
-      agentId: args.agentId,
-      workspacePath: args.workspacePath,
+      subjectId: args.subjectId,
+      subjectKind: args.subjectKind,
+      appId: normalizedAppId,
+      engine: args.engine,
+      agentId: args.agentId ?? null,
+      targetPath,
+      workspacePath: args.workspacePath ?? targetPath,
+      provider: args.provider ?? null,
       model: args.model,
       status: args.status,
       policy: args.policy,
@@ -1473,14 +1489,18 @@ export const upsertOpenClawBox = mutation({
     }
 
     return await ctx.db.insert("boxes", {
-      provider: "openclaw",
       boxId: args.boxId,
-      appId: args.appId,
-      agentId: args.agentId,
-      workspacePath: args.workspacePath,
+      subjectId: args.subjectId,
+      subjectKind: args.subjectKind,
+      appId: normalizedAppId,
+      engine: args.engine,
+      agentId: args.agentId ?? null,
+      targetPath,
+      workspacePath: args.workspacePath ?? targetPath,
       sessionId: Object.prototype.hasOwnProperty.call(args, "sessionId")
         ? (args.sessionId ?? null)
         : null,
+      provider: args.provider ?? null,
       model: args.model,
       status: args.status,
       policy: args.policy,

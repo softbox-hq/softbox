@@ -1,7 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
+import type { BoxPolicy, BoxStatus } from "./boxes";
 import type { WorkerConfig } from "./config";
 import type { SourceFile } from "./filesystem";
-import type { OpenClawBoxPolicy } from "./openClawAgents";
 import { convexApi } from "./shared/convexApi";
 
 export type JobRecord = {
@@ -39,14 +39,18 @@ export type AppRecord = {
 
 export type BoxRecord = {
   boxId: string;
-  appId: string;
-  provider: "openclaw";
-  agentId: string;
-  workspacePath: string;
+  subjectId: string;
+  subjectKind: string;
+  appId: string | null;
+  engine: string;
+  agentId: string | null;
+  targetPath: string | null;
+  workspacePath: string | null;
   sessionId: string | null;
+  provider: string | null;
   model: string | null;
-  status: "unknown" | "ready" | "running" | "error";
-  policy: OpenClawBoxPolicy;
+  status: BoxStatus;
+  policy: BoxPolicy;
   lastRunAt: number | null;
   lastError: string | null;
   createdAt: number;
@@ -194,19 +198,24 @@ export class ConvexRuntimeClient {
     await this.client.mutation(convexApi.setAppOpenClawSession as any, args);
   }
 
-  async upsertOpenClawBox(args: {
+  async upsertBox(args: {
     boxId: string;
-    appId: string;
-    agentId: string;
-    workspacePath: string;
+    subjectId: string;
+    subjectKind: string;
+    appId?: string | null;
+    engine: string;
+    agentId?: string | null;
+    targetPath?: string | null;
+    workspacePath?: string | null;
     sessionId?: string | null;
+    provider?: string | null;
     model: string | null;
-    status: "unknown" | "ready" | "running" | "error";
-    policy: OpenClawBoxPolicy;
+    status: BoxStatus;
+    policy: BoxPolicy;
     lastRunAt?: number | null;
     lastError?: string | null;
   }): Promise<void> {
-    await this.client.mutation(convexApi.upsertOpenClawBox as any, args);
+    await this.client.mutation(convexApi.upsertBox as any, args);
   }
 
   async setAppTemplateSourceStatus(args: {
