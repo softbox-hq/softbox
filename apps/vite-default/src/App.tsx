@@ -1,46 +1,29 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import './App.css'
 
-function formatDateTime(date: Date) {
-  return new Intl.DateTimeFormat('en-GB', {
-    dateStyle: 'full',
-    timeStyle: 'medium',
-  }).format(date)
-}
-
-function formatTimeZone(date: Date) {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZoneName: 'short',
-  }).formatToParts(date)
-
-  return parts.find((part) => part.type === 'timeZoneName')?.value ?? 'local time'
-}
-
 function App() {
-  const [now, setNow] = useState(() => new Date())
-  const timeZone = useMemo(() => formatTimeZone(now), [now])
+  const [seed] = useState(() => Math.floor(Math.random() * 100000))
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setNow(new Date())
-    }, 1000)
-
-    return () => window.clearInterval(timer)
-  }, [])
+  const photoUrl = useMemo(() => {
+    return `https://picsum.photos/seed/${seed}/800/800`
+  }, [seed])
 
   return (
     <main className="chat-page">
-      <section className="date-widget" aria-label="Current date and time">
-        <div className="date-widget__topline">
-          <p className="date-widget__label">Current date and time</p>
-          <span className="date-widget__badge">Live</span>
+      <section className="photo-widget" aria-label="Random photo">
+        <div className="photo-widget__header">
+          <p className="photo-widget__label">Random photo</p>
+          <span className="photo-widget__badge">Fresh</span>
         </div>
 
-        <div className="date-widget__value" role="status" aria-live="polite">
-          {formatDateTime(now)}
+        <div className="photo-widget__frame">
+          <img
+            className="photo-widget__image"
+            src={photoUrl}
+            alt="Randomly selected photo"
+            loading="lazy"
+          />
         </div>
-
-        <p className="date-widget__meta">Timezone: {timeZone}</p>
       </section>
     </main>
   )
