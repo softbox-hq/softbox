@@ -4,7 +4,11 @@ import { ArrowUpFromLine, Crosshair, Trash2 } from "lucide-react";
 import { convexApi } from "@shared/convexApi";
 import type { LiveAppState } from "@shared/liveApp";
 import { defaultAppId, defaultShellId } from "@shared/liveApp";
-import { useLiveAppRuntime } from "./runtime";
+import {
+  SOFTBOX_APP_ROOT_SELECTOR,
+  SOFTBOX_RUNTIME_FRAME_SELECTOR,
+  useLiveAppRuntime,
+} from "./runtime";
 import { getOrCreateShellId } from "./shellId";
 import { getRuntimeStatus } from "./state";
 import "./styles.css";
@@ -273,6 +277,14 @@ type InspectRegion = {
   devicePixelRatio: number;
 };
 
+type ActiveRuntimeSurface = {
+  layer: HTMLElement;
+  boundary: HTMLElement;
+  frame: HTMLIFrameElement | null;
+  document: Document;
+  window: Window;
+};
+
 type SelectionMode = "elements" | "pixels";
 
 const inspectPreferredTags = new Set([
@@ -397,6 +409,87 @@ function getSelectorSegment(element: HTMLElement, boundary: HTMLElement) {
   return `${tagName}:nth-of-type(${index})`;
 }
 
+function isHtmlElementTarget(target: EventTarget | null): target is HTMLElement {
+  return Boolean(
+    target &&
+      typeof target === "object" &&
+      "nodeType" in target &&
+      (target as Node).nodeType === Node.ELEMENT_NODE &&
+      "tagName" in target,
+  );
+}
+
+function getActiveRuntimeSurface(host: HTMLElement): ActiveRuntimeSurface | null {
+  const layer = host.querySelector<HTMLElement>('[data-layer="active"]');
+  if (!layer) {
+    return null;
+  }
+
+  const frame = layer.querySelector<HTMLIFrameElement>(SOFTBOX_RUNTIME_FRAME_SELECTOR);
+  if (frame?.contentDocument && frame.contentWindow) {
+    const boundary =
+      frame.contentDocument.querySelector<HTMLElement>(SOFTBOX_APP_ROOT_SELECTOR) ??
+      frame.contentDocument.body;
+    if (!boundary) {
+      return null;
+    }
+    return {
+      layer,
+      boundary,
+      frame,
+      document: frame.contentDocument,
+      window: frame.contentWindow,
+    };
+  }
+
+  return {
+    layer,
+    boundary: layer,
+    frame: null,
+    document: layer.ownerDocument,
+    window,
+  };
+}
+
+function getInspectBoundarySelector(boundary: HTMLElement) {
+  return boundary.matches(SOFTBOX_APP_ROOT_SELECTOR)
+    ? SOFTBOX_APP_ROOT_SELECTOR
+    : '[data-layer="active"]';
+}
+
+function translateFrameRectToViewport(rect: DOMRect, frame: HTMLIFrameElement | null): InspectRect {
+  if (!frame) {
+    return clampRect(rect);
+  }
+
+  const frameRect = frame.getBoundingClientRect();
+  return {
+    x: frameRect.left + rect.left,
+    y: frameRect.top + rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function getSurfaceBoundaryRect(surface: ActiveRuntimeSurface) {
+  return surface.frame?.getBoundingClientRect() ?? surface.boundary.getBoundingClientRect();
+}
+
+function translateFramePointToViewport(
+  frame: HTMLIFrameElement | null,
+  x: number,
+  y: number,
+) {
+  if (!frame) {
+    return { x, y };
+  }
+  const frameRect = frame.getBoundingClientRect();
+  return {
+    x: frameRect.left + x,
+    y: frameRect.top + y,
+  };
+}
+
 function buildSelector(element: HTMLElement, boundary: HTMLElement) {
   const segments: string[] = [];
   let current: HTMLElement | null = element;
@@ -413,7 +506,7 @@ function buildSelector(element: HTMLElement, boundary: HTMLElement) {
     current = current.parentElement;
   }
   if (current === boundary) {
-    segments.unshift("[data-layer=\"active\"]");
+    segments.unshift(getInspectBoundarySelector(boundary));
   }
   return segments.join(" > ");
 }
@@ -429,13 +522,17 @@ function pickInspectableElement(start: HTMLElement, boundary: HTMLElement) {
   return start !== boundary ? start : null;
 }
 
-function snapshotInspectTarget(element: HTMLElement, boundary: HTMLElement): InspectTarget {
+function snapshotInspectTarget(
+  element: HTMLElement,
+  boundary: HTMLElement,
+  frame: HTMLIFrameElement | null = null,
+): InspectTarget {
   return {
     selector: buildSelector(element, boundary),
     tagName: element.tagName.toLowerCase(),
     role: element.getAttribute("role") ?? getImplicitRole(element),
     label: getElementLabel(element),
-    rect: clampRect(element.getBoundingClientRect()),
+    rect: translateFrameRectToViewport(element.getBoundingClientRect(), frame),
   };
 }
 
@@ -930,6 +1027,7 @@ export function App() {
     if (!selectionMode) {
       return;
     }
+    const activeSurface = hostRef.current ? getActiveRuntimeSurface(hostRef.current) : null;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setSelectionMode(null);
@@ -938,8 +1036,16 @@ export function App() {
       }
     };
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectionMode]);
+    if (activeSurface && activeSurface.window !== window) {
+      activeSurface.window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      if (activeSurface && activeSurface.window !== window) {
+        activeSurface.window.removeEventListener("keydown", handleKeyDown);
+      }
+    };
+  }, [selectionMode, shellState?.activeVersion?._id]);
 
   useEffect(() => {
     if (!inspectMode) {
@@ -949,24 +1055,31 @@ export function App() {
     if (!host) {
       return;
     }
-    const activeLayer = host.querySelector<HTMLElement>('[data-layer="active"]');
-    if (!activeLayer) {
+    const activeSurface = getActiveRuntimeSurface(host);
+    if (!activeSurface) {
       return;
     }
 
-    activeLayer.dataset.inspecting = "true";
+    activeSurface.layer.dataset.inspecting = "true";
+    if (activeSurface.frame) {
+      activeSurface.frame.dataset.inspecting = "true";
+      activeSurface.document.documentElement.style.cursor = "crosshair";
+      if (activeSurface.document.body) {
+        activeSurface.document.body.style.cursor = "crosshair";
+      }
+    }
 
     const updateHoveredTarget = (target: EventTarget | null) => {
-      if (!(target instanceof HTMLElement)) {
+      if (!isHtmlElementTarget(target)) {
         setHoveredTarget(null);
         return;
       }
-      const inspectable = pickInspectableElement(target, activeLayer);
+      const inspectable = pickInspectableElement(target, activeSurface.boundary);
       if (!inspectable) {
         setHoveredTarget(null);
         return;
       }
-      setHoveredTarget(snapshotInspectTarget(inspectable, activeLayer));
+      setHoveredTarget(snapshotInspectTarget(inspectable, activeSurface.boundary, activeSurface.frame));
     };
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -978,29 +1091,40 @@ export function App() {
     };
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (!(event.target instanceof HTMLElement)) {
+      if (!isHtmlElementTarget(event.target)) {
         return;
       }
-      const inspectable = pickInspectableElement(event.target, activeLayer);
+      const inspectable = pickInspectableElement(event.target, activeSurface.boundary);
       if (!inspectable) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
-      const snapshot = snapshotInspectTarget(inspectable, activeLayer);
+      const snapshot = snapshotInspectTarget(
+        inspectable,
+        activeSurface.boundary,
+        activeSurface.frame,
+      );
       setSelectedTargets((current) => toggleInspectTargetSelection(current, snapshot));
       setHoveredTarget(snapshot);
     };
 
-    activeLayer.addEventListener("pointermove", handlePointerMove, true);
-    activeLayer.addEventListener("pointerleave", handlePointerLeave, true);
-    activeLayer.addEventListener("pointerdown", handlePointerDown, true);
+    activeSurface.document.addEventListener("pointermove", handlePointerMove, true);
+    activeSurface.document.addEventListener("pointerleave", handlePointerLeave, true);
+    activeSurface.document.addEventListener("pointerdown", handlePointerDown, true);
 
     return () => {
-      delete activeLayer.dataset.inspecting;
-      activeLayer.removeEventListener("pointermove", handlePointerMove, true);
-      activeLayer.removeEventListener("pointerleave", handlePointerLeave, true);
-      activeLayer.removeEventListener("pointerdown", handlePointerDown, true);
+      delete activeSurface.layer.dataset.inspecting;
+      if (activeSurface.frame) {
+        delete activeSurface.frame.dataset.inspecting;
+        activeSurface.document.documentElement.style.cursor = "";
+        if (activeSurface.document.body) {
+          activeSurface.document.body.style.cursor = "";
+        }
+      }
+      activeSurface.document.removeEventListener("pointermove", handlePointerMove, true);
+      activeSurface.document.removeEventListener("pointerleave", handlePointerLeave, true);
+      activeSurface.document.removeEventListener("pointerdown", handlePointerDown, true);
     };
   }, [inspectMode, shellState?.activeVersion?._id]);
 
@@ -1012,12 +1136,19 @@ export function App() {
     if (!host) {
       return;
     }
-    const activeLayer = host.querySelector<HTMLElement>('[data-layer="active"]');
-    if (!activeLayer) {
+    const activeSurface = getActiveRuntimeSurface(host);
+    if (!activeSurface) {
       return;
     }
 
-    activeLayer.dataset.inspecting = "true";
+    activeSurface.layer.dataset.inspecting = "true";
+    if (activeSurface.frame) {
+      activeSurface.frame.dataset.inspecting = "true";
+      activeSurface.document.documentElement.style.cursor = "crosshair";
+      if (activeSurface.document.body) {
+        activeSurface.document.body.style.cursor = "crosshair";
+      }
+    }
 
     let dragStart: { x: number; y: number } | null = null;
     let dragBoundary: DOMRect | null = null;
@@ -1031,11 +1162,16 @@ export function App() {
     };
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (!(event.target instanceof HTMLElement)) {
+      if (!isHtmlElementTarget(event.target)) {
         return;
       }
-      const boundaryRect = activeLayer.getBoundingClientRect();
-      const start = clampPointToRect(event.clientX, event.clientY, boundaryRect);
+      const boundaryRect = getSurfaceBoundaryRect(activeSurface);
+      const startPoint = translateFramePointToViewport(
+        activeSurface.frame,
+        event.clientX,
+        event.clientY,
+      );
+      const start = clampPointToRect(startPoint.x, startPoint.y, boundaryRect);
       const existingRegion = selectedRegions.find((region) =>
         isPointInsideRect(start.x, start.y, region.rect),
       );
@@ -1054,32 +1190,38 @@ export function App() {
       event.stopPropagation();
     };
 
-    const handlePointerMove = (event: PointerEvent) => {
+    const updateDraftRegion = (clientX: number, clientY: number) => {
       if (!dragStart || !dragBoundary) {
         return;
       }
+      const point = translateFramePointToViewport(activeSurface.frame, clientX, clientY);
       const rect = createSelectionRect(
         dragStart.x,
         dragStart.y,
-        event.clientX,
-        event.clientY,
+        point.x,
+        point.y,
         dragBoundary,
       );
       setDraftRegion(createInspectRegion("draft", rect, dragBoundary));
+    };
+
+    const handleSurfacePointerMove = (event: PointerEvent) => {
+      updateDraftRegion(event.clientX, event.clientY);
       event.preventDefault();
       event.stopPropagation();
     };
 
-    const handlePointerUp = (event: PointerEvent) => {
+    const completeDraftRegion = (clientX: number, clientY: number) => {
       if (!dragStart || !dragBoundary) {
         return;
       }
       const boundary = dragBoundary;
+      const point = translateFramePointToViewport(activeSurface.frame, clientX, clientY);
       const rect = createSelectionRect(
         dragStart.x,
         dragStart.y,
-        event.clientX,
-        event.clientY,
+        point.x,
+        point.y,
         boundary,
       );
 
@@ -1095,9 +1237,27 @@ export function App() {
         ].join("-");
         setSelectedRegions((current) => [...current, createInspectRegion(id, rect, boundary)]);
       }
+    };
 
+    const handleSurfacePointerUp = (event: PointerEvent) => {
+      completeDraftRegion(event.clientX, event.clientY);
       event.preventDefault();
       event.stopPropagation();
+      finishDrag();
+    };
+
+    const handleWindowPointerMove = (event: PointerEvent) => {
+      if (!activeSurface.frame) {
+        return;
+      }
+      updateDraftRegion(event.clientX, event.clientY);
+    };
+
+    const handleWindowPointerUp = (event: PointerEvent) => {
+      if (!activeSurface.frame) {
+        return;
+      }
+      completeDraftRegion(event.clientX, event.clientY);
       finishDrag();
     };
 
@@ -1105,16 +1265,29 @@ export function App() {
       finishDrag();
     };
 
-    activeLayer.addEventListener("pointerdown", handlePointerDown, true);
-    window.addEventListener("pointermove", handlePointerMove, true);
-    window.addEventListener("pointerup", handlePointerUp, true);
+    activeSurface.document.addEventListener("pointerdown", handlePointerDown, true);
+    activeSurface.document.addEventListener("pointermove", handleSurfacePointerMove, true);
+    activeSurface.document.addEventListener("pointerup", handleSurfacePointerUp, true);
+    activeSurface.document.addEventListener("pointercancel", handlePointerCancel, true);
+    window.addEventListener("pointermove", handleWindowPointerMove, true);
+    window.addEventListener("pointerup", handleWindowPointerUp, true);
     window.addEventListener("pointercancel", handlePointerCancel, true);
 
     return () => {
-      delete activeLayer.dataset.inspecting;
-      activeLayer.removeEventListener("pointerdown", handlePointerDown, true);
-      window.removeEventListener("pointermove", handlePointerMove, true);
-      window.removeEventListener("pointerup", handlePointerUp, true);
+      delete activeSurface.layer.dataset.inspecting;
+      if (activeSurface.frame) {
+        delete activeSurface.frame.dataset.inspecting;
+        activeSurface.document.documentElement.style.cursor = "";
+        if (activeSurface.document.body) {
+          activeSurface.document.body.style.cursor = "";
+        }
+      }
+      activeSurface.document.removeEventListener("pointerdown", handlePointerDown, true);
+      activeSurface.document.removeEventListener("pointermove", handleSurfacePointerMove, true);
+      activeSurface.document.removeEventListener("pointerup", handleSurfacePointerUp, true);
+      activeSurface.document.removeEventListener("pointercancel", handlePointerCancel, true);
+      window.removeEventListener("pointermove", handleWindowPointerMove, true);
+      window.removeEventListener("pointerup", handleWindowPointerUp, true);
       window.removeEventListener("pointercancel", handlePointerCancel, true);
     };
   }, [pixelInspectMode, selectedRegions, shellState?.activeVersion?._id]);
@@ -1127,8 +1300,8 @@ export function App() {
     if (!host) {
       return;
     }
-    const activeLayer = host.querySelector<HTMLElement>('[data-layer="active"]');
-    if (!activeLayer) {
+    const activeSurface = getActiveRuntimeSurface(host);
+    if (!activeSurface) {
       return;
     }
 
@@ -1136,11 +1309,15 @@ export function App() {
       setSelectedTargets((current) => {
         let changed = false;
         const next = current.map((target) => {
-          const element = host.querySelector<HTMLElement>(target.selector);
-          if (!element || !activeLayer.contains(element)) {
+          const element = activeSurface.document.querySelector<HTMLElement>(target.selector);
+          if (!element || !activeSurface.boundary.contains(element)) {
             return target;
           }
-          const snapshot = snapshotInspectTarget(element, activeLayer);
+          const snapshot = snapshotInspectTarget(
+            element,
+            activeSurface.boundary,
+            activeSurface.frame,
+          );
           const sameRect =
             snapshot.rect.x === target.rect.x &&
             snapshot.rect.y === target.rect.y &&
@@ -1156,11 +1333,13 @@ export function App() {
     };
 
     refreshSelectedTargets();
-    activeLayer.addEventListener("scroll", refreshSelectedTargets, { passive: true });
+    activeSurface.layer.addEventListener("scroll", refreshSelectedTargets, { passive: true });
+    activeSurface.window.addEventListener("resize", refreshSelectedTargets);
     window.addEventListener("resize", refreshSelectedTargets);
 
     return () => {
-      activeLayer.removeEventListener("scroll", refreshSelectedTargets);
+      activeSurface.layer.removeEventListener("scroll", refreshSelectedTargets);
+      activeSurface.window.removeEventListener("resize", refreshSelectedTargets);
       window.removeEventListener("resize", refreshSelectedTargets);
     };
   }, [selectedTargets.length, shellState?.activeVersion?._id]);

@@ -72,6 +72,14 @@
     padding-bottom: 12rem;
   }
 
+  .runtime-frame {
+    display: block;
+    width: 100%;
+    min-width: 100%;
+    border: 0;
+    background: transparent;
+  }
+
   .runtime-layer[data-inspecting="true"],
   .runtime-layer[data-inspecting="true"] * {
     cursor: crosshair !important;

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { liveManifestSchema } from "@shared/manifest";
+import { liveManifestSchema, type LiveManifest } from "@shared/manifest";
 import {
   liveAppStateSchema,
   type JsonObject,
-  type LiveAppModule,
   type LiveAppState,
+  type RuntimeErrorPayload,
 } from "@shared/liveApp";
 
 type VersionRecord = {
@@ -37,8 +37,9 @@ type RuntimeOptions = {
 
 type MountedLayer = {
   versionId: string;
-  module: LiveAppModule;
   layer: HTMLDivElement;
+  frame: HTMLIFrameElement;
+  unmount(): Promise<void>;
 };
 
 type PublishedStateSnapshot = {
@@ -46,7 +47,182 @@ type PublishedStateSnapshot = {
   state: LiveAppState;
 };
 
+type RuntimeFrameBridge = {
+  publishState(state: LiveAppState): void;
+  reportHealthy(): void;
+  reportError(error: RuntimeErrorPayload): void;
+  reportHeight(height: number): void;
+};
+
+type RuntimeFrameMountArgs = {
+  entryUrl: string;
+  cssUrls: string[];
+  initialStateJson: string;
+};
+
+type RuntimeFrameWindow = Window &
+  typeof globalThis & {
+    __SOFTBOX_BRIDGE__?: RuntimeFrameBridge;
+    __softboxMount?: (args: RuntimeFrameMountArgs) => Promise<void>;
+    __softboxUnmount?: () => Promise<void>;
+  };
+
 const ACTIVE_CSS_SELECTOR = 'link[data-softbox-active-css="true"]';
+const RUNTIME_FRAME_MIN_HEIGHT = 800;
+
+export const SOFTBOX_RUNTIME_FRAME_SELECTOR = 'iframe[data-softbox-runtime-frame="true"]';
+export const SOFTBOX_APP_ROOT_SELECTOR = '[data-softbox-app-root="true"]';
+
+function buildRuntimeFrameDoc() {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: transparent;
+      }
+
+      body {
+        overflow: hidden;
+      }
+
+      #root[data-softbox-app-root="true"] {
+        min-height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-softbox-app-root="true"></div>
+    <script type="module">
+      const ROOT_SELECTOR = ${JSON.stringify(SOFTBOX_APP_ROOT_SELECTOR)};
+      const FRAME_CSS_SELECTOR = 'link[data-softbox-frame-css="true"]';
+      let mountedModule = null;
+      let resizeObserver = null;
+      let resizeFrame = 0;
+
+      const getBridge = () => window.__SOFTBOX_BRIDGE__;
+
+      const getRoot = () => {
+        const root = document.querySelector(ROOT_SELECTOR);
+        if (!(root instanceof HTMLElement)) {
+          throw new Error("Softbox runtime root missing");
+        }
+        return root;
+      };
+
+      const normalizeError = (error) =>
+        error instanceof Error
+          ? { message: error.message, stack: error.stack }
+          : { message: String(error) };
+
+      const reportError = (error) => {
+        getBridge()?.reportError?.(normalizeError(error));
+      };
+
+      const clearFrameCss = () => {
+        document.querySelectorAll(FRAME_CSS_SELECTOR).forEach((node) => node.remove());
+      };
+
+      const readContentHeight = () => {
+        const root = getRoot();
+        return Math.max(
+          document.documentElement.scrollHeight,
+          document.documentElement.offsetHeight,
+          document.body?.scrollHeight ?? 0,
+          document.body?.offsetHeight ?? 0,
+          root.scrollHeight,
+          root.offsetHeight,
+        );
+      };
+
+      const reportHeight = () => {
+        cancelAnimationFrame(resizeFrame);
+        resizeFrame = requestAnimationFrame(() => {
+          getBridge()?.reportHeight?.(readContentHeight());
+        });
+      };
+
+      const disconnectResizeObserver = () => {
+        resizeObserver?.disconnect();
+        resizeObserver = null;
+      };
+
+      const observeHeight = () => {
+        disconnectResizeObserver();
+        if (typeof ResizeObserver !== "function") {
+          reportHeight();
+          return;
+        }
+        resizeObserver = new ResizeObserver(() => reportHeight());
+        resizeObserver.observe(document.documentElement);
+        if (document.body) {
+          resizeObserver.observe(document.body);
+        }
+        resizeObserver.observe(getRoot());
+        reportHeight();
+      };
+
+      const unmountCurrent = async () => {
+        disconnectResizeObserver();
+        cancelAnimationFrame(resizeFrame);
+        if (mountedModule && typeof mountedModule.unmount === "function") {
+          await mountedModule.unmount();
+        }
+        mountedModule = null;
+        getRoot().innerHTML = "";
+        clearFrameCss();
+      };
+
+      window.__softboxUnmount = async () => {
+        await unmountCurrent();
+      };
+
+      window.__softboxMount = async ({ entryUrl, cssUrls, initialStateJson }) => {
+        await unmountCurrent();
+
+        for (const href of cssUrls ?? []) {
+          const link = document.createElement("link");
+          link.rel = "stylesheet";
+          link.href = href;
+          link.dataset.softboxFrameCss = "true";
+          document.head.appendChild(link);
+        }
+
+        const module = await import(entryUrl);
+        if (typeof module.mount !== "function" || typeof module.unmount !== "function") {
+          throw new Error("Live app module is missing mount/unmount exports");
+        }
+
+        mountedModule = module;
+        const bridge = getBridge();
+        await module.mount({
+          root: getRoot(),
+          initialState: JSON.parse(initialStateJson),
+          publishState: (state) => bridge?.publishState?.(state),
+          reportHealthy: () => bridge?.reportHealthy?.(),
+          reportError: (error) => reportError(error),
+        });
+        observeHeight();
+      };
+
+      window.addEventListener("error", (event) => {
+        if (event.error) {
+          reportError(event.error);
+        }
+      });
+
+      window.addEventListener("unhandledrejection", (event) => {
+        reportError(event.reason);
+      });
+    </script>
+  </body>
+</html>`;
+}
 
 function clearActiveCss() {
   document
@@ -54,16 +230,116 @@ function clearActiveCss() {
     .forEach((node) => node.remove());
 }
 
-function applyActiveCss(versionId: string, cssUrls: string[]) {
-  clearActiveCss();
-  for (const href of cssUrls) {
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = `${href}?t=${Date.now()}`;
-    link.dataset.softboxActiveCss = "true";
-    link.dataset.versionId = versionId;
-    document.head.appendChild(link);
+function withCacheBust(url: string, cacheBust: string) {
+  const nextUrl = new URL(url);
+  nextUrl.searchParams.set("t", cacheBust);
+  return nextUrl.toString();
+}
+
+async function waitForFrameLoad(frame: HTMLIFrameElement) {
+  if (frame.contentWindow && frame.contentDocument?.readyState === "complete") {
+    return;
   }
+
+  await new Promise<void>((resolve) => {
+    const handleLoad = () => resolve();
+    frame.addEventListener("load", handleLoad, { once: true });
+  });
+}
+
+async function createRuntimeFrame(layer: HTMLDivElement) {
+  const frame = document.createElement("iframe");
+  frame.className = "runtime-frame";
+  frame.dataset.softboxRuntimeFrame = "true";
+  frame.setAttribute("scrolling", "no");
+  frame.setAttribute("title", "Softbox runtime");
+
+  const loaded = waitForFrameLoad(frame);
+  frame.srcdoc = buildRuntimeFrameDoc();
+  layer.innerHTML = "";
+  layer.appendChild(frame);
+  await loaded;
+
+  return frame;
+}
+
+function getRuntimeFrameWindow(frame: HTMLIFrameElement) {
+  const frameWindow = frame.contentWindow as RuntimeFrameWindow | null;
+  if (!frameWindow) {
+    throw new Error("Softbox runtime frame window is unavailable");
+  }
+  return frameWindow;
+}
+
+async function mountVersionInLayer(args: {
+  layer: HTMLDivElement;
+  versionId: string;
+  manifest: LiveManifest;
+  initialState: LiveAppState;
+  publishState(state: LiveAppState): void;
+  reportHealthy(): void;
+  reportError(error: RuntimeErrorPayload): void;
+}) {
+  const { initialState, layer, manifest, publishState, reportError, reportHealthy, versionId } = args;
+  const frame = await createRuntimeFrame(layer);
+  const frameWindow = getRuntimeFrameWindow(frame);
+
+  let currentHeight = Math.max(RUNTIME_FRAME_MIN_HEIGHT, layer.clientHeight);
+  frame.style.height = `${currentHeight}px`;
+
+  frameWindow.__SOFTBOX_BRIDGE__ = {
+    publishState,
+    reportHealthy,
+    reportError,
+    reportHeight(height) {
+      const nextHeight = Math.max(
+        RUNTIME_FRAME_MIN_HEIGHT,
+        layer.clientHeight,
+        Math.ceil(height),
+      );
+      if (nextHeight === currentHeight) {
+        return;
+      }
+      currentHeight = nextHeight;
+      frame.style.height = `${nextHeight}px`;
+      notifyViewportChange();
+    },
+  };
+
+  const cacheBust = Date.now().toString();
+
+  try {
+    const mount = frameWindow.__softboxMount;
+    if (typeof mount !== "function") {
+      throw new Error("Softbox runtime frame is missing mount()");
+    }
+    await mount({
+      entryUrl: withCacheBust(manifest.entryUrl, cacheBust),
+      cssUrls: (manifest.cssUrls ?? []).map((href) => withCacheBust(href, cacheBust)),
+      initialStateJson: JSON.stringify(initialState),
+    });
+  } catch (error) {
+    frameWindow.__SOFTBOX_BRIDGE__ = undefined;
+    await Promise.resolve(frameWindow.__softboxUnmount?.()).catch(() => undefined);
+    frame.remove();
+    throw error;
+  }
+
+  return {
+    versionId,
+    layer,
+    frame,
+    async unmount() {
+      const runtimeWindow = frame.contentWindow as RuntimeFrameWindow | null;
+      if (runtimeWindow) {
+        runtimeWindow.__SOFTBOX_BRIDGE__ = undefined;
+        await Promise.resolve(runtimeWindow.__softboxUnmount?.()).catch(() => undefined);
+      }
+      if (frame.isConnected) {
+        frame.remove();
+      }
+    },
+  } satisfies MountedLayer;
 }
 
 export async function loadManifest(manifestUrl: string) {
@@ -73,18 +349,6 @@ export async function loadManifest(manifestUrl: string) {
     throw new Error(`Failed to load manifest: ${response.status}`);
   }
   return liveManifestSchema.parse(await response.json());
-}
-
-async function importLiveApp(entryUrl: string): Promise<LiveAppModule> {
-  console.info("[shell] importing live app", entryUrl);
-  const module = (await import(/* @vite-ignore */ `${entryUrl}?t=${Date.now()}`)) as {
-    mount: LiveAppModule["mount"];
-    unmount: LiveAppModule["unmount"];
-  };
-  if (typeof module.mount !== "function" || typeof module.unmount !== "function") {
-    throw new Error("Live app module is missing mount/unmount exports");
-  }
-  return module;
 }
 
 function ensureLayer(parent: HTMLDivElement, name: string) {
@@ -169,21 +433,41 @@ export function useLiveAppRuntime(
   const previousAppIdRef = useRef<string | null>(null);
   const activeRouteRef = useRef<string | null>(null);
   const publishedStateRef = useRef<PublishedStateSnapshot | null>(null);
+  const publishStateRef = useRef(options.publishState);
+  const activateVersionRef = useRef(options.activateVersion);
+  const reportRuntimeErrorRef = useRef(options.reportRuntimeError);
+  const recordPipelineStageForVersionRef = useRef(options.recordPipelineStageForVersion);
   const [browserRouteVersion, setBrowserRouteVersion] = useState(0);
   const {
     appId,
     activeVersion,
     nextReadyVersion,
-    publishState,
-    activateVersion,
-    reportRuntimeError,
-    recordPipelineStageForVersion,
   } = options;
+  const activeVersionId = activeVersion?._id ?? null;
+  const activeVersionManifestUrl = activeVersion?.manifestUrl ?? null;
+  const activeVersionStateJson = activeVersion?.stateJson ?? null;
+  const nextReadyVersionId = nextReadyVersion?._id ?? null;
+  const previewEffectVersionId = previewVersionRef.current ?? nextReadyVersionId;
+
+  useEffect(() => {
+    publishStateRef.current = options.publishState;
+    activateVersionRef.current = options.activateVersion;
+    reportRuntimeErrorRef.current = options.reportRuntimeError;
+    recordPipelineStageForVersionRef.current = options.recordPipelineStageForVersion;
+  }, [
+    options.activateVersion,
+    options.publishState,
+    options.recordPipelineStageForVersion,
+    options.reportRuntimeError,
+  ]);
 
   useEffect(() => {
     return () => {
-      void activeMountRef.current?.module.unmount();
+      const currentMount = activeMountRef.current;
       activeMountRef.current = null;
+      if (currentMount) {
+        void currentMount.unmount();
+      }
       previewVersionRef.current = null;
       activeRouteRef.current = null;
       publishedStateRef.current = null;
@@ -207,8 +491,11 @@ export function useLiveAppRuntime(
       return;
     }
 
-    void Promise.resolve(activeMountRef.current?.module.unmount()).catch(() => undefined);
+    const currentMount = activeMountRef.current;
     activeMountRef.current = null;
+    if (currentMount) {
+      void Promise.resolve(currentMount.unmount()).catch(() => undefined);
+    }
     previewVersionRef.current = null;
     activeRouteRef.current = null;
     publishedStateRef.current = null;
@@ -223,14 +510,26 @@ export function useLiveAppRuntime(
     }
 
     let cancelled = false;
+    let mountingLayer: MountedLayer | null = null;
 
     void (async () => {
       if (!activeVersion) {
         activeRouteRef.current = null;
         publishedStateRef.current = null;
         clearActiveCss();
+        const currentMount = activeMountRef.current;
+        activeMountRef.current = null;
+        if (currentMount) {
+          await currentMount.unmount();
+        }
+        host.innerHTML = "";
         return;
       }
+
+      if (previewVersionRef.current === activeVersion._id) {
+        return;
+      }
+
       const shellRoute = readShellRoute();
       const publishedState =
         publishedStateRef.current?.versionId === activeVersion._id
@@ -239,6 +538,7 @@ export function useLiveAppRuntime(
       const baseState = publishedState ?? liveAppStateSchema.parse(JSON.parse(activeVersion.stateJson));
       const initialState = applyShellRouteToState(baseState);
       const routeCapable = isPlainStateObject(initialState) && typeof initialState.route === "string";
+
       if (
         activeMountRef.current?.versionId === activeVersion._id &&
         (!routeCapable || activeRouteRef.current === shellRoute)
@@ -248,20 +548,22 @@ export function useLiveAppRuntime(
 
       const activeLayer = ensureLayer(host, "active");
       const manifest = await loadManifest(activeVersion.manifestUrl);
-      const module = await importLiveApp(manifest.entryUrl);
       const existingActive = activeMountRef.current;
+
       if (cancelled) {
-        await module.unmount();
         return;
       }
 
-      applyActiveCss(activeVersion._id, manifest.cssUrls ?? []);
+      clearActiveCss();
+      activeMountRef.current = null;
       if (existingActive) {
-        await Promise.resolve(existingActive.module.unmount()).catch(() => undefined);
-        existingActive.layer.innerHTML = "";
+        await Promise.resolve(existingActive.unmount()).catch(() => undefined);
       }
-      await module.mount({
-        root: activeLayer,
+
+      mountingLayer = await mountVersionInLayer({
+        layer: activeLayer,
+        versionId: activeVersion._id,
+        manifest,
         initialState,
         publishState: (state) => {
           publishedStateRef.current = {
@@ -269,37 +571,38 @@ export function useLiveAppRuntime(
             state,
           };
           activeRouteRef.current = syncShellRouteFromState(state);
-          void publishState(state);
+          void publishStateRef.current(state);
         },
         reportHealthy: () => {
           // Active version is already promoted.
         },
         reportError: (error) => {
-          void reportRuntimeError({
+          void reportRuntimeErrorRef.current({
             versionId: activeVersion._id,
             message: error.message,
             stack: error.stack,
           });
         },
       });
-      notifyViewportChange();
-      console.info(
-        "[shell] mounted active version",
-        activeVersion.versionNumber,
-      );
 
-      activeMountRef.current = {
-        versionId: activeVersion._id,
-        module,
-        layer: activeLayer,
-      };
+      if (cancelled) {
+        await mountingLayer.unmount();
+        mountingLayer = null;
+        return;
+      }
+
+      notifyViewportChange();
+      console.info("[shell] mounted active version", activeVersion.versionNumber);
+
+      activeMountRef.current = mountingLayer;
+      mountingLayer = null;
       activeRouteRef.current = routeCapable ? shellRoute : null;
       publishedStateRef.current = {
         versionId: activeVersion._id,
         state: initialState,
       };
     })().catch((error) => {
-      void reportRuntimeError({
+      void reportRuntimeErrorRef.current({
         versionId: activeVersion?._id,
         message: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
@@ -308,8 +611,17 @@ export function useLiveAppRuntime(
 
     return () => {
       cancelled = true;
+      if (mountingLayer) {
+        void mountingLayer.unmount();
+      }
     };
-  }, [activeVersion, browserRouteVersion, hostRef, publishState, reportRuntimeError]);
+  }, [
+    activeVersionId,
+    activeVersionManifestUrl,
+    activeVersionStateJson,
+    browserRouteVersion,
+    hostRef,
+  ]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -329,51 +641,54 @@ export function useLiveAppRuntime(
 
     previewVersionRef.current = nextReadyVersion!._id;
     let cancelled = false;
+    let previewMount: MountedLayer | null = null;
+    let promotedMount: MountedLayer | null = null;
 
     void (async () => {
       const activeLayer = ensureLayer(host, "active");
       const previewLayer = ensureLayer(host, "preview");
-      previewLayer.innerHTML = "";
-
       const version = nextReadyVersion!;
       const manifest = await loadManifest(version.manifestUrl);
-      const module = await importLiveApp(manifest.entryUrl);
       const initialState = applyShellRouteToState(
         liveAppStateSchema.parse(JSON.parse(version.stateJson)),
       );
 
       try {
         console.info("[shell] previewing candidate version", version.versionNumber);
-        await recordPipelineStageForVersion({
+        await recordPipelineStageForVersionRef.current({
           versionId: version._id,
           key: "preview",
           status: "running",
         });
-        await module.mount({
-          root: previewLayer,
+
+        previewMount = await mountVersionInLayer({
+          layer: previewLayer,
+          versionId: version._id,
+          manifest,
           initialState,
           publishState: (state) => {
-            void publishState(state);
+            void publishStateRef.current(state);
           },
           reportHealthy: () => {
             // Candidate health gate disabled. Promotion happens after mount succeeds.
           },
           reportError: (error) => {
-            void reportRuntimeError({
+            void reportRuntimeErrorRef.current({
               versionId: version._id,
               message: error.message,
               stack: error.stack,
             });
           },
         });
+
         if (cancelled) {
-          await module.unmount();
-          previewLayer.innerHTML = "";
+          await previewMount.unmount();
+          previewMount = null;
           return;
         }
 
-        await activateVersion(version._id);
-        await recordPipelineStageForVersion({
+        await activateVersionRef.current(version._id);
+        await recordPipelineStageForVersionRef.current({
           versionId: version._id,
           key: "preview",
           status: "completed",
@@ -381,15 +696,15 @@ export function useLiveAppRuntime(
         console.info("[shell] promoted candidate version", version.versionNumber);
 
         const currentActive = activeMountRef.current;
-        if (currentActive && currentActive.layer !== previewLayer) {
-          await currentActive.module.unmount();
-          currentActive.layer.innerHTML = "";
+        activeMountRef.current = null;
+        if (currentActive) {
+          await Promise.resolve(currentActive.unmount()).catch(() => undefined);
         }
 
-        applyActiveCss(version._id, manifest.cssUrls ?? []);
-        activeLayer.innerHTML = "";
-        await module.mount({
-          root: activeLayer,
+        promotedMount = await mountVersionInLayer({
+          layer: activeLayer,
+          versionId: version._id,
+          manifest,
           initialState,
           publishState: (state) => {
             publishedStateRef.current = {
@@ -397,31 +712,33 @@ export function useLiveAppRuntime(
               state,
             };
             activeRouteRef.current = syncShellRouteFromState(state);
-            void publishState(state);
+            void publishStateRef.current(state);
           },
           reportHealthy: () => {},
           reportError: (error) => {
-            void reportRuntimeError({
+            void reportRuntimeErrorRef.current({
               versionId: version._id,
               message: error.message,
               stack: error.stack,
             });
           },
         });
-        notifyViewportChange();
 
-        if (previewLayer !== activeLayer) {
-          previewLayer.innerHTML = "";
-          previewLayer.dataset.layer = "preview";
+        if (cancelled) {
+          await promotedMount.unmount();
+          promotedMount = null;
+          return;
         }
 
-        activeLayer.dataset.layer = "active";
+        if (previewMount) {
+          await previewMount.unmount();
+          previewMount = null;
+        }
+
+        notifyViewportChange();
         console.info("[shell] remounted candidate as active", version.versionNumber);
-        activeMountRef.current = {
-          versionId: version._id,
-          module,
-          layer: activeLayer,
-        };
+        activeMountRef.current = promotedMount;
+        promotedMount = null;
         activeRouteRef.current =
           isPlainStateObject(initialState) && typeof initialState.route === "string"
             ? readShellRoute()
@@ -431,14 +748,20 @@ export function useLiveAppRuntime(
           state: initialState,
         };
       } catch (error) {
-        await Promise.resolve(module.unmount()).catch(() => undefined);
-        previewLayer.innerHTML = "";
+        if (previewMount) {
+          await previewMount.unmount();
+          previewMount = null;
+        }
+        if (promotedMount) {
+          await promotedMount.unmount();
+          promotedMount = null;
+        }
         throw error;
       } finally {
         previewVersionRef.current = null;
       }
     })().catch((error) => {
-      void reportRuntimeError({
+      void reportRuntimeErrorRef.current({
         versionId: nextReadyVersion?._id,
         message: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
@@ -447,6 +770,16 @@ export function useLiveAppRuntime(
 
     return () => {
       cancelled = true;
+      if (previewMount) {
+        void previewMount.unmount();
+      }
+      if (promotedMount) {
+        void promotedMount.unmount();
+      }
     };
-  }, [activateVersion, activeVersion, hostRef, nextReadyVersion, publishState, recordPipelineStageForVersion, reportRuntimeError]);
+  }, [
+    appId,
+    hostRef,
+    previewEffectVersionId,
+  ]);
 }
