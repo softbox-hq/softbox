@@ -1,117 +1,101 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useRef } from 'react'
 import './App.css'
-import { getCustomers } from './customerDb'
 
-type Customer = Awaited<ReturnType<typeof getCustomers>>[number]
+type Point = { x: number; y: number }
 
 function App() {
-  const [customers, setCustomers] = useState<Customer[]>([])
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const drawing = useRef(false)
+  const lastPoint = useRef<Point | null>(null)
 
-  useEffect(() => {
-    let alive = true
+  const getPoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) return null
 
-    getCustomers().then((rows) => {
-      if (alive) setCustomers(rows)
-    })
-
-    return () => {
-      alive = false
+    const rect = canvas.getBoundingClientRect()
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
     }
-  }, [])
+  }
 
-  const costs = useMemo(
-    () => customers.map((customer) => customer.acquisitionCost).sort((a, b) => a - b),
-    [customers],
-  )
+  const drawLine = (from: Point, to: Point) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
 
-  const averageCost = useMemo(() => {
-    if (!costs.length) return 0
-    return costs.reduce((sum, value) => sum + value, 0) / costs.length
-  }, [costs])
+    const context = canvas.getContext('2d')
+    if (!context) return
 
-  const medianCost = useMemo(() => {
-    if (!costs.length) return 0
-    const middle = Math.floor(costs.length / 2)
-    return costs.length % 2 === 0 ? (costs[middle - 1] + costs[middle]) / 2 : costs[middle]
-  }, [costs])
+    context.lineWidth = 4
+    context.lineCap = 'round'
+    context.strokeStyle = '#ffffff'
+    context.beginPath()
+    context.moveTo(from.x, from.y)
+    context.lineTo(to.x, to.y)
+    context.stroke()
+  }
 
-  const distribution = useMemo(() => {
-    const bins = [0, 0, 0, 0]
-    costs.forEach((cost) => {
-      if (cost < 750) bins[0] += 1
-      else if (cost < 1500) bins[1] += 1
-      else if (cost < 2500) bins[2] += 1
-      else bins[3] += 1
-    })
+  const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const point = getPoint(event)
+    if (!point) return
 
-    return bins.map((count, index) => ({
-      label: ['<$750', '$750-$1.5k', '$1.5k-$2.5k', '$2.5k+'][index],
-      count,
-    }))
-  }, [costs])
+    drawing.current = true
+    lastPoint.current = point
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drawing.current) return
+    const point = getPoint(event)
+    if (!point || !lastPoint.current) return
+
+    drawLine(lastPoint.current, point)
+    lastPoint.current = point
+  }
+
+  const stopDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    drawing.current = false
+    lastPoint.current = null
+    event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const context = canvas.getContext('2d')
+    if (!context) return
+
+    context.clearRect(0, 0, canvas.width, canvas.height)
+  }
 
   return (
     <main className="screen">
       <section className="panel">
-        <p className="eyebrow">SQLite database</p>
-        <h1>Customers</h1>
-        <p className="subtitle">Dummy data seeded inside the app.</p>
-
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Company</th>
-                <th>Plan</th>
-                <th>Status</th>
-                <th>Acquisition cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {customers.map((customer) => (
-                <tr key={customer.id}>
-                  <td>{customer.name}</td>
-                  <td>{customer.email}</td>
-                  <td>{customer.company}</td>
-                  <td>{customer.plan}</td>
-                  <td>{customer.status}</td>
-                  <td>${customer.acquisitionCost.toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="widgets">
-          <article className="widget">
-            <p className="widget__label">Average cost</p>
-            <strong className="widget__value">${averageCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong>
-          </article>
-
-          <article className="widget">
-            <p className="widget__label">Median cost</p>
-            <strong className="widget__value">${medianCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong>
-          </article>
-
-          <article className="widget widget--chart">
-            <p className="widget__label">Distribution</p>
-            <div className="bars">
-              {distribution.map((bucket) => (
-                <div key={bucket.label} className="bars__row">
-                  <span className="bars__label">{bucket.label}</span>
-                  <div className="bars__track">
-                    <div
-                      className="bars__fill"
-                      style={{ width: `${Math.max(bucket.count * 24, bucket.count ? 18 : 0)}%` }}
-                    />
-                  </div>
-                  <span className="bars__count">{bucket.count}</span>
-                </div>
-              ))}
+        <div className="canvas-card">
+          <div className="canvas-card__head">
+            <div>
+              <p className="eyebrow">Canvas</p>
+              <h1>Draw here</h1>
+              <p className="subtitle">Click and drag to sketch on the black surface.</p>
             </div>
-          </article>
+            <button className="clear-button" type="button" onClick={clearCanvas}>
+              Clear
+            </button>
+          </div>
+
+          <div className="canvas-wrap">
+            <canvas
+              ref={canvasRef}
+              className="drawing-canvas"
+              width={1200}
+              height={700}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={stopDrawing}
+              onPointerLeave={stopDrawing}
+            />
+          </div>
         </div>
       </section>
     </main>
