@@ -12,6 +12,7 @@
     "ui:install-browser": "pnpm --dir ../.. exec playwright install --with-deps chromium"
   },
   "dependencies": {
+    "deck.gl": "^9.2.11",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
