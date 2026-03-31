@@ -450,23 +450,11 @@ export function useLiveAppRuntime(
   }, []);
 
   useEffect(() => {
-    const host = hostRef.current;
     const previousAppId = previousAppIdRef.current;
     previousAppIdRef.current = appId;
-    if (!host || !previousAppId || previousAppId === appId) {
+    if (!previousAppId || previousAppId === appId) {
       return;
     }
-
-    const currentMount = activeMountRef.current;
-    activeMountRef.current = null;
-    if (currentMount) {
-      void Promise.resolve(currentMount.unmount()).catch(() => undefined);
-    }
-    previewVersionRef.current = null;
-    activeRouteRef.current = null;
-    publishedStateRef.current = null;
-    clearActiveCss();
-    host.innerHTML = "";
   }, [appId, hostRef]);
 
   useEffect(() => {

@@ -996,6 +996,16 @@ export function App() {
   const hasActiveVersion = Boolean(runtimeActiveVersion);
   const showEmptyState = noMountedApp || !hasActiveVersion;
   const showErrorBanner = !showEmptyState && (runtimeStatus || lastBuildError);
+  const showRuntimeTransitionOverlay = Boolean(
+    switchingAppId ||
+      switchingVersionId ||
+      (!noMountedApp && shellState === undefined && lastMountedVersionRef.current),
+  );
+  const runtimeTransitionLabel = switchingAppId
+    ? "Switching application..."
+    : switchingVersionId && runtimeActiveVersion?.appId === appId
+      ? "Switching version..."
+      : "Switching application...";
   const latestPipelineRuns = shellState?.latestPipelineRuns ?? [];
   const latestPipelineRun = shellState?.latestPipelineRun ?? latestPipelineRuns[0] ?? null;
   const activeVersionId = runtimeActiveVersion?._id ?? null;
@@ -1803,6 +1813,23 @@ export function App() {
           className="h-screen min-h-[800px] w-full"
         />
       </div>
+
+      {showRuntimeTransitionOverlay ? (
+        <div className="pointer-events-none absolute inset-0 z-[9]">
+          <div className="absolute inset-0 bg-black/8" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-[#0c0c0f]/78 px-4 py-2.5 shadow-[0_16px_40px_rgba(0,0,0,0.38)] backdrop-blur-xl">
+              <span
+                className="size-4 animate-spin rounded-full border-2 border-white/20 border-t-white/80"
+                aria-hidden="true"
+              />
+              <span className="text-xs font-medium text-slate-200">
+                {runtimeTransitionLabel}
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {selectedTargets.length > 0 || selectedRegions.length > 0 ? (
         <div className="pointer-events-none fixed inset-0 z-[11]">
