@@ -767,6 +767,47 @@ export function App() {
   const inspectMode = selectionMode === "elements";
   const pixelInspectMode = selectionMode === "pixels";
   const boxIdsSignature = currentBoxes.map((box: any) => box.boxId).join("|");
+  const pipelineStepLabel =
+    pipelineProgress.total > 0
+      ? `${pipelineProgress.currentStep}/${pipelineProgress.total}`
+      : "0/0";
+  const pipelineToneClass =
+    pipelineProgress.status === "completed"
+      ? "bg-emerald-500/12 text-emerald-200 ring-1 ring-emerald-500/25"
+      : pipelineProgress.status === "failed"
+        ? "bg-rose-500/12 text-rose-100 ring-1 ring-rose-500/25"
+        : pipelineProgress.status === "running"
+          ? "bg-amber-500/12 text-amber-100 ring-1 ring-amber-500/25"
+          : "bg-white/8 text-slate-200 ring-1 ring-white/10";
+  const selectedBoxLabel = selectedBox ? formatBoxLabel(selectedBox) : "No box";
+  const targetBoxSummary =
+    promptTargetBoxIds.length === 0
+      ? "No target box selected"
+      : promptTargetBoxIds.length === 1
+        ? `Sending to ${formatBoxLabel(
+            currentBoxes.find((box: any) => box.boxId === promptTargetBoxIds[0]) ?? {
+              boxId: promptTargetBoxIds[0],
+              appId: appId ?? null,
+            },
+          )}`
+        : `Sending to ${promptTargetBoxIds.length} boxes`;
+  const selectionSummary =
+    selectedTargets.length > 0 || selectedRegions.length > 0
+      ? `${selectedTargets.length} element${selectedTargets.length === 1 ? "" : "s"} · ${selectedRegions.length} region${selectedRegions.length === 1 ? "" : "s"}`
+      : "No selection context";
+  const currentVersionLabel = shellState?.activeVersion
+    ? `v${shellState.activeVersion.versionNumber}`
+    : "No active version";
+  const currentAppLabel = selectedApp?.name ?? (appId ? appId : "Nothing mounted");
+  const currentAppMeta = selectedApp?.appId ?? "shell idle";
+  const shellLead = showEmptyState
+    ? emptyStateBody
+    : showErrorBanner
+      ? runtimeStatus?.body ?? lastBuildError ?? "The latest mounted version reported an error."
+      : templateSourceMissing
+        ? templateSourceMessage ??
+          "Mounted artifacts are still available, but prompt-driven edits are disabled until the app source returns."
+        : "Inspect the mounted preview, route prompts to the right box, and use pipeline or version history only when you need detail.";
 
   useEffect(() => {
     if (!appsQuery || apps.length === 0 || shellSelection === undefined) {
@@ -820,9 +861,20 @@ export function App() {
   }, [appId]);
 
   useEffect(() => {
-    setCompareVersionIds((current) =>
-      current.filter((versionId) => versions.some((version: any) => version._id === versionId)),
-    );
+    setCompareVersionIds((current) => {
+      const next = current.filter((versionId) =>
+        versions.some((version: any) => version._id === versionId),
+      );
+
+      if (
+        next.length === current.length &&
+        next.every((versionId, index) => versionId === current[index])
+      ) {
+        return current;
+      }
+
+      return next;
+    });
   }, [versions]);
 
   useEffect(() => {
@@ -1216,7 +1268,13 @@ export function App() {
   });
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">
+    <main className="relative min-h-screen overflow-hidden bg-[#040506] text-slate-100">
+      <div
+        className="pointer-events-none absolute inset-0 opacity-80"
+        aria-hidden="true"
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.12),transparent_28%),radial-gradient(circle_at_80%_16%,rgba(244,114,182,0.08),transparent_22%),linear-gradient(180deg,rgba(4,5,6,0.18),rgba(4,5,6,0.9))]" />
+      </div>
       <div className="absolute inset-0">
         <div
           ref={hostRef}
@@ -1273,119 +1331,277 @@ export function App() {
         </div>
       ) : null}
 
+      {composerHidden ? (
+        <button
+          type="button"
+          onClick={() => setComposerHidden(false)}
+          className="fixed bottom-5 right-5 z-[13] rounded-full border border-white/10 bg-[#111419]/92 px-4 py-2 text-xs font-medium text-slate-100 shadow-[0_16px_50px_rgba(0,0,0,0.35)] backdrop-blur-xl transition-colors hover:bg-[#1a2028]"
+        >
+          Show HUD
+        </button>
+      ) : null}
+
+      <section
+        className={`pointer-events-none fixed inset-x-0 top-0 z-10 px-4 pt-4 transition-[opacity,transform] duration-200 ease-out sm:px-6 sm:pt-6 ${
+          composerHidden ? "-translate-y-4 opacity-0" : "translate-y-0 opacity-100"
+        } ${showEmptyState ? "hidden md:block" : ""}`}
+      >
+        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="pointer-events-auto w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#0e1114]/86 p-5 shadow-[0_24px_90px_rgba(0,0,0,0.38)] backdrop-blur-2xl sm:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-cyan-200/65">
+                  Softbox shell
+                </p>
+                <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-[2rem]">
+                  {showEmptyState ? "Shell status" : currentAppLabel}
+                </h1>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+                  {shellLead}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-right">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                  Mounted
+                </p>
+                <p className="mt-1 text-sm font-medium text-white">{currentAppMeta}</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {currentVersionLabel} · {selectedBoxLabel}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5 text-slate-200">
+                {targetBoxSummary}
+              </span>
+              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5 text-slate-300">
+                {selectionSummary}
+              </span>
+              <span className={`rounded-full px-3 py-1.5 font-medium ${pipelineToneClass}`}>
+                {pipelineProgress.activeLabel} · {pipelineStepLabel}
+              </span>
+              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5 text-slate-400">
+                {elapsedSeconds}s elapsed
+              </span>
+            </div>
+
+            {showErrorBanner ? (
+              <div className="mt-5 rounded-[1.25rem] border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+                <p className="font-semibold">{runtimeStatus?.title ?? "Build error"}</p>
+                <p className="mt-1 whitespace-pre-wrap text-rose-100/80">
+                  {runtimeStatus?.body ?? lastBuildError}
+                </p>
+              </div>
+            ) : null}
+
+            {templateSourceMissing ? (
+              <div className="mt-4 rounded-[1.25rem] border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                <p className="font-semibold">Mounted version still works, but edits are disabled.</p>
+                <p className="mt-1 text-amber-100/80">
+                  {templateSourceMessage ??
+                    "This app can still mount its existing built version, but its local source is missing from /apps."}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <aside className="pointer-events-auto w-full max-w-md overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#0b0f13]/84 p-5 shadow-[0_20px_70px_rgba(0,0,0,0.34)] backdrop-blur-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">
+                  Workflow
+                </p>
+                <p className="mt-2 text-lg font-semibold text-white">
+                  {pipelineProgress.activeLabel}
+                </p>
+                <p className="mt-1 text-sm text-slate-400">
+                  {pipelineStepLabel} stages · {elapsedSeconds}s
+                </p>
+              </div>
+              {pipelineProgress.status === "completed" ? (
+                <div className="flex size-11 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-300 ring-1 ring-emerald-500/20">
+                  <Check className="size-5" />
+                </div>
+              ) : (
+                <span className={`rounded-full px-3 py-1.5 text-xs font-medium ${pipelineToneClass}`}>
+                  {pipelineProgress.status}
+                </span>
+              )}
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <button
+                type="button"
+                onClick={() => setAppsOpen(true)}
+                className="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/6 px-3 text-sm font-medium text-slate-100 transition-colors hover:bg-white/10"
+              >
+                Apps
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPipelineOpen(true);
+                  setExpandedRunId(latestPipelineRuns[0]?._id ?? null);
+                }}
+                disabled={noMountedApp}
+                className="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/6 px-3 text-sm font-medium text-slate-100 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Pipeline
+              </button>
+              <button
+                type="button"
+                onClick={() => setVersionsOpen(true)}
+                disabled={noMountedApp}
+                className="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/6 px-3 text-sm font-medium text-slate-100 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Versions
+              </button>
+              <button
+                type="button"
+                onClick={() => setComposerHidden(true)}
+                className="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-[#151b22] px-3 text-sm font-medium text-slate-300 transition-colors hover:bg-[#1d2631]"
+              >
+                Hide HUD
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
+              <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
+                <p className="font-semibold uppercase tracking-[0.2em] text-slate-500">Current box</p>
+                <p className="mt-1 text-sm font-medium text-slate-100">{selectedBoxLabel}</p>
+              </div>
+              <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
+                <p className="font-semibold uppercase tracking-[0.2em] text-slate-500">Prompt target</p>
+                <p className="mt-1 text-sm font-medium text-slate-100">{targetBoxSummary}</p>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
       {showEmptyState ? (
-        <section className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-hidden px-6">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.06),transparent_42%),linear-gradient(180deg,rgba(3,4,6,0.86),rgba(3,4,6,0.96))]" />
-          <div className="pointer-events-auto relative w-full max-w-xl overflow-hidden rounded-[2rem] bg-[#0f1012]/92 p-8 text-center shadow-[0_36px_120px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
-            <div className="absolute inset-x-10 top-0 h-px bg-white/8" aria-hidden="true" />
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gray-500">
-              Shell Host
-            </p>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-              {emptyStateTitle}
-            </h1>
-            <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-300">
-              {emptyStateBody}
-            </p>
-            <div className="mt-6 rounded-2xl bg-black/20 px-4 py-3 text-left text-xs leading-6 text-gray-400">
-              <p className="font-medium text-gray-300">Next steps</p>
-              <p>1. {emptyStateSteps[0]}</p>
-              <p>2. {emptyStateSteps[1]}</p>
+        <section className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-4 pb-40 pt-36 sm:px-6 sm:pb-44 sm:pt-44">
+          <div className="pointer-events-auto relative w-full max-w-3xl overflow-hidden rounded-[2rem] border border-white/10 bg-[#0d1014]/88 p-8 shadow-[0_36px_120px_rgba(0,0,0,0.42)] backdrop-blur-2xl sm:p-10">
+            <div
+              className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.08),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_22%)]"
+              aria-hidden="true"
+            />
+            <div className="relative">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-cyan-200/60">
+                Shell host
+              </p>
+              <h2 className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                {emptyStateTitle}
+              </h2>
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+                {emptyStateBody}
+              </p>
+
+              <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                {emptyStateSteps.map((step, index) => (
+                  <div
+                    key={step}
+                    className="rounded-[1.5rem] border border-white/8 bg-black/20 px-5 py-4"
+                  >
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                      Step {index + 1}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-slate-200">{step}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-8 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAppsOpen(true)}
+                  className="inline-flex h-11 items-center justify-center rounded-2xl bg-white px-4 text-sm font-medium text-black transition-colors hover:bg-slate-200"
+                >
+                  Open apps
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setComposerHidden((current) => !current)}
+                  className="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/6 px-4 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
+                >
+                  {composerHidden ? "Show prompt HUD" : "Hide prompt HUD"}
+                </button>
+              </div>
             </div>
           </div>
         </section>
       ) : null}
 
-      {composerHidden ? (
-        <button
-          type="button"
-          onClick={() => setComposerHidden(false)}
-          className="fixed bottom-5 right-5 z-[13] rounded-full border border-white/10 bg-[#141414]/90 px-4 py-2 text-xs font-medium text-gray-100 shadow-2xl shadow-black/30 backdrop-blur-xl transition-colors hover:bg-[#202024]"
-        >
-          Show controls
-        </button>
-      ) : null}
-
       <section
-        className={`relative z-10 flex min-h-screen items-end justify-center px-4 py-6 transition-[opacity,transform] duration-200 ease-out sm:px-6 sm:py-8 ${
-          composerHidden
-            ? "pointer-events-none translate-y-6 opacity-0"
-            : "pointer-events-none translate-y-0 opacity-100"
-        }`}
+        className={`pointer-events-none fixed inset-x-0 bottom-0 z-10 px-4 pb-4 transition-[opacity,transform] duration-200 ease-out sm:px-6 sm:pb-6 ${
+          composerHidden ? "translate-y-8 opacity-0" : "translate-y-0 opacity-100"
+        } ${showEmptyState ? "hidden lg:block" : ""}`}
       >
-        <div
-          className={`w-full max-w-3xl transition-[opacity,transform] duration-200 ease-out ${
-            composerHidden
-              ? "pointer-events-none translate-y-3 opacity-0"
-              : "pointer-events-auto translate-y-0 opacity-100"
-          }`}
-        >
-          {showErrorBanner ? (
-            <div className="mb-4 rounded-[1.5rem] border border-rose-500/25 bg-slate-950/85 px-4 py-3 text-sm text-rose-100 shadow-xl shadow-black/20 backdrop-blur-2xl">
-              <p className="font-semibold">
-                {runtimeStatus?.title ?? "Build Error"}
-              </p>
-              <p className="mt-1 whitespace-pre-wrap text-rose-100/80">
-                {runtimeStatus?.body ?? lastBuildError}
-              </p>
-            </div>
-          ) : null}
-          <form
-            onSubmit={async (event) => {
-              event.preventDefault();
-              if (!prompt.trim() || promptDisabled) return;
-              setSubmitting(true);
-              try {
-                setSelectionMode(null);
-                setHoveredTarget(null);
-                setDraftRegion(null);
-                const promptWithContext = buildPromptWithSelectionContext(
-                  prompt,
-                  selectedTargets,
-                  selectedRegions,
-                );
-                const targetBoxIds =
-                  promptTargetBoxIds.length > 0
-                    ? promptTargetBoxIds
-                    : [selectedBox?.boxId ?? primaryBox?.boxId ?? null].filter(
-                        (boxId): boxId is string => typeof boxId === "string" && boxId.length > 0,
-                      );
+        <form
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (!prompt.trim() || promptDisabled) return;
+            setSubmitting(true);
+            try {
+              setSelectionMode(null);
+              setHoveredTarget(null);
+              setDraftRegion(null);
+              const promptWithContext = buildPromptWithSelectionContext(
+                prompt,
+                selectedTargets,
+                selectedRegions,
+              );
+              const targetBoxIds =
+                promptTargetBoxIds.length > 0
+                  ? promptTargetBoxIds
+                  : [selectedBox?.boxId ?? primaryBox?.boxId ?? null].filter(
+                      (boxId): boxId is string => typeof boxId === "string" && boxId.length > 0,
+                    );
 
-                await Promise.all(
-                  (targetBoxIds.length > 0 ? targetBoxIds : [null]).map((boxId) =>
-                    submitPrompt({
-                      appId,
-                      boxId,
-                      prompt: promptWithContext,
-                    }),
-                  ),
-                );
-                startTransition(() => setPrompt(""));
-                setSelectedTargets([]);
-                setSelectedRegions([]);
-              } finally {
-                setSubmitting(false);
-              }
-            }}
-            className="mx-auto w-full max-w-2xl"
-          >
-            <div className="rounded-2xl border border-white/10 bg-[#141414]/95 p-3 shadow-2xl shadow-black/25 backdrop-blur-2xl">
-              {templateSourceMissing ? (
-                <div className="mb-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100">
-                  <p className="font-semibold text-amber-200">
-                    Mounted version still works, but edits are disabled.
+              await Promise.all(
+                (targetBoxIds.length > 0 ? targetBoxIds : [null]).map((boxId) =>
+                  submitPrompt({
+                    appId,
+                    boxId,
+                    prompt: promptWithContext,
+                  }),
+                ),
+              );
+              startTransition(() => setPrompt(""));
+              setSelectedTargets([]);
+              setSelectedRegions([]);
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+          className="pointer-events-auto mx-auto w-full max-w-5xl"
+        >
+          <div className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#101317]/92 shadow-[0_28px_80px_rgba(0,0,0,0.36)] backdrop-blur-2xl">
+            <div className="border-b border-white/8 px-4 py-3 sm:px-5">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">
+                    Prompt workspace
                   </p>
-                  <p className="mt-1 text-amber-100/80">
-                    {templateSourceMessage ??
-                      "This app can still mount its existing built version, but its local source is missing from /apps."}
-                  </p>
+                  <p className="mt-1 text-sm text-slate-300">{targetBoxSummary}</p>
                 </div>
-              ) : null}
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5 text-slate-300">
+                    {selectionSummary}
+                  </span>
+                  <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5 text-slate-400">
+                    {currentVersionLabel}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 sm:p-5">
               {queuedTooLong ? (
-                <div className="mb-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs leading-5 text-rose-100">
-                  <p className="font-semibold text-rose-200">
-                    Queued for 1 minute. Did you forget to run Docker?
-                  </p>
+                <div className="mb-4 rounded-[1.25rem] border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+                  <p className="font-semibold">Queued for 1 minute. Did you forget to run Docker?</p>
                   <p className="mt-1 text-rose-100/80">
                     Redis may not be running. Start it with{" "}
                     <code className="rounded bg-black/20 px-1.5 py-0.5 text-rose-50">
@@ -1395,22 +1611,25 @@ export function App() {
                   </p>
                 </div>
               ) : null}
+
               {inspectMode ? (
-                <div className="mb-3 rounded-xl bg-cyan-400/10 px-3 py-2 text-xs leading-5 text-cyan-100">
+                <div className="mb-4 rounded-[1.25rem] border border-cyan-500/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
                   <p className="font-semibold text-cyan-200">Inspect mode is on.</p>
                   <p className="mt-1 text-cyan-100/80">
-                    Click mounted app elements to add or remove them from the next prompt. Selected targets stay highlighted on the app. Press Escape or click Inspect again when done.
+                    Click mounted app elements to add or remove them from the next prompt. Press Escape or click Inspect again when done.
                   </p>
                 </div>
               ) : null}
+
               {pixelInspectMode ? (
-                <div className="mb-3 rounded-xl bg-fuchsia-400/10 px-3 py-2 text-xs leading-5 text-fuchsia-100">
+                <div className="mb-4 rounded-[1.25rem] border border-fuchsia-400/20 bg-fuchsia-400/10 px-4 py-3 text-sm text-fuchsia-100">
                   <p className="font-semibold text-fuchsia-200">Pixel mode is on.</p>
                   <p className="mt-1 text-fuchsia-100/80">
-                    Drag across the mounted app to select a pixel region for the next prompt. Click an existing region to remove it. Press Escape or click Pixels again when done.
+                    Drag across the mounted app to select a pixel region. Click an existing region to remove it.
                   </p>
                 </div>
               ) : null}
+
               <textarea
                 id="prompt-input"
                 value={prompt}
@@ -1419,76 +1638,31 @@ export function App() {
                   noMountedApp
                     ? "Mount an app to submit prompts."
                     : templateSourceMissing
-                    ? "Restore the app source in /apps to submit new prompts."
-                    : "Describe what you want to change..."
+                      ? "Restore the app source in /apps to submit new prompts."
+                      : "Describe what you want to change..."
                 }
                 disabled={promptDisabled}
-                className="min-h-[60px] w-full resize-none bg-transparent px-1 text-sm text-gray-200 outline-none placeholder:text-gray-500 disabled:cursor-not-allowed disabled:text-gray-500"
-                rows={2}
+                className="min-h-[96px] w-full resize-none rounded-[1.5rem] border border-white/8 bg-black/20 px-4 py-4 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-400/40 disabled:cursor-not-allowed disabled:text-slate-500"
+                rows={4}
               />
 
-              <div className="mt-2 flex items-center justify-between border-t border-[#1f1f1f] pt-2">
-                {/* <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    className="flex size-7 items-center justify-center rounded-lg bg-[#1f1f1f] text-gray-400 transition-colors hover:bg-[#2a2a2a] hover:text-gray-300"
-                  >
-                    <svg className="size-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
-                    </svg>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="flex h-7 items-center gap-1.5 rounded-lg bg-[#1f1f1f] px-2.5 text-gray-400 transition-colors hover:bg-[#2a2a2a] hover:text-gray-300"
-                  >
-                    <svg className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l1.9 4.9L19 10l-5.1 2.1L12 17l-1.9-4.9L5 10l5.1-2.1L12 3z" />
-                    </svg>
-                    <span className="text-xs font-medium">{versionLabel}</span>
-                    <svg className="size-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25L12 15.75 4.5 8.25" />
-                    </svg>
-                  </button>
-                </div> */}
-                <div className="flex min-w-0 items-center gap-2.5">
-                  {pipelineProgress.status === "completed" ? (
-                    <div className="flex size-7 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400">
-                      <Check className="size-4" />
-                    </div>
-                  ) : null}
-                  <div className="min-w-0">
-                    <p className="truncate text-[11px] font-medium text-gray-300">
-                      {pipelineProgress.activeLabel}
-                    </p>
-                    <p className="mt-0.5 text-[10px] text-gray-500">
-                      {pipelineProgress.total > 0
-                        ? `${pipelineProgress.currentStep}/${pipelineProgress.total}`
-                        : "0/0"}
-                      {" · "}
-                      {elapsedSeconds}s
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1.5">
+              <div className="mt-4 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     disabled={noMountedApp || showEmptyState}
                     onClick={() => {
-                      setSelectionMode((current) =>
-                        current === "elements" ? null : "elements",
-                      );
+                      setSelectionMode((current) => (current === "elements" ? null : "elements"));
                       setHoveredTarget(null);
                       setDraftRegion(null);
                     }}
-                    className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    className={`inline-flex h-11 items-center gap-2 rounded-2xl px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                       inspectMode
-                        ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
-                        : "bg-[#1f1f1f] text-gray-300 hover:bg-[#2a2a2a]"
+                        ? "bg-cyan-300 text-slate-950 hover:bg-cyan-200"
+                        : "border border-white/10 bg-white/6 text-slate-200 hover:bg-white/10"
                     }`}
                   >
-                    <Crosshair className="size-3.5" />
+                    <Crosshair className="size-4" />
                     {inspectMode ? "Inspecting" : "Inspect"}
                   </button>
 
@@ -1496,61 +1670,29 @@ export function App() {
                     type="button"
                     disabled={noMountedApp || showEmptyState}
                     onClick={() => {
-                      setSelectionMode((current) =>
-                        current === "pixels" ? null : "pixels",
-                      );
+                      setSelectionMode((current) => (current === "pixels" ? null : "pixels"));
                       setHoveredTarget(null);
                       setDraftRegion(null);
                     }}
-                    className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    className={`inline-flex h-11 items-center gap-2 rounded-2xl px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                       pixelInspectMode
                         ? "bg-fuchsia-300 text-slate-950 hover:bg-fuchsia-200"
-                        : "bg-[#1f1f1f] text-gray-300 hover:bg-[#2a2a2a]"
+                        : "border border-white/10 bg-white/6 text-slate-200 hover:bg-white/10"
                     }`}
                   >
-                    <Crosshair className="size-3.5" />
+                    <Crosshair className="size-4" />
                     {pixelInspectMode ? "Pixels on" : "Pixels"}
                   </button>
 
-                  {/* <button
-                    type="button"
-                    className="flex h-7 items-center gap-1.5 rounded-lg bg-[#1f1f1f] px-2.5 text-gray-400 transition-colors hover:bg-[#2a2a2a] hover:text-gray-300"
-                  >
-                    <svg className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5A2.25 2.25 0 015.25 5.25h13.5A2.25 2.25 0 0121 7.5v9A2.25 2.25 0 0118.75 18.75H5.25A2.25 2.25 0 013 16.5v-9z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 9.75h9M7.5 14.25h4.5" />
-                    </svg>
-                    <span className="text-xs font-medium">Project</span>
-                    <svg className="size-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25L12 15.75 4.5 8.25" />
-                    </svg>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="flex size-7 items-center justify-center rounded-lg bg-[#1f1f1f] text-gray-400 transition-colors hover:bg-[#2a2a2a] hover:text-gray-300"
-                  >
-                    <svg className="size-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a3.75 3.75 0 003.75-3.75v-6a3.75 3.75 0 10-7.5 0v6A3.75 3.75 0 0012 18.75z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12a7.5 7.5 0 01-15 0M12 19.5v2.25" />
-                    </svg>
-                  </button> */}
-
-                  <button
-                    type="button"
-                    onClick={() => setAppsOpen(true)}
-                    className="flex h-7 items-center rounded-lg bg-[#1f1f1f] px-3 text-xs font-medium text-gray-300 transition-colors hover:bg-[#2a2a2a]"
-                  >
-                    {selectedApp?.appId ?? appId ?? "No app"}
-                  </button>
-
-                  <label className="flex h-7 items-center gap-2 rounded-lg bg-[#1f1f1f] px-2.5 text-[10px] font-medium uppercase tracking-wide text-gray-400">
-                    <span>Box</span>
+                  <label className="flex h-11 items-center gap-3 rounded-2xl border border-white/10 bg-white/6 px-4 text-sm text-slate-300">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                      Box
+                    </span>
                     <select
                       value={selectedBox?.boxId ?? ""}
                       onChange={(event) => setSelectedBoxId(event.target.value || null)}
                       disabled={currentBoxes.length === 0 || noMountedApp}
-                      className="h-5 rounded bg-transparent px-1 text-xs font-medium normal-case text-gray-200 outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded bg-transparent text-sm font-medium text-slate-100 outline-none disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {currentBoxes.length === 0 ? (
                         <option value="">No box</option>
@@ -1563,83 +1705,73 @@ export function App() {
                       )}
                     </select>
                   </label>
+                </div>
 
-                  <div className="flex min-h-7 items-center gap-1.5 rounded-lg bg-[#1f1f1f] px-2 py-1">
-                    <span className="px-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
-                      Send
-                    </span>
-                    {currentBoxes.length > 0 ? (
-                      currentBoxes.map((box: any) => {
-                        const targeted = promptTargetBoxIds.includes(box.boxId);
-                        return (
-                          <button
-                            key={box.boxId}
-                            type="button"
-                            disabled={noMountedApp}
-                            onClick={() =>
-                              setSelectedTargetBoxIds((current) => {
-                                const next = toggleStringSelection(current, box.boxId);
-                                return next.length > 0 ? next : [box.boxId];
-                              })
-                            }
-                            className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                              targeted
-                                ? "bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500/25"
-                                : "bg-black/20 text-gray-400 hover:bg-[#2a2a2a] hover:text-gray-300"
-                            }`}
-                            title={box.boxId}
-                          >
-                            {formatBoxLabel(box)}
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <span className="px-1 text-[11px] text-gray-500">No box</span>
-                    )}
-                  </div>
-
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setPipelineOpen(true);
-                      setExpandedRunId(latestPipelineRuns[0]?._id ?? null);
-                    }}
-                    disabled={noMountedApp}
-                    className="flex h-7 items-center rounded-lg bg-[#1f1f1f] px-3 text-xs font-medium text-gray-300 transition-colors hover:bg-[#2a2a2a] disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => setAppsOpen(true)}
+                    className="inline-flex h-11 items-center rounded-2xl border border-white/10 bg-white/6 px-4 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
                   >
-                    Pipeline
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setVersionsOpen(true)}
-                    disabled={noMountedApp}
-                    className="flex h-7 items-center rounded-lg bg-[#1f1f1f] px-3 text-xs font-medium text-gray-300 transition-colors hover:bg-[#2a2a2a] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Versions
+                    {selectedApp?.appId ?? appId ?? "No app"}
                   </button>
 
                   <button
                     type="submit"
                     disabled={submitting || promptDisabled}
-                    className="flex size-7 items-center justify-center rounded-lg bg-white text-black transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-sm font-medium text-black transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
                     aria-label={
                       noMountedApp
                         ? "Mount an app to enable prompts"
                         : templateSourceMissing
-                        ? "Restore source to enable prompts"
-                        : submitting
-                          ? "Sending prompt"
-                          : "Send prompt"
+                          ? "Restore source to enable prompts"
+                          : submitting
+                            ? "Sending prompt"
+                            : "Send prompt"
                     }
                   >
                     <ArrowUpFromLine className={`size-4 ${submitting ? "animate-pulse" : ""}`} />
+                    {submitting ? "Sending" : "Send prompt"}
                   </button>
                 </div>
               </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/8 pt-4">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                  Send to
+                </span>
+                {currentBoxes.length > 0 ? (
+                  currentBoxes.map((box: any) => {
+                    const targeted = promptTargetBoxIds.includes(box.boxId);
+                    return (
+                      <button
+                        key={box.boxId}
+                        type="button"
+                        disabled={noMountedApp}
+                        onClick={() =>
+                          setSelectedTargetBoxIds((current) => {
+                            const next = toggleStringSelection(current, box.boxId);
+                            return next.length > 0 ? next : [box.boxId];
+                          })
+                        }
+                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                          targeted
+                            ? "bg-cyan-500/16 text-cyan-100 ring-1 ring-cyan-400/30"
+                            : "border border-white/10 bg-white/6 text-slate-300 hover:bg-white/10"
+                        }`}
+                        title={box.boxId}
+                      >
+                        {formatBoxLabel(box)}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <span className="text-sm text-slate-500">No box</span>
+                )}
+              </div>
             </div>
-          </form>
-        </div>
+          </div>
+        </form>
       </section>
 
       {pipelineOpen ? (
