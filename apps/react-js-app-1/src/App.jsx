@@ -49,23 +49,26 @@ function Layout({ children, contentClassName = '' }) {
 }
 
 function Home() {
-  const fallbackPackages = useMemo(
-    () => ['@dnd-kit/core', '@dnd-kit/utilities', '@react-three/drei', '@react-three/fiber', 'deck.gl', 'draggabilly', 'packery', 'three'],
-    [],
-  )
   const [packages, setPackages] = useState([])
   const [status, setStatus] = useState('loading')
+  const [error, setError] = useState('')
 
   useEffect(() => {
     let cancelled = false
 
     const loadPackages = async () => {
       setStatus('loading')
+      setError('')
       try {
         const response = await Promise.race([
-          fetch('/package.json', { cache: 'no-store' }),
+          fetch('/apps/react-js-app-1/package.json', { cache: 'no-store' }),
           new Promise((_, reject) => window.setTimeout(() => reject(new Error('timeout')), 2500)),
         ])
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+
         const data = await response.json()
         const dependencies = Object.keys(data.dependencies ?? {})
           .filter((name) => name !== 'react' && name !== 'react-dom')
@@ -75,10 +78,11 @@ function Home() {
           setPackages(dependencies)
           setStatus('live')
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
-          setPackages(fallbackPackages)
-          setStatus('fallback')
+          setPackages([])
+          setStatus('error')
+          setError(err instanceof Error ? err.message : 'Failed to fetch package list')
         }
       }
     }
@@ -100,12 +104,16 @@ function Home() {
     >
       <p className="clock-label">Installed non-native Vite modules</p>
       <h1 className="info-title">Refreshes every 15 seconds</h1>
-      <p className="info-status">{status === 'live' ? 'Live from package.json' : 'Using fallback list'}</p>
+      <p className="info-status">
+        {status === 'live' && 'Live from package.json'}
+        {status === 'loading' && 'Loading live package list...'}
+        {status === 'error' && `Error: ${error}`}
+      </p>
       <ul className="module-list">
         {packages.length ? (
           packages.map((name) => <li key={name}>{name}</li>)
         ) : (
-          <li>Loading packages...</li>
+          <li>{status === 'error' ? 'No live packages available' : 'Loading packages...'}</li>
         )}
       </ul>
     </DraggableCard>

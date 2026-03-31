@@ -51,7 +51,6 @@ type RuntimeFrameBridge = {
   publishState(state: LiveAppState): void;
   reportHealthy(): void;
   reportError(error: RuntimeErrorPayload): void;
-  reportHeight(height: number): void;
 };
 
 type RuntimeFrameMountArgs = {
@@ -83,16 +82,20 @@ function buildRuntimeFrameDoc() {
       html,
       body {
         margin: 0;
+        height: 100%;
         min-height: 100%;
         background: transparent;
       }
 
       body {
-        overflow: hidden;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
       }
 
       #root[data-softbox-app-root="true"] {
-        min-height: 100vh;
+        height: 100%;
+        min-height: 100%;
       }
     </style>
   </head>
@@ -102,8 +105,6 @@ function buildRuntimeFrameDoc() {
       const ROOT_SELECTOR = ${JSON.stringify(SOFTBOX_APP_ROOT_SELECTOR)};
       const FRAME_CSS_SELECTOR = 'link[data-softbox-frame-css="true"]';
       let mountedModule = null;
-      let resizeObserver = null;
-      let resizeFrame = 0;
 
       const getBridge = () => window.__SOFTBOX_BRIDGE__;
 
@@ -128,48 +129,7 @@ function buildRuntimeFrameDoc() {
         document.querySelectorAll(FRAME_CSS_SELECTOR).forEach((node) => node.remove());
       };
 
-      const readContentHeight = () => {
-        const root = getRoot();
-        return Math.max(
-          document.documentElement.scrollHeight,
-          document.documentElement.offsetHeight,
-          document.body?.scrollHeight ?? 0,
-          document.body?.offsetHeight ?? 0,
-          root.scrollHeight,
-          root.offsetHeight,
-        );
-      };
-
-      const reportHeight = () => {
-        cancelAnimationFrame(resizeFrame);
-        resizeFrame = requestAnimationFrame(() => {
-          getBridge()?.reportHeight?.(readContentHeight());
-        });
-      };
-
-      const disconnectResizeObserver = () => {
-        resizeObserver?.disconnect();
-        resizeObserver = null;
-      };
-
-      const observeHeight = () => {
-        disconnectResizeObserver();
-        if (typeof ResizeObserver !== "function") {
-          reportHeight();
-          return;
-        }
-        resizeObserver = new ResizeObserver(() => reportHeight());
-        resizeObserver.observe(document.documentElement);
-        if (document.body) {
-          resizeObserver.observe(document.body);
-        }
-        resizeObserver.observe(getRoot());
-        reportHeight();
-      };
-
       const unmountCurrent = async () => {
-        disconnectResizeObserver();
-        cancelAnimationFrame(resizeFrame);
         if (mountedModule && typeof mountedModule.unmount === "function") {
           await mountedModule.unmount();
         }
@@ -207,7 +167,6 @@ function buildRuntimeFrameDoc() {
           reportHealthy: () => bridge?.reportHealthy?.(),
           reportError: (error) => reportError(error),
         });
-        observeHeight();
       };
 
       window.addEventListener("error", (event) => {
@@ -251,7 +210,6 @@ async function createRuntimeFrame(layer: HTMLDivElement) {
   const frame = document.createElement("iframe");
   frame.className = "runtime-frame";
   frame.dataset.softboxRuntimeFrame = "true";
-  frame.setAttribute("scrolling", "no");
   frame.setAttribute("title", "Softbox runtime");
 
   const loaded = waitForFrameLoad(frame);
@@ -283,27 +241,31 @@ async function mountVersionInLayer(args: {
   const { initialState, layer, manifest, publishState, reportError, reportHealthy, versionId } = args;
   const frame = await createRuntimeFrame(layer);
   const frameWindow = getRuntimeFrameWindow(frame);
-
-  let currentHeight = Math.max(RUNTIME_FRAME_MIN_HEIGHT, layer.clientHeight);
-  frame.style.height = `${currentHeight}px`;
+  let currentHeight = 0;
+  const syncFrameHeight = () => {
+    const nextHeight = Math.max(
+      RUNTIME_FRAME_MIN_HEIGHT,
+      Math.ceil(layer.getBoundingClientRect().height || layer.clientHeight),
+    );
+    if (nextHeight === currentHeight) {
+      return;
+    }
+    currentHeight = nextHeight;
+    frame.style.height = `${nextHeight}px`;
+    notifyViewportChange();
+  };
+  syncFrameHeight();
+  const layerResizeObserver =
+    typeof ResizeObserver === "function"
+      ? new ResizeObserver(() => syncFrameHeight())
+      : null;
+  layerResizeObserver?.observe(layer);
+  window.addEventListener("resize", syncFrameHeight);
 
   frameWindow.__SOFTBOX_BRIDGE__ = {
     publishState,
     reportHealthy,
     reportError,
-    reportHeight(height) {
-      const nextHeight = Math.max(
-        RUNTIME_FRAME_MIN_HEIGHT,
-        layer.clientHeight,
-        Math.ceil(height),
-      );
-      if (nextHeight === currentHeight) {
-        return;
-      }
-      currentHeight = nextHeight;
-      frame.style.height = `${nextHeight}px`;
-      notifyViewportChange();
-    },
   };
 
   const cacheBust = Date.now().toString();
@@ -319,6 +281,8 @@ async function mountVersionInLayer(args: {
       initialStateJson: JSON.stringify(initialState),
     });
   } catch (error) {
+    layerResizeObserver?.disconnect();
+    window.removeEventListener("resize", syncFrameHeight);
     frameWindow.__SOFTBOX_BRIDGE__ = undefined;
     await Promise.resolve(frameWindow.__softboxUnmount?.()).catch(() => undefined);
     frame.remove();
@@ -330,6 +294,8 @@ async function mountVersionInLayer(args: {
     layer,
     frame,
     async unmount() {
+      layerResizeObserver?.disconnect();
+      window.removeEventListener("resize", syncFrameHeight);
       const runtimeWindow = frame.contentWindow as RuntimeFrameWindow | null;
       if (runtimeWindow) {
         runtimeWindow.__SOFTBOX_BRIDGE__ = undefined;

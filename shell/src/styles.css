@@ -66,16 +66,14 @@
   }
 
   .runtime-layer[data-layer="active"] {
-    overflow-y: auto;
-    overflow-x: hidden;
-    overscroll-behavior-y: contain;
-    padding-bottom: 12rem;
+    overflow: hidden;
   }
 
   .runtime-frame {
     display: block;
     width: 100%;
     min-width: 100%;
+    height: 100%;
     border: 0;
     background: transparent;
   }

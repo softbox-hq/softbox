@@ -1229,6 +1229,10 @@ export function App() {
       setHoveredTarget(null);
     };
 
+    const handleScroll = () => {
+      setHoveredTarget(null);
+    };
+
     const handlePointerDown = (event: PointerEvent) => {
       if (!isHtmlElementTarget(event.target)) {
         return;
@@ -1251,6 +1255,7 @@ export function App() {
     activeSurface.document.addEventListener("pointermove", handlePointerMove, true);
     activeSurface.document.addEventListener("pointerleave", handlePointerLeave, true);
     activeSurface.document.addEventListener("pointerdown", handlePointerDown, true);
+    activeSurface.window.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => {
       delete activeSurface.layer.dataset.inspecting;
@@ -1264,6 +1269,7 @@ export function App() {
       activeSurface.document.removeEventListener("pointermove", handlePointerMove, true);
       activeSurface.document.removeEventListener("pointerleave", handlePointerLeave, true);
       activeSurface.document.removeEventListener("pointerdown", handlePointerDown, true);
+      activeSurface.window.removeEventListener("scroll", handleScroll);
     };
   }, [inspectMode, shellState?.activeVersion?._id]);
 
@@ -1473,11 +1479,13 @@ export function App() {
 
     refreshSelectedTargets();
     activeSurface.layer.addEventListener("scroll", refreshSelectedTargets, { passive: true });
+    activeSurface.window.addEventListener("scroll", refreshSelectedTargets, { passive: true });
     activeSurface.window.addEventListener("resize", refreshSelectedTargets);
     window.addEventListener("resize", refreshSelectedTargets);
 
     return () => {
       activeSurface.layer.removeEventListener("scroll", refreshSelectedTargets);
+      activeSurface.window.removeEventListener("scroll", refreshSelectedTargets);
       activeSurface.window.removeEventListener("resize", refreshSelectedTargets);
       window.removeEventListener("resize", refreshSelectedTargets);
     };
