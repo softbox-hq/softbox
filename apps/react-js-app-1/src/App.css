@@ -3,10 +3,38 @@
 .app-shell {
   min-height: 100svh;
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.navbar {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  align-items: center;
+}
+
+.navbar a {
+  color: #ffffff;
+  text-decoration: none;
+  font-family: 'Jersey 10', system-ui, sans-serif;
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.navbar a.active {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.page-content {
+  flex: 1;
   display: grid;
   place-items: center;
   padding: 24px;
-  box-sizing: border-box;
 }
 
 .hero-text {
@@ -16,7 +44,6 @@
   font-size: 16px;
   font-weight: 400;
   letter-spacing: 0.12em;
-  text-transform: none;
   text-align: center;
   max-width: 100%;
   word-break: break-word;

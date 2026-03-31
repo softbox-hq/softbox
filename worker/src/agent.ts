@@ -118,6 +118,74 @@ export type AgentObservation = {
   };
 };
 
+export type AgentProgressHandler = (message: string) => void;
+
+function stripAnsi(text: string): string {
+  return text.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/gu, "");
+}
+
+function normalizeAgentProgressLine(line: string): string | null {
+  let cleaned = stripAnsi(line).replace(/\r/g, "").trim();
+  if (!cleaned) {
+    return null;
+  }
+
+  cleaned = cleaned.replace(/^\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})?\s+/u, "").trim();
+  cleaned = cleaned.replace(/^[-*]\s+/u, "").trim();
+
+  if (!cleaned) {
+    return null;
+  }
+
+  if (/^\S+\s+durationMs=\d+\s+active=\d+\s+queued=\d+$/u.test(cleaned)) {
+    return null;
+  }
+
+  if (
+    /^(agent observation|stdout:|stderr:|commit:|warning:|error:)/iu.test(cleaned) ||
+    /^(mode|command|model|agent_id|thread|session_key|session_id|timeout_ms|request_chars|prompt_chars|editable_files|source_bytes|likely_targets):/iu.test(cleaned) ||
+    /^(build_prompt|agent_turn|reread_files|diff|summarize|total_rewrite|stdout_chars|stderr_chars|changed_paths|written_files|deleted_paths|changed_preview):/iu.test(
+      cleaned,
+    )
+  ) {
+    return null;
+  }
+
+  if (/^\[[^\]]+\]/u.test(cleaned)) {
+    return null;
+  }
+
+  return cleaned;
+}
+
+export function extractAgentProgressMessages(text: string): string[] {
+  const messages: string[] = [];
+  const seen = new Set<string>();
+
+  for (const segment of stripAnsi(text).replace(/\r/g, "\n").split(/\n+/u)) {
+    const normalized = normalizeAgentProgressLine(segment);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    messages.push(normalized);
+  }
+
+  return messages;
+}
+
+function emitAgentProgressMessages(
+  text: string,
+  onProgress?: AgentProgressHandler,
+) {
+  if (!onProgress) {
+    return;
+  }
+  for (const message of extractAgentProgressMessages(text)) {
+    onProgress(message);
+  }
+}
+
 function isCodexCommand(command: string): boolean {
   return basename(command).toLowerCase().startsWith("codex");
 }
@@ -781,6 +849,7 @@ async function runOpenClawGateway(
   config: AgentCliConfig,
   prompt: string,
   sessionState?: CodexThreadState | null,
+  onProgress?: AgentProgressHandler,
 ): Promise<AgentExecutionResult> {
   if (!config.openClaw) {
     throw new Error(
@@ -827,6 +896,7 @@ async function runOpenClawGateway(
 
     let stdout = "";
     let stderr = "";
+    let stderrRemainder = "";
     let settled = false;
 
     const timer = setTimeout(() => {
@@ -846,7 +916,14 @@ async function runOpenClawGateway(
       stdout += String(chunk);
     });
     child.stderr.on("data", (chunk) => {
-      stderr += String(chunk);
+      const nextChunk = String(chunk);
+      stderr += nextChunk;
+      stderrRemainder += nextChunk;
+      const lines = stderrRemainder.split(/\r?\n/u);
+      stderrRemainder = lines.pop() ?? "";
+      for (const line of lines) {
+        emitAgentProgressMessages(line, onProgress);
+      }
     });
 
     child.on("error", (error) => {
@@ -896,6 +973,13 @@ async function runOpenClawGateway(
         return;
       }
 
+      if (stderrRemainder.trim()) {
+        emitAgentProgressMessages(stderrRemainder, onProgress);
+      }
+
+      const responseText = extractOpenClawResponseText(payload);
+      emitAgentProgressMessages(responseText, onProgress);
+
       const openClawSessionId = extractOpenClawSessionId(payload);
       if (!openClawSessionId) {
         reject(
@@ -919,7 +1003,7 @@ async function runOpenClawGateway(
       }
 
       resolve({
-        stdout: extractOpenClawResponseText(payload),
+        stdout: responseText,
         stderr,
         codexThreadId: null,
         openClawSessionId,
@@ -930,7 +1014,7 @@ async function runOpenClawGateway(
           mode: "openclaw_ws",
           reusedThread: sessionState?.openClawSessionId ? true : false,
           argsCount: args.length,
-          stdoutChars: extractOpenClawResponseText(payload).length,
+          stdoutChars: responseText.length,
           stderrChars: stderr.length,
           runMs: performance.now() - startedAt,
         },
@@ -1131,13 +1215,14 @@ async function runAgent(
   config: AgentCliConfig,
   prompt: string,
   threadState?: CodexThreadState | null,
+  onProgress?: AgentProgressHandler,
 ): Promise<AgentExecutionResult> {
   if (isCodexCommand(config.command)) {
     return runCodexSdk(config, prompt, threadState);
   }
 
   if (isOpenClawCommand(config.command)) {
-    return runOpenClawGateway(config, prompt, threadState);
+    return runOpenClawGateway(config, prompt, threadState, onProgress);
   }
 
   return runAgentCli(config, prompt);
@@ -1146,6 +1231,9 @@ async function runAgent(
 export async function rewriteLiveAppFiles(
   config: AgentCliConfig,
   request: RewriteRequest,
+  options?: {
+    onProgress?: AgentProgressHandler;
+  },
 ): Promise<{
   summary: string;
   details: ClaudeStructuredOutput;
@@ -1169,7 +1257,7 @@ export async function rewriteLiveAppFiles(
   const result = await runAgent(config, prompt, {
     threadId: request.codexThreadId ?? null,
     openClawSessionId: request.openClawSessionId ?? null,
-  });
+  }, options?.onProgress);
   const rereadStartedAt = performance.now();
   const nextFiles = await readLiveAppFiles(config.liveAppRoot);
   const rereadFilesMs = performance.now() - rereadStartedAt;

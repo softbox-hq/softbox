@@ -4,6 +4,7 @@ import type { WorkerConfig } from "./config";
 import {
   buildAgentStageStartDetail,
   countSourceBytes,
+  extractAgentProgressMessages,
   formatAgentObservation,
   rewriteLiveAppFiles,
   selectLikelyTargetFiles,
@@ -51,6 +52,13 @@ function summarizePrompt(prompt: string): string {
 
 function logJob(jobId: string, message: string): void {
   console.log(`[worker][job ${jobId}] ${message}`);
+}
+
+function buildAgentTranscript(messages: string[]): string | undefined {
+  if (messages.length === 0) {
+    return undefined;
+  }
+  return messages.join("\n");
 }
 
 function formatBytes(bytes: number): string {
@@ -196,6 +204,46 @@ export async function processJobById(
       }
     | undefined;
   let boxEngineContext: ReturnType<typeof resolveBoxEngineContext> = null;
+  const agentProgressMessages: string[] = [];
+  let latestAgentStageDetail: string | null = null;
+  let agentStageUpdateChain: Promise<void> = Promise.resolve();
+  const recordAgentStageDetail = (status: "running" | "completed" | "failed", detail?: string) => {
+    if (!runningJob.pipelineRunId || !detail) {
+      return;
+    }
+    if (status === "running" && detail === latestAgentStageDetail) {
+      return;
+    }
+    if (status === "running") {
+      latestAgentStageDetail = detail;
+    }
+    agentStageUpdateChain = agentStageUpdateChain
+      .catch(() => undefined)
+      .then(async () => {
+        await convex.recordPipelineStage({
+          runId: runningJob.pipelineRunId!,
+          appId,
+          key: "agent",
+          status,
+          detail,
+        });
+      });
+  };
+  const flushAgentStageUpdates = async () => {
+    await agentStageUpdateChain.catch(() => undefined);
+  };
+  const pushAgentProgress = (message: string) => {
+    const normalized = message.replace(/\s+/g, " ").trim();
+    if (!normalized || agentProgressMessages.includes(normalized)) {
+      return;
+    }
+    if (agentProgressMessages.length >= 24) {
+      agentProgressMessages.shift();
+    }
+    agentProgressMessages.push(normalized);
+    logJob(runningJob._id, `agent progress ${normalized}`);
+    recordAgentStageDetail("running", buildAgentTranscript(agentProgressMessages));
+  };
 
   try {
     const shellState = await convex.getShellState(appId, selectedBoxId);
@@ -275,6 +323,7 @@ export async function processJobById(
         }),
       });
     }
+
     logJob(
       runningJob._id,
       `calling agent command '${config.agentCommand}' from ${config.projectRoot} with ${config.agentTimeoutMs}ms timeout`,
@@ -325,7 +374,14 @@ export async function processJobById(
           : null,
         primaryTargetFiles,
       },
+      {
+        onProgress: pushAgentProgress,
+      },
     );
+    for (const message of extractAgentProgressMessages(rewrite.details.notes ?? "")) {
+      pushAgentProgress(message);
+    }
+    await flushAgentStageUpdates();
     logJob(
       runningJob._id,
       `agent returned ${rewrite.files.length} file write(s) and ${rewrite.deletedPaths.length} file deletion(s)`,
@@ -377,12 +433,15 @@ export async function processJobById(
       );
     }
     if (runningJob.pipelineRunId) {
+      const completedAgentDetail =
+        buildAgentTranscript(agentProgressMessages) ??
+        formatAgentObservation(rewrite.observation);
       await convex.recordPipelineStage({
         runId: runningJob.pipelineRunId,
         appId,
         key: "agent",
         status: "completed",
-        detail: formatAgentObservation(rewrite.observation),
+        detail: completedAgentDetail,
       });
       await convex.recordPipelineStage({
         runId: runningJob.pipelineRunId,
@@ -479,6 +538,7 @@ export async function processJobById(
     );
   } catch (error) {
     const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    await flushAgentStageUpdates().catch(() => undefined);
     logJob(runningJob._id, `failed after ${Date.now() - startedAt}ms`);
     console.error(message);
     if (boxEngineContext) {
@@ -489,6 +549,7 @@ export async function processJobById(
       ).catch(() => undefined);
     }
     if (runningJob.pipelineRunId) {
+      const failedAgentDetail = buildAgentTranscript(agentProgressMessages);
       for (const key of ["agent", "build", "upload", "publish"] as const) {
         await convex
           .recordPipelineStage({
@@ -496,7 +557,10 @@ export async function processJobById(
             appId,
             key,
             status: "failed",
-            detail: message,
+            detail:
+              key === "agent" && failedAgentDetail
+                ? `${failedAgentDetail}\n\n${message}`
+                : message,
           })
           .catch(() => undefined);
       }

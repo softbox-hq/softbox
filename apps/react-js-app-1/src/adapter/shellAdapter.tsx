@@ -1,7 +1,8 @@
-import { StrictMode, useEffect } from "react";
+import { StrictMode, useEffect, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { initialLiveAppState } from "../defaultState";
-import { SoftboxRuntimeProvider } from "./runtime";
+import { SoftboxRuntimeProvider, useSoftboxRuntime } from "./runtime";
 import App from "../App";
 
 type RuntimeErrorPayload = {
@@ -34,6 +35,26 @@ function ReadySignal({ onReady }: { onReady: () => void }) {
   return null;
 }
 
+function RoutePublisher() {
+  const { initialState, publishState } = useSoftboxRuntime();
+  const location = useLocation();
+  const lastPublishedRouteRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const route = location.pathname || "/";
+    if (lastPublishedRouteRef.current === route) {
+      return;
+    }
+    lastPublishedRouteRef.current = route;
+    publishState({
+      ...initialState,
+      route,
+    });
+  }, [initialState, location.pathname, publishState]);
+
+  return null;
+}
+
 export function mount({
   root,
   initialState,
@@ -58,8 +79,11 @@ export function mount({
           reportHealthy={reportHealthy}
           reportError={reportError}
         >
-          <ReadySignal onReady={reportHealthy} />
-          <App />
+          <MemoryRouter initialEntries={[initialState?.route || "/"]}>
+            <ReadySignal onReady={reportHealthy} />
+            <RoutePublisher />
+            <App />
+          </MemoryRouter>
         </SoftboxRuntimeProvider>
       </StrictMode>,
     );

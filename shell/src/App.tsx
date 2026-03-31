@@ -1,6 +1,7 @@
 import { startTransition, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useMutation, useQuery } from "convex/react";
 import {
+  AppWindow,
   ArrowUpFromLine,
   SquareDashedMousePointer,
   SquareMousePointer,
@@ -234,12 +235,26 @@ function getRunDuration(run: any) {
   return null;
 }
 
+function getLatestStageDetailLine(detail: unknown) {
+  if (typeof detail !== "string") {
+    return null;
+  }
+
+  const lines = detail
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines.length > 0 ? lines[lines.length - 1] : null;
+}
+
 function getRunProgress(run: any) {
   const stages = run?.stages ?? [];
   if (!run) {
     return {
       status: "idle",
       activeLabel: "Ready",
+      activeDetailLine: null,
       currentStep: 0,
       total: PIPELINE_STAGE_KEYS.length,
     };
@@ -265,6 +280,7 @@ function getRunProgress(run: any) {
         : run.status === "failed"
           ? "Failed"
           : "Queued"),
+    activeDetailLine: getLatestStageDetailLine(activeStage?.detail),
     currentStep,
     total: PIPELINE_STAGE_KEYS.length,
   };
@@ -896,9 +912,13 @@ export function App() {
     pipelineProgress.total > 0
       ? `${pipelineProgress.currentStep}/${pipelineProgress.total}`
       : "0/0";
+  const pipelineInlineThought =
+    latestPipelineRun && pipelineProgress.status === "running"
+      ? pipelineProgress.activeDetailLine
+      : null;
   const pipelineToneClass =
     pipelineProgress.status === "completed"
-      ? "bg-emerald-500/12 text-emerald-200 ring-1 ring-emerald-500/25"
+      ? "bg-emerald-500/12 text-emerald-200"
       : pipelineProgress.status === "failed"
         ? "bg-rose-500/12 text-rose-100 ring-1 ring-rose-500/25"
         : pipelineProgress.status === "running"
@@ -1731,8 +1751,8 @@ export function App() {
                 rows={3}
               />
 
-              <div className="mt-3 flex flex-col gap-3 xl:flex-row xl:items-end">
-                <div className="flex flex-1 flex-wrap items-center gap-1.5">
+              <div className="mt-3 flex flex-col gap-3 xl:flex-row xl:items-center">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <button
                     type="button"
                     disabled={noMountedApp || showEmptyState}
@@ -1744,7 +1764,7 @@ export function App() {
                     className={`inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                       inspectMode
                         ? "bg-cyan-300 text-slate-950 hover:bg-cyan-200"
-                        : "border border-white/10 bg-white/6 text-slate-200 hover:bg-white/10"
+                        : "text-slate-200 hover:bg-white/10"
                     }`}
                   >
                     <SquareMousePointer className="size-3.5" />
@@ -1762,7 +1782,7 @@ export function App() {
                     className={`inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                       pixelInspectMode
                         ? "bg-fuchsia-300 text-slate-950 hover:bg-fuchsia-200"
-                        : "border border-white/10 bg-white/6 text-slate-200 hover:bg-white/10"
+                        : "text-slate-200 hover:bg-white/10"
                     }`}
                   >
                     <SquareDashedMousePointer className="size-3.5" />
@@ -1772,12 +1792,13 @@ export function App() {
                   <button
                     type="button"
                     onClick={() => setAppsOpen(true)}
-                    className="inline-flex h-9 items-center rounded-xl border border-white/10 bg-white/6 px-3 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10"
                   >
+                    <AppWindow className="size-3.5" />
                     Apps
                   </button>
 
-                  <label className="flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/6 px-3 text-xs text-slate-300">
+                  <label className="flex h-9 items-center gap-2 rounded-xl px-3 text-xs text-slate-300 transition-colors hover:bg-white/10">
                     <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                       Box
                     </span>
@@ -1800,12 +1821,23 @@ export function App() {
                   </label>
                 </div>
 
+                {pipelineInlineThought ? (
+                  <div className="hidden min-w-0 flex-1 items-center px-2 lg:flex">
+                    <p
+                      className="w-full truncate text-xs text-slate-400"
+                      title={pipelineInlineThought}
+                    >
+                      {pipelineInlineThought}
+                    </p>
+                  </div>
+                ) : null}
+
                 <div className="flex flex-wrap items-center gap-1.5 xl:ml-auto">
                   <button
                     type="button"
                     onClick={() => setVersionsOpen(true)}
                     disabled={noMountedApp}
-                    className="inline-flex h-9 items-center rounded-xl border border-white/10 bg-white/6 px-3 text-xs font-medium tabular-nums text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-9 items-center rounded-xl px-3 text-xs font-medium tabular-nums text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
                     title="Versions"
                   >
                     {mountedVersionLabel}
@@ -1817,7 +1849,11 @@ export function App() {
                       onClick={openPipelinePanel}
                       disabled={noMountedApp}
                       className={`inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${pipelineToneClass}`}
-                      title={`${pipelineProgress.activeLabel} · ${pipelineElapsedLabel}`}
+                      title={
+                        pipelineProgress.activeDetailLine
+                          ? `${pipelineProgress.activeLabel} · ${pipelineProgress.activeDetailLine} · ${pipelineElapsedLabel}`
+                          : `${pipelineProgress.activeLabel} · ${pipelineElapsedLabel}`
+                      }
                     >
                       {pipelineStepLabel}
                       <span className="text-[11px] opacity-80">{pipelineElapsedLabel}</span>
@@ -1827,7 +1863,7 @@ export function App() {
                   <button
                     type="submit"
                     disabled={submitting || promptDisabled}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white text-xs font-medium text-black transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-xs font-medium text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:text-slate-500"
                     aria-label={
                       noMountedApp
                         ? "Mount an app to enable prompts"
@@ -1880,6 +1916,7 @@ export function App() {
                   <div className="space-y-4">
                     {latestPipelineRuns.map((run: any) => {
                       const isExpanded = expandedRunId === run._id;
+                      const runProgress = getRunProgress(run);
                       const statusTone =
                         run.status === "completed"
                           ? "bg-emerald-500/10 text-emerald-300"
@@ -1903,6 +1940,11 @@ export function App() {
                           >
                             <div className="min-w-0 flex-1">
                               <p className="text-sm text-gray-100">{run.prompt}</p>
+                              {runProgress.activeDetailLine ? (
+                                <p className="mt-2 truncate text-xs text-gray-500">
+                                  {runProgress.activeDetailLine}
+                                </p>
+                              ) : null}
                               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                                 <span>{run.stages?.length ?? 0} stages</span>
                                 <span>{formatDuration(getRunDuration(run))}</span>
