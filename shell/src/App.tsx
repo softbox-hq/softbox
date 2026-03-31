@@ -1,6 +1,6 @@
 import { startTransition, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowUpFromLine, Check, Crosshair, Trash2 } from "lucide-react";
+import { ArrowUpFromLine, Crosshair, Trash2 } from "lucide-react";
 import { convexApi } from "@shared/convexApi";
 import type { LiveAppState } from "@shared/liveApp";
 import { defaultAppId, defaultShellId } from "@shared/liveApp";
@@ -94,12 +94,6 @@ function formatBoxLabel(box: {
 
   const segments = box.boxId.split(":");
   return segments.slice(2).join(":") || segments[segments.length - 1] || box.boxId;
-}
-
-function toggleStringSelection(values: string[], value: string) {
-  return values.includes(value)
-    ? values.filter((current) => current !== value)
-    : [...values, value];
 }
 
 function buildCompareFrameDoc(version: CompareableVersionRecord) {
@@ -779,7 +773,6 @@ export function App() {
         : pipelineProgress.status === "running"
           ? "bg-amber-500/12 text-amber-100 ring-1 ring-amber-500/25"
           : "bg-white/8 text-slate-200 ring-1 ring-white/10";
-  const selectedBoxLabel = selectedBox ? formatBoxLabel(selectedBox) : "No box";
   const targetBoxSummary =
     promptTargetBoxIds.length === 0
       ? "No target box selected"
@@ -798,16 +791,10 @@ export function App() {
   const currentVersionLabel = shellState?.activeVersion
     ? `v${shellState.activeVersion.versionNumber}`
     : "No active version";
-  const currentAppLabel = selectedApp?.name ?? (appId ? appId : "Nothing mounted");
-  const currentAppMeta = selectedApp?.appId ?? "shell idle";
-  const shellLead = showEmptyState
-    ? emptyStateBody
-    : showErrorBanner
-      ? runtimeStatus?.body ?? lastBuildError ?? "The latest mounted version reported an error."
-      : templateSourceMissing
-        ? templateSourceMessage ??
-          "Mounted artifacts are still available, but prompt-driven edits are disabled until the app source returns."
-        : null;
+  const openPipelinePanel = () => {
+    setPipelineOpen(true);
+    setExpandedRunId(latestPipelineRuns[0]?._id ?? null);
+  };
 
   useEffect(() => {
     if (!appsQuery || apps.length === 0 || shellSelection === undefined) {
@@ -1331,155 +1318,6 @@ export function App() {
         </div>
       ) : null}
 
-      {composerHidden ? (
-        <button
-          type="button"
-          onClick={() => setComposerHidden(false)}
-          className="fixed bottom-5 right-5 z-[13] rounded-full border border-white/10 bg-[#111419]/92 px-4 py-2 text-xs font-medium text-slate-100 shadow-[0_16px_50px_rgba(0,0,0,0.35)] backdrop-blur-xl transition-colors hover:bg-[#1a2028]"
-        >
-          Show HUD
-        </button>
-      ) : null}
-
-      <section
-        className={`pointer-events-none fixed inset-x-0 top-0 z-10 px-4 pt-4 transition-[opacity,transform] duration-200 ease-out sm:px-6 sm:pt-6 ${
-          composerHidden ? "-translate-y-4 opacity-0" : "translate-y-0 opacity-100"
-        } ${showEmptyState ? "hidden md:block" : ""}`}
-      >
-        <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="pointer-events-auto w-full max-w-2xl overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#0e1114]/82 p-3 shadow-[0_18px_60px_rgba(0,0,0,0.32)] backdrop-blur-2xl sm:p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <h1 className="text-lg font-semibold tracking-tight text-white sm:text-[1.5rem]">
-                  {showEmptyState ? "Shell status" : currentAppLabel}
-                </h1>
-                {shellLead ? (
-                  <p className="mt-1.5 max-w-xl text-xs leading-5 text-slate-300 sm:text-sm">
-                    {shellLead}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="rounded-xl border border-white/8 bg-black/20 px-3 py-2 text-right">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                  Mounted
-                </p>
-                <p className="mt-1 text-xs font-medium text-white">{currentAppMeta}</p>
-                <p className="mt-0.5 text-[11px] text-slate-400">
-                  {currentVersionLabel} · {selectedBoxLabel}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
-              <span className="rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-slate-200">
-                {targetBoxSummary}
-              </span>
-              <span className="rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-slate-300">
-                {selectionSummary}
-              </span>
-              <span className={`rounded-full px-2.5 py-1 font-medium ${pipelineToneClass}`}>
-                {pipelineProgress.activeLabel} · {pipelineStepLabel}
-              </span>
-              <span className="rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-slate-400">
-                {elapsedSeconds}s elapsed
-              </span>
-            </div>
-
-            {showErrorBanner ? (
-              <div className="mt-3 rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
-                <p className="font-semibold">{runtimeStatus?.title ?? "Build error"}</p>
-                <p className="mt-1 whitespace-pre-wrap text-rose-100/80">
-                  {runtimeStatus?.body ?? lastBuildError}
-                </p>
-              </div>
-            ) : null}
-
-            {templateSourceMissing ? (
-              <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-                <p className="font-semibold">Mounted version still works, but edits are disabled.</p>
-                <p className="mt-1 text-amber-100/80">
-                  {templateSourceMessage ??
-                    "This app can still mount its existing built version, but its local source is missing from /apps."}
-                </p>
-              </div>
-            ) : null}
-          </div>
-
-          <aside className="pointer-events-auto w-full max-w-[280px] overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#0b0f13]/80 p-3 shadow-[0_16px_56px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                  Workflow
-                </p>
-                <p className="mt-1.5 text-sm font-semibold text-white">
-                  {pipelineProgress.activeLabel}
-                </p>
-                <p className="mt-0.5 text-xs text-slate-400">
-                  {pipelineStepLabel} stages · {elapsedSeconds}s
-                </p>
-              </div>
-              {pipelineProgress.status === "completed" ? (
-                <div className="flex size-8 items-center justify-center rounded-xl bg-emerald-500/12 text-emerald-300 ring-1 ring-emerald-500/20">
-                  <Check className="size-4" />
-                </div>
-              ) : (
-                <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${pipelineToneClass}`}>
-                  {pipelineProgress.status}
-                </span>
-              )}
-            </div>
-
-            <div className="mt-3 grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                onClick={() => setAppsOpen(true)}
-                className="inline-flex h-8 items-center justify-center rounded-xl border border-white/10 bg-white/6 px-2.5 text-xs font-medium text-slate-100 transition-colors hover:bg-white/10"
-              >
-                Apps
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPipelineOpen(true);
-                  setExpandedRunId(latestPipelineRuns[0]?._id ?? null);
-                }}
-                disabled={noMountedApp}
-                className="inline-flex h-8 items-center justify-center rounded-xl border border-white/10 bg-white/6 px-2.5 text-xs font-medium text-slate-100 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Pipeline
-              </button>
-              <button
-                type="button"
-                onClick={() => setVersionsOpen(true)}
-                disabled={noMountedApp}
-                className="inline-flex h-8 items-center justify-center rounded-xl border border-white/10 bg-white/6 px-2.5 text-xs font-medium text-slate-100 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Versions
-              </button>
-              <button
-                type="button"
-                onClick={() => setComposerHidden(true)}
-                className="inline-flex h-8 items-center justify-center rounded-xl border border-white/10 bg-[#151b22] px-2.5 text-xs font-medium text-slate-300 transition-colors hover:bg-[#1d2631]"
-              >
-                Hide HUD
-              </button>
-            </div>
-
-            <div className="mt-3 grid gap-1.5 text-[11px] text-slate-400">
-              <div className="rounded-xl border border-white/8 bg-black/20 px-3 py-2">
-                <p className="font-semibold uppercase tracking-[0.16em] text-slate-500">Current box</p>
-                <p className="mt-1 text-xs font-medium text-slate-100">{selectedBoxLabel}</p>
-              </div>
-              <div className="rounded-xl border border-white/8 bg-black/20 px-3 py-2">
-                <p className="font-semibold uppercase tracking-[0.16em] text-slate-500">Prompt target</p>
-                <p className="mt-1 text-xs font-medium text-slate-100">{targetBoxSummary}</p>
-              </div>
-            </div>
-          </aside>
-        </div>
-      </section>
-
       {showEmptyState ? (
         <section className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-4 pb-28 pt-24 sm:px-6 sm:pb-32 sm:pt-32">
           <div className="pointer-events-auto relative w-full max-w-2xl overflow-hidden rounded-[1.5rem] border border-white/10 bg-[#0d1014]/86 p-5 shadow-[0_24px_84px_rgba(0,0,0,0.38)] backdrop-blur-2xl sm:p-6">
@@ -1577,8 +1415,8 @@ export function App() {
           }}
           className="pointer-events-auto mx-auto w-full max-w-3xl"
         >
-          <div className="overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#101317]/90 shadow-[0_20px_64px_rgba(0,0,0,0.3)] backdrop-blur-2xl">
-            <div className="border-b border-white/8 px-3 py-2.5 sm:px-4">
+          <div className="overflow-hidden rounded-[1.25rem] bg-[#101317]/90 shadow-[0_20px_64px_rgba(0,0,0,0.3)] backdrop-blur-2xl">
+            <div className="px-3 py-2.5 sm:px-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
@@ -1587,10 +1425,10 @@ export function App() {
                   <p className="mt-1 text-xs text-slate-300">{targetBoxSummary}</p>
                 </div>
                 <div className="flex flex-wrap gap-1.5 text-[11px]">
-                  <span className="rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-slate-300">
+                  <span className="rounded-full bg-white/6 px-2.5 py-1 text-slate-300">
                     {selectionSummary}
                   </span>
-                  <span className="rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-slate-400">
+                  <span className="rounded-full bg-white/6 px-2.5 py-1 text-slate-400">
                     {currentVersionLabel}
                   </span>
                 </div>
@@ -1633,6 +1471,13 @@ export function App() {
                 id="prompt-input"
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" || !event.ctrlKey || event.nativeEvent.isComposing) {
+                    return;
+                  }
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }}
                 placeholder={
                   noMountedApp
                     ? "Mount an app to submit prompts."
@@ -1641,7 +1486,7 @@ export function App() {
                       : "Describe what you want to change..."
                 }
                 disabled={promptDisabled}
-                className="min-h-[64px] w-full resize-none rounded-[1rem] border border-white/8 bg-black/20 px-3 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-400/40 disabled:cursor-not-allowed disabled:text-slate-500"
+                className="min-h-[64px] w-full resize-none rounded-[1rem] bg-black/20 px-3 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:text-slate-500"
                 rows={3}
               />
 
@@ -1683,6 +1528,32 @@ export function App() {
                     {pixelInspectMode ? "Pixels on" : "Pixels"}
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={() => setAppsOpen(true)}
+                    className="inline-flex h-9 items-center rounded-xl border border-white/10 bg-white/6 px-3 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10"
+                  >
+                    Apps
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={openPipelinePanel}
+                    disabled={noMountedApp}
+                    className="inline-flex h-9 items-center rounded-xl border border-white/10 bg-white/6 px-3 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Pipeline
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setVersionsOpen(true)}
+                    disabled={noMountedApp}
+                    className="inline-flex h-9 items-center rounded-xl border border-white/10 bg-white/6 px-3 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Versions
+                  </button>
+
                   <label className="flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/6 px-3 text-xs text-slate-300">
                     <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                       Box
@@ -1708,14 +1579,6 @@ export function App() {
 
                 <div className="flex flex-wrap items-center justify-end gap-1.5">
                   <button
-                    type="button"
-                    onClick={() => setAppsOpen(true)}
-                    className="inline-flex h-9 items-center rounded-xl border border-white/10 bg-white/6 px-3 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10"
-                  >
-                    {selectedApp?.appId ?? appId ?? "No app"}
-                  </button>
-
-                  <button
                     type="submit"
                     disabled={submitting || promptDisabled}
                     className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-white px-3 text-xs font-medium text-black transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
@@ -1735,39 +1598,6 @@ export function App() {
                 </div>
               </div>
 
-              <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-white/8 pt-3">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Send to
-                </span>
-                {currentBoxes.length > 0 ? (
-                  currentBoxes.map((box: any) => {
-                    const targeted = promptTargetBoxIds.includes(box.boxId);
-                    return (
-                      <button
-                        key={box.boxId}
-                        type="button"
-                        disabled={noMountedApp}
-                        onClick={() =>
-                          setSelectedTargetBoxIds((current) => {
-                            const next = toggleStringSelection(current, box.boxId);
-                            return next.length > 0 ? next : [box.boxId];
-                          })
-                        }
-                        className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                          targeted
-                            ? "bg-cyan-500/16 text-cyan-100 ring-1 ring-cyan-400/30"
-                            : "border border-white/10 bg-white/6 text-slate-300 hover:bg-white/10"
-                        }`}
-                        title={box.boxId}
-                      >
-                        {formatBoxLabel(box)}
-                      </button>
-                    );
-                  })
-                ) : (
-                  <span className="text-xs text-slate-500">No box</span>
-                )}
-              </div>
             </div>
           </div>
         </form>
