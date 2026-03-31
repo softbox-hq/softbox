@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 
 type ModuleStatus = {
@@ -7,57 +7,52 @@ type ModuleStatus = {
   details: string
 }
 
-const MODULES = ['react', 'react-dom', 'sql.js']
+type PackageManifest = {
+  name?: string
+}
 
-async function probeModule(name: string): Promise<ModuleStatus> {
-  try {
-    await import(/* @vite-ignore */ name)
+const packageManifests = import.meta.glob<PackageManifest>('/node_modules/*/package.json', {
+  eager: true,
+  import: 'default',
+})
 
-    return {
-      name,
-      state: 'ok',
-      details: 'loaded',
-    }
-  } catch {
-    return {
-      name,
-      state: 'missing',
-      details: 'not reachable',
-    }
+const moduleNames = Array.from(
+  new Set([
+    ...Object.values(packageManifests)
+      .map((manifest) => manifest.name)
+      .filter((name): name is string => Boolean(name)),
+  ]),
+).sort((a, b) => a.localeCompare(b))
+
+function inspectModule(name: string): ModuleStatus {
+  const present = Boolean(Object.values(packageManifests).find((manifest) => manifest.name === name))
+
+  return {
+    name,
+    state: present ? 'ok' : 'missing',
+    details: present ? 'installed' : 'not found',
   }
 }
 
 function App() {
-  const [modules, setModules] = useState<ModuleStatus[]>(
-    MODULES.map((name) => ({ name, state: 'checking' as const, details: 'waiting' })),
-  )
-  const [lastCheckedAt, setLastCheckedAt] = useState<string>('—')
+  const [tick, setTick] = useState(0)
 
   useEffect(() => {
-    let alive = true
+    const timer = window.setInterval(() => {
+      setTick((value) => value + 1)
+    }, 15_000)
 
-    const refresh = async () => {
-      const results = await Promise.all(MODULES.map((name) => probeModule(name)))
-      if (!alive) return
-
-      setModules(results)
-      setLastCheckedAt(new Date().toLocaleTimeString())
-    }
-
-    refresh()
-    const timer = window.setInterval(refresh, 15_000)
-
-    return () => {
-      alive = false
-      window.clearInterval(timer)
-    }
+    return () => window.clearInterval(timer)
   }, [])
+
+  const modules = useMemo(() => moduleNames.map((name) => inspectModule(name)), [tick])
+  const lastCheckedAt = new Date().toLocaleTimeString()
 
   return (
     <main className="screen">
       <aside className="widget" aria-label="module poller">
         <div className="widget__head">
-          <p className="widget__eyebrow">Module poller</p>
+          <p className="widget__eyebrow">Node modules</p>
           <span className="widget__time">{lastCheckedAt}</span>
         </div>
         <ul className="widget__list">
