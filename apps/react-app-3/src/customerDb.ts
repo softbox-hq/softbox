@@ -8,6 +8,7 @@ type CustomerRow = {
   company: string
   plan: string
   status: string
+  acquisitionCost: number
 }
 
 const customers: Omit<CustomerRow, 'id'>[] = [
@@ -17,6 +18,7 @@ const customers: Omit<CustomerRow, 'id'>[] = [
     company: 'Northstar Labs',
     plan: 'Pro',
     status: 'Active',
+    acquisitionCost: 1240,
   },
   {
     name: 'Noah Patel',
@@ -24,6 +26,7 @@ const customers: Omit<CustomerRow, 'id'>[] = [
     company: 'Parcel Pilot',
     plan: 'Starter',
     status: 'Trial',
+    acquisitionCost: 420,
   },
   {
     name: 'Maya Chen',
@@ -31,6 +34,7 @@ const customers: Omit<CustomerRow, 'id'>[] = [
     company: 'Mintframe',
     plan: 'Business',
     status: 'Active',
+    acquisitionCost: 1890,
   },
   {
     name: 'Leo Martins',
@@ -38,6 +42,7 @@ const customers: Omit<CustomerRow, 'id'>[] = [
     company: 'Glowforge Studio',
     plan: 'Enterprise',
     status: 'Paused',
+    acquisitionCost: 3120,
   },
   {
     name: 'Sofia Novak',
@@ -45,6 +50,7 @@ const customers: Omit<CustomerRow, 'id'>[] = [
     company: 'Harborgrid',
     plan: 'Pro',
     status: 'Active',
+    acquisitionCost: 970,
   },
 ]
 
@@ -74,16 +80,24 @@ function createDatabase(SQL: SqlJsStatic) {
       email TEXT NOT NULL,
       company TEXT NOT NULL,
       plan TEXT NOT NULL,
-      status TEXT NOT NULL
+      status TEXT NOT NULL,
+      acquisition_cost INTEGER NOT NULL
     );
   `)
 
   const insert = db.prepare(
-    'INSERT INTO customers (name, email, company, plan, status) VALUES (?, ?, ?, ?, ?)',
+    'INSERT INTO customers (name, email, company, plan, status, acquisition_cost) VALUES (?, ?, ?, ?, ?, ?)',
   )
 
   for (const customer of customers) {
-    insert.run([customer.name, customer.email, customer.company, customer.plan, customer.status])
+    insert.run([
+      customer.name,
+      customer.email,
+      customer.company,
+      customer.plan,
+      customer.status,
+      customer.acquisitionCost,
+    ])
   }
 
   insert.free()
@@ -100,7 +114,7 @@ export async function getCustomers(): Promise<CustomerRow[]> {
     const rows = result[0]?.values ?? []
 
     return rows.map((row) => {
-      const [id, name, email, company, plan, status] = row
+      const [id, name, email, company, plan, status, acquisitionCost] = row
 
       return {
         id: Number(id),
@@ -109,6 +123,7 @@ export async function getCustomers(): Promise<CustomerRow[]> {
         company: String(company),
         plan: String(plan),
         status: String(status),
+        acquisitionCost: Number(acquisitionCost),
       }
     })
   } finally {

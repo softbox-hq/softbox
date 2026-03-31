@@ -35,6 +35,7 @@ function App() {
                 <th>Company</th>
                 <th>Plan</th>
                 <th>Status</th>
+                <th>Acquisition cost</th>
               </tr>
             </thead>
             <tbody>
@@ -45,6 +46,7 @@ function App() {
                   <td>{customer.company}</td>
                   <td>{customer.plan}</td>
                   <td>{customer.status}</td>
+                  <td>${customer.acquisitionCost.toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>
