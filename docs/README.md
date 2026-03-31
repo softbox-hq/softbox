@@ -14,6 +14,10 @@ Instead of using an LLM only to produce structured actions or mutate app state, 
   - The step-by-step lifecycle from prompt to live swap.
 - [`preview-promotion-race.md`](/home/fvrlak/ventures/softbox/docs/preview-promotion-race.md)
   - Incident note for the iframe-era preview/promotion regression: why `Preview Mount` hung or flashed, and what fixed it.
+- [`mounted-routing.md`](/home/fvrlak/ventures/softbox/docs/mounted-routing.md)
+  - Why routed apps cannot use `BrowserRouter` unchanged when mounted in the iframe runtime, and the recommended `BrowserRouter` / `MemoryRouter` split.
+- [`router-scaffolding-decision.md`](/home/fvrlak/ventures/softbox/docs/router-scaffolding-decision.md)
+  - Open decision note for whether `pnpm new-app` / `pnpm wrap-app` should scaffold route-aware adapters by default or only once an app opts into routing.
 - [`R2-bottleneck.md`](/home/fvrlak/projects/softbox/docs/R2-bottleneck.md)
   - Investigation of the upload bottleneck, the fixes applied, and the measured reduction from ~30s to ~3.8s.
 - [`ELEMENTS-NUMBR.md`](/home/fvrlak/projects/softbox/docs/ELEMENTS-NUMBR.md)

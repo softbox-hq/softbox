@@ -6,6 +6,7 @@ import {
   SquareDashedMousePointer,
   SquareMousePointer,
   Trash2,
+  X,
 } from "lucide-react";
 import { convexApi } from "@shared/convexApi";
 import type { LiveAppState } from "@shared/liveApp";
@@ -235,9 +236,32 @@ function getRunDuration(run: any) {
   return null;
 }
 
-function getLatestStageDetailLine(detail: unknown) {
+function isAgentMetadataLine(line: string) {
+  const cleaned = line.replace(/^[-*]\s+/u, "").trim();
+  if (!cleaned) {
+    return true;
+  }
+
+  return (
+    /^(starting agent rewrite|agent observation|stdout:|stderr:|commit:|warning:|error:)/iu.test(cleaned) ||
+    /^(mode|command|model|agent_id|thread|session_key|session_id|timeout_ms|request_chars|prompt_chars|editable_files|source_bytes|likely_targets):/iu.test(
+      cleaned,
+    ) ||
+    /^(build_prompt|agent_turn|reread_files|diff|summarize|total_rewrite|stdout_chars|stderr_chars|changed_paths|written_files|deleted_paths|changed_preview):/iu.test(
+      cleaned,
+    ) ||
+    /^(timing|output):/iu.test(cleaned)
+  );
+}
+
+function getLatestStageDetailLine(detail: unknown, stageKey?: string | null) {
+  const lines = getDetailLines(detail, stageKey);
+  return lines.length > 0 ? lines[lines.length - 1] : null;
+}
+
+function getDetailLines(detail: unknown, stageKey?: string | null) {
   if (typeof detail !== "string") {
-    return null;
+    return [];
   }
 
   const lines = detail
@@ -245,7 +269,21 @@ function getLatestStageDetailLine(detail: unknown) {
     .map((line) => line.trim())
     .filter(Boolean);
 
-  return lines.length > 0 ? lines[lines.length - 1] : null;
+  if (stageKey === "agent") {
+    return lines.filter((line) => !isAgentMetadataLine(line));
+  }
+
+  return lines;
+}
+
+function getRunStageDetailLines(run: any, stageKey: string) {
+  const stage = run?.stages?.find((candidate: any) => candidate.key === stageKey);
+  return getDetailLines(stage?.detail, stageKey);
+}
+
+function getStageDisplayDetail(detail: unknown, stageKey?: string | null) {
+  const lines = getDetailLines(detail, stageKey);
+  return lines.length > 0 ? lines.join("\n") : null;
 }
 
 function getRunProgress(run: any) {
@@ -280,7 +318,7 @@ function getRunProgress(run: any) {
         : run.status === "failed"
           ? "Failed"
           : "Queued"),
-    activeDetailLine: getLatestStageDetailLine(activeStage?.detail),
+    activeDetailLine: getLatestStageDetailLine(activeStage?.detail, activeStage?.key),
     currentStep,
     total: PIPELINE_STAGE_KEYS.length,
   };
@@ -317,6 +355,12 @@ type ActiveRuntimeSurface = {
 };
 
 type SelectionMode = "elements" | "pixels";
+
+type ThoughtBubble = {
+  id: string;
+  runId: string;
+  message: string;
+};
 
 const inspectPreferredTags = new Set([
   "a",
@@ -821,6 +865,8 @@ export function App() {
   const [draftRegion, setDraftRegion] = useState<InspectRegion | null>(null);
   const [selectedRegions, setSelectedRegions] = useState<InspectRegion[]>([]);
   const [composerHidden, setComposerHidden] = useState(false);
+  const [thoughtBubbles, setThoughtBubbles] = useState<ThoughtBubble[]>([]);
+  const [dismissedThoughtBubbleIds, setDismissedThoughtBubbleIds] = useState<string[]>([]);
 
   const runtimeStatus = getRuntimeStatus(shellState);
   const currentBoxes =
@@ -916,6 +962,12 @@ export function App() {
     latestPipelineRun && pipelineProgress.status === "running"
       ? pipelineProgress.activeDetailLine
       : null;
+  const agentThoughtLines = getRunStageDetailLines(latestPipelineRun, "agent");
+  const agentThoughtSignature = agentThoughtLines.join("\n");
+  const visibleThoughtBubbles = thoughtBubbles
+    .filter((bubble) => !dismissedThoughtBubbleIds.includes(bubble.id))
+    .slice()
+    .reverse();
   const pipelineToneClass =
     pipelineProgress.status === "completed"
       ? "bg-emerald-500/12 text-emerald-200"
@@ -961,6 +1013,39 @@ export function App() {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [latestPipelineRun?._id, latestPipelineRun?.status]);
+
+  useEffect(() => {
+    setThoughtBubbles([]);
+    setDismissedThoughtBubbleIds([]);
+  }, [latestPipelineRun?._id]);
+
+  useEffect(() => {
+    const runId = latestPipelineRun?._id;
+    if (!runId || latestPipelineRun?.status !== "running" || agentThoughtLines.length === 0) {
+      return;
+    }
+
+    setThoughtBubbles((current) => {
+      const existingIds = new Set(current.map((bubble) => bubble.id));
+      let changed = false;
+      const next = [...current];
+
+      agentThoughtLines.forEach((message, index) => {
+        const id = `${runId}:agent:${index}`;
+        if (existingIds.has(id)) {
+          return;
+        }
+        next.push({
+          id,
+          runId,
+          message,
+        });
+        changed = true;
+      });
+
+      return changed ? next : current;
+    });
+  }, [agentThoughtSignature, agentThoughtLines, latestPipelineRun?._id, latestPipelineRun?.status]);
 
   useEffect(() => {
     setAppsOpen(false);
@@ -1656,6 +1741,7 @@ export function App() {
           composerHidden ? "translate-y-8 opacity-0" : "translate-y-0 opacity-100"
         } ${showEmptyState ? "hidden lg:block" : ""}`}
       >
+        <div className="mx-auto flex w-full max-w-6xl flex-col-reverse gap-3 lg:flex-row lg:items-end lg:justify-center">
         <form
           onSubmit={async (event) => {
             event.preventDefault();
@@ -1693,7 +1779,7 @@ export function App() {
               setSubmitting(false);
             }
           }}
-          className="pointer-events-auto mx-auto w-full max-w-3xl"
+          className="pointer-events-auto w-full max-w-3xl"
         >
           <div className="overflow-hidden rounded-[1.25rem] bg-[#101317]/90 shadow-[0_20px_64px_rgba(0,0,0,0.3)] backdrop-blur-2xl">
             <div className="p-3 sm:p-4">
@@ -1882,6 +1968,46 @@ export function App() {
             </div>
           </div>
         </form>
+        {visibleThoughtBubbles.length > 0 ? (
+          <aside className="pointer-events-auto w-full max-w-sm lg:mb-3 lg:w-80 lg:shrink-0">
+            <div className="max-h-[45vh] overflow-y-auto rounded-[1.15rem] bg-[#0f1318]/92 p-2 shadow-[0_20px_64px_rgba(0,0,0,0.3)] backdrop-blur-2xl">
+              <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Live notes
+              </p>
+              <div className="flex flex-col gap-2">
+                {visibleThoughtBubbles.map((bubble) => (
+                  <article
+                    key={bubble.id}
+                    className="rounded-2xl bg-white/6 px-3 py-2.5 text-xs text-slate-200 ring-1 ring-white/8"
+                  >
+                    <div className="flex items-start gap-2">
+                      <p
+                        className="min-w-0 flex-1 leading-5 text-slate-200"
+                        title={bubble.message}
+                      >
+                        {truncateText(bubble.message, 180) ?? bubble.message}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDismissedThoughtBubbleIds((current) =>
+                            current.includes(bubble.id) ? current : [...current, bubble.id],
+                          )
+                        }
+                        className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-white/10 hover:text-slate-200"
+                        aria-label="Dismiss note"
+                        title="Dismiss note"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </aside>
+        ) : null}
+        </div>
       </section>
 
       {pipelineOpen ? (
@@ -1999,6 +2125,10 @@ export function App() {
                               </div>
                               <div className="space-y-3">
                                 {(run.stages ?? []).map((stage: any) => {
+                                  const stageDisplayDetail = getStageDisplayDetail(
+                                    stage.detail,
+                                    stage.key,
+                                  );
                                   const stageTone =
                                     stage.status === "completed"
                                       ? "bg-emerald-500/5"
@@ -2031,9 +2161,9 @@ export function App() {
                                           </p>
                                         </div>
                                       </div>
-                                      {stage.detail ? (
+                                      {stageDisplayDetail ? (
                                         <p className="mt-3 whitespace-pre-wrap text-xs leading-6 text-gray-400">
-                                          {stage.detail}
+                                          {stageDisplayDetail}
                                         </p>
                                       ) : null}
                                     </div>

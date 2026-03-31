@@ -2,7 +2,6 @@ import type { LiveAppState } from "./shared/liveApp";
 import { basename } from "node:path";
 import type { WorkerConfig } from "./config";
 import {
-  buildAgentStageStartDetail,
   countSourceBytes,
   extractAgentProgressMessages,
   formatAgentObservation,
@@ -59,6 +58,11 @@ function buildAgentTranscript(messages: string[]): string | undefined {
     return undefined;
   }
   return messages.join("\n");
+}
+
+function normalizeAgentSummary(summary: string | null | undefined): string | undefined {
+  const normalized = summary?.trim();
+  return normalized ? normalized : undefined;
 }
 
 function formatBytes(bytes: number): string {
@@ -311,16 +315,6 @@ export async function processJobById(
         appId,
         key: "agent",
         status: "running",
-        detail: buildAgentStageStartDetail({
-          command: config.agentCommand,
-          model: config.agentModel,
-          agentId: boxEngineContext?.agentId ?? null,
-          timeoutMs: config.agentTimeoutMs,
-          requestChars: runningJob.prompt.trim().length,
-          editableFiles: currentFiles.length,
-          sourceBytes,
-          likelyTargetFiles: primaryTargetFiles,
-        }),
       });
     }
 
@@ -435,7 +429,7 @@ export async function processJobById(
     if (runningJob.pipelineRunId) {
       const completedAgentDetail =
         buildAgentTranscript(agentProgressMessages) ??
-        formatAgentObservation(rewrite.observation);
+        normalizeAgentSummary(rewrite.details.summary);
       await convex.recordPipelineStage({
         runId: runningJob.pipelineRunId,
         appId,
