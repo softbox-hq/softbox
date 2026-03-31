@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls, Grid, Text } from '@react-three/drei'
-import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import {
+  DndContext,
+  PointerSensor,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { useDraggable } from '@dnd-kit/core'
 import { NavLink, Route, Routes } from 'react-router-dom'
@@ -43,6 +49,49 @@ function Layout({ children, contentClassName = '' }) {
 }
 
 function Home() {
+  const fallbackPackages = useMemo(
+    () => ['@dnd-kit/core', '@dnd-kit/utilities', '@react-three/drei', '@react-three/fiber', 'deck.gl', 'draggabilly', 'packery', 'three'],
+    [],
+  )
+  const [packages, setPackages] = useState([])
+  const [status, setStatus] = useState('loading')
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadPackages = async () => {
+      setStatus('loading')
+      try {
+        const response = await Promise.race([
+          fetch('/package.json', { cache: 'no-store' }),
+          new Promise((_, reject) => window.setTimeout(() => reject(new Error('timeout')), 2500)),
+        ])
+        const data = await response.json()
+        const dependencies = Object.keys(data.dependencies ?? {})
+          .filter((name) => name !== 'react' && name !== 'react-dom')
+          .sort((a, b) => a.localeCompare(b))
+
+        if (!cancelled) {
+          setPackages(dependencies)
+          setStatus('live')
+        }
+      } catch {
+        if (!cancelled) {
+          setPackages(fallbackPackages)
+          setStatus('fallback')
+        }
+      }
+    }
+
+    loadPackages()
+    const interval = window.setInterval(loadPackages, 15000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [])
+
   return (
     <DraggableCard
       id="deps-card"
@@ -50,17 +99,20 @@ function Home() {
       ariaLabel="Installed unnecessary packages"
     >
       <p className="clock-label">Installed non-native Vite modules</p>
-      <h1 className="info-title">Not needed to run this app</h1>
+      <h1 className="info-title">Refreshes every 15 seconds</h1>
+      <p className="info-status">{status === 'live' ? 'Live from package.json' : 'Using fallback list'}</p>
       <ul className="module-list">
-        <li>deck.gl</li>
-        <li>draggabilly</li>
-        <li>packery</li>
+        {packages.length ? (
+          packages.map((name) => <li key={name}>{name}</li>)
+        ) : (
+          <li>Loading packages...</li>
+        )}
       </ul>
     </DraggableCard>
   )
 }
 
-function DrawingCanvas() {
+function DraggableDrawingWidget() {
   const canvasRef = useRef(null)
   const [drawing, setDrawing] = useState(false)
 
@@ -120,10 +172,10 @@ function DrawingCanvas() {
   const stopDrawing = () => setDrawing(false)
 
   return (
-    <DraggableCard id="drawing-card" className="drawing-widget" ariaLabel="Drawing canvas widget">
+    <DraggableCard id="drawing-card" className="drawing-widget dashboard-piece" ariaLabel="Drawing canvas widget">
       <div className="drawing-header">
         <h1>Draw here</h1>
-        <p>Click or drag to sketch on the canvas.</p>
+        <p>Drag this card to another grid cell.</p>
       </div>
       <canvas
         ref={canvasRef}
@@ -137,8 +189,20 @@ function DrawingCanvas() {
   )
 }
 
+function GridCell({ id, children, active }) {
+  const { setNodeRef, isOver } = useDroppable({ id })
+
+  return (
+    <div ref={setNodeRef} className={`grid-cell ${isOver ? 'is-over' : ''} ${active ? 'is-active' : ''}`.trim()}>
+      {children}
+    </div>
+  )
+}
+
 function Dashboard() {
-  return <DrawingCanvas />
+  return (
+    <section className="dashboard-empty" aria-label="Dashboard empty" />
+  )
 }
 
 function Chat() {
@@ -158,6 +222,23 @@ function SpinningBox() {
     <mesh ref={meshRef} position={[0, 0.45, 0]}>
       <boxGeometry args={[0.9, 0.9, 0.9]} />
       <meshStandardMaterial color="#66ccff" roughness={0.3} metalness={0.2} />
+    </mesh>
+  )
+}
+
+function RedBox() {
+  const meshRef = useRef(null)
+
+  useFrame((_, delta) => {
+    if (!meshRef.current) return
+    meshRef.current.rotation.x += delta * 0.45
+    meshRef.current.rotation.y += delta * 0.3
+  })
+
+  return (
+    <mesh ref={meshRef} position={[1.25, 0.45, 0]}>
+      <boxGeometry args={[0.9, 0.9, 0.9]} />
+      <meshStandardMaterial color="#ff4444" roughness={0.3} metalness={0.2} />
     </mesh>
   )
 }
@@ -184,6 +265,7 @@ function Space() {
             position={[0, -1, 0]}
           />
           <SpinningBox />
+          <RedBox />
           <Text position={[0, 1.7, 0]} fontSize={0.45} color="#ffffff" anchorX="center" anchorY="middle">
             XYZ space
           </Text>
