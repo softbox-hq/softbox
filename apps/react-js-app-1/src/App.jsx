@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import Packery from 'packery'
+import Draggabilly from 'draggabilly'
 import './App.css'
 
 const cards = [
@@ -18,14 +19,30 @@ function App() {
   useEffect(() => {
     if (!gridRef.current) return
 
-    packeryRef.current = new Packery(gridRef.current, {
+    const gridElement = gridRef.current
+    const pckry = new Packery(gridElement, {
       itemSelector: '.grid-item',
       gutter: 16,
       percentPosition: true,
+      initLayout: false,
     })
 
+    packeryRef.current = pckry
+
+    const draggies = pckry.getItemElements().map((itemElem) => {
+      const draggie = new Draggabilly(itemElem, {
+        handle: '.drag-handle',
+      })
+
+      pckry.bindDraggabillyEvents(draggie)
+      return draggie
+    })
+
+    pckry.layout()
+
     return () => {
-      packeryRef.current?.destroy()
+      draggies.forEach((draggie) => draggie.destroy())
+      pckry.destroy()
       packeryRef.current = null
     }
   }, [])
@@ -41,6 +58,9 @@ function App() {
         <div className="grid" ref={gridRef}>
           {cards.map((card) => (
             <article className="grid-item" key={card.title}>
+              <div className="drag-handle" aria-label={`Drag ${card.title}`}>
+                ≡
+              </div>
               <h2>{card.title}</h2>
               <p>{card.body}</p>
             </article>
