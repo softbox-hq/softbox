@@ -117,6 +117,11 @@ This is the most important safety step.
 
 The app does not become active just because the worker built it.
 
+See also:
+
+- [`preview-promotion-race.md`](/home/fvrlak/ventures/softbox/docs/preview-promotion-race.md)
+  - Concrete regression note for what broke after iframe isolation, and why preview/promotion logic must be keyed to stable version identity rather than subscription churn.
+
 ## Step 8: Promotion Or Rollback
 
 If the previewed version reports healthy, the shell activates it and tells Convex that the version is now active.

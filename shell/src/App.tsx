@@ -1,6 +1,11 @@
 import { startTransition, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowUpFromLine, Crosshair, Trash2 } from "lucide-react";
+import {
+  ArrowUpFromLine,
+  SquareDashedMousePointer,
+  SquareMousePointer,
+  Trash2,
+} from "lucide-react";
 import { convexApi } from "@shared/convexApi";
 import type { LiveAppState } from "@shared/liveApp";
 import { defaultAppId, defaultShellId } from "@shared/liveApp";
@@ -25,6 +30,16 @@ type CompareableVersionRecord = {
     summary?: string | null;
   } | null;
 };
+
+const PIPELINE_STAGE_KEYS = [
+  "queued",
+  "agent",
+  "build",
+  "upload",
+  "publish",
+  "preview",
+  "activate",
+] as const;
 
 function formatDuration(durationMs: number | null | undefined) {
   if (typeof durationMs !== "number" || Number.isNaN(durationMs)) {
@@ -221,12 +236,12 @@ function getRunDuration(run: any) {
 
 function getRunProgress(run: any) {
   const stages = run?.stages ?? [];
-  if (!run || stages.length === 0) {
+  if (!run) {
     return {
       status: "idle",
       activeLabel: "Ready",
       currentStep: 0,
-      total: 0,
+      total: PIPELINE_STAGE_KEYS.length,
     };
   }
 
@@ -251,7 +266,7 @@ function getRunProgress(run: any) {
           ? "Failed"
           : "Queued"),
     currentStep,
-    total: stages.length,
+    total: PIPELINE_STAGE_KEYS.length,
   };
 }
 
@@ -811,6 +826,10 @@ export function App() {
   const latestPipelineRuns = shellState?.latestPipelineRuns ?? [];
   const latestPipelineRun = shellState?.latestPipelineRun ?? latestPipelineRuns[0] ?? null;
   const activeVersionId = shellState?.activeVersion?._id ?? null;
+  const mountedVersionLabel =
+    typeof shellState?.activeVersion?.versionNumber === "number"
+      ? `v${shellState.activeVersion.versionNumber}`
+      : "Versions";
   const comparedVersions = compareVersionIds
     .map((versionId) => versions.find((version: any) => version._id === versionId) ?? null)
     .filter((version): version is CompareableVersionRecord => Boolean(version));
@@ -853,6 +872,7 @@ export function App() {
         : 0)
     : 0;
   const elapsedSeconds = Math.floor(elapsedMs / 1000);
+  const pipelineElapsedLabel = formatDuration(elapsedMs);
   const queuedTooLong =
     latestPipelineRun?.status === "pending" && elapsedSeconds >= 60;
   const inspectMode = selectionMode === "elements";
@@ -1648,7 +1668,7 @@ export function App() {
                         : "border border-white/10 bg-white/6 text-slate-200 hover:bg-white/10"
                     }`}
                   >
-                    <Crosshair className="size-3.5" />
+                    <SquareMousePointer className="size-3.5" />
                     {inspectMode ? "Inspecting" : "Inspect"}
                   </button>
 
@@ -1666,7 +1686,7 @@ export function App() {
                         : "border border-white/10 bg-white/6 text-slate-200 hover:bg-white/10"
                     }`}
                   >
-                    <Crosshair className="size-3.5" />
+                    <SquareDashedMousePointer className="size-3.5" />
                     {pixelInspectMode ? "Pixels on" : "Pixels"}
                   </button>
 
@@ -1676,24 +1696,6 @@ export function App() {
                     className="inline-flex h-9 items-center rounded-xl border border-white/10 bg-white/6 px-3 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10"
                   >
                     Apps
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={openPipelinePanel}
-                    disabled={noMountedApp}
-                    className="inline-flex h-9 items-center rounded-xl border border-white/10 bg-white/6 px-3 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Pipeline
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setVersionsOpen(true)}
-                    disabled={noMountedApp}
-                    className="inline-flex h-9 items-center rounded-xl border border-white/10 bg-white/6 px-3 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Versions
                   </button>
 
                   <label className="flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/6 px-3 text-xs text-slate-300">
@@ -1720,22 +1722,33 @@ export function App() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1.5 xl:ml-auto">
-                  {pipelineProgress.total > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setVersionsOpen(true)}
+                    disabled={noMountedApp}
+                    className="inline-flex h-9 items-center rounded-xl border border-white/10 bg-white/6 px-3 text-xs font-medium tabular-nums text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Versions"
+                  >
+                    {mountedVersionLabel}
+                  </button>
+
+                  {latestPipelineRun ? (
                     <button
                       type="button"
                       onClick={openPipelinePanel}
                       disabled={noMountedApp}
-                      className={`inline-flex h-9 items-center rounded-xl px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${pipelineToneClass}`}
-                      title={latestPipelineRun ? `${pipelineProgress.activeLabel} · ${elapsedSeconds}s` : "Pipeline progress"}
+                      className={`inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${pipelineToneClass}`}
+                      title={`${pipelineProgress.activeLabel} · ${pipelineElapsedLabel}`}
                     >
                       {pipelineStepLabel}
+                      <span className="text-[11px] opacity-80">{pipelineElapsedLabel}</span>
                     </button>
                   ) : null}
 
                   <button
                     type="submit"
                     disabled={submitting || promptDisabled}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-white px-3 text-xs font-medium text-black transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white text-xs font-medium text-black transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
                     aria-label={
                       noMountedApp
                         ? "Mount an app to enable prompts"
@@ -1747,7 +1760,6 @@ export function App() {
                     }
                   >
                     <ArrowUpFromLine className={`size-3.5 ${submitting ? "animate-pulse" : ""}`} />
-                    {submitting ? "Sending" : "Send prompt"}
                   </button>
                 </div>
               </div>
