@@ -953,6 +953,7 @@ export function App() {
   const [thoughtBubbles, setThoughtBubbles] = useState<ThoughtBubble[]>([]);
   const [dismissedThoughtBubbleIds, setDismissedThoughtBubbleIds] = useState<string[]>([]);
   const [runtimeMountTransitioning, setRuntimeMountTransitioning] = useState(false);
+  const [runtimeTransitionKind, setRuntimeTransitionKind] = useState<"application" | "version" | null>(null);
   const lastMountedVersionRef = useRef<any | null>(null);
 
   const runtimeStatus = getRuntimeStatus(shellState);
@@ -1003,11 +1004,8 @@ export function App() {
       runtimeMountTransitioning ||
       (!noMountedApp && shellState === undefined && lastMountedVersionRef.current),
   );
-  const runtimeTransitionLabel = switchingAppId
-    ? "Switching application..."
-    : switchingVersionId && runtimeActiveVersion?.appId === appId
-      ? "Switching version..."
-      : "Switching application...";
+  const runtimeTransitionLabel =
+    runtimeTransitionKind === "version" ? "Switching version..." : "Switching application...";
   const latestPipelineRuns = shellState?.latestPipelineRuns ?? [];
   const latestPipelineRun = shellState?.latestPipelineRun ?? latestPipelineRuns[0] ?? null;
   const activeVersionId = runtimeActiveVersion?._id ?? null;
@@ -1188,6 +1186,22 @@ export function App() {
     setSelectedBoxId(null);
     setSelectedTargetBoxIds([]);
   }, [appId]);
+
+  useEffect(() => {
+    if (switchingAppId) {
+      setRuntimeTransitionKind("application");
+      return;
+    }
+    if (switchingVersionId) {
+      setRuntimeTransitionKind("version");
+    }
+  }, [switchingAppId, switchingVersionId]);
+
+  useEffect(() => {
+    if (!runtimeMountTransitioning) {
+      setRuntimeTransitionKind(null);
+    }
+  }, [runtimeMountTransitioning]);
 
   useEffect(() => {
     setCompareVersionIds((current) => {
@@ -1648,6 +1662,7 @@ export function App() {
         event.metaKey ||
         event.ctrlKey ||
         event.altKey ||
+        !event.shiftKey ||
         versionActionPending ||
         submitting ||
         appsOpen ||
@@ -1662,7 +1677,7 @@ export function App() {
       }
 
       const key = event.key.toLowerCase();
-      if (key !== "o" && key !== "p") {
+      if (key !== "a" && key !== "d") {
         return;
       }
 
@@ -1671,7 +1686,7 @@ export function App() {
         return;
       }
 
-      const targetIndex = key === "o" ? currentIndex + 1 : currentIndex - 1;
+      const targetIndex = key === "d" ? currentIndex + 1 : currentIndex - 1;
       const targetVersion = versions[targetIndex];
       if (!targetVersion || targetVersion.status === "failed") {
         return;
@@ -1714,6 +1729,7 @@ export function App() {
         event.metaKey ||
         event.ctrlKey ||
         event.altKey ||
+        !event.shiftKey ||
         switchingAppId ||
         deletingAppId ||
         submitting ||
@@ -1726,7 +1742,7 @@ export function App() {
       }
 
       const key = event.key.toLowerCase();
-      if (key !== "q" && key !== "a") {
+      if (key !== "w" && key !== "s") {
         return;
       }
 
@@ -1735,7 +1751,7 @@ export function App() {
         return;
       }
 
-      const targetIndex = key === "q" ? currentIndex - 1 : currentIndex + 1;
+      const targetIndex = key === "w" ? currentIndex - 1 : currentIndex + 1;
       const targetApp = apps[targetIndex];
       if (!targetApp) {
         return;
