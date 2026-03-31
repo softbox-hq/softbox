@@ -23,6 +23,11 @@ The implementation lives in:
 - `convex/apps.ts`
 - `convex/schema.ts`
 
+See also:
+
+- [`gateway-control.md`](/home/fvrlak/ventures/softbox/docs/openclaw/gateway-control.md)
+  - How to stop the local OpenClaw gateway cleanly when it is running under `systemctl --user`, and how to run it again in foreground interactive mode.
+
 ## Why WS Was Chosen
 
 Three OpenClaw integration options were evaluated.
