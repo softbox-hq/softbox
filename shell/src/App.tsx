@@ -434,6 +434,20 @@ function isHtmlElementTarget(target: EventTarget | null): target is HTMLElement 
   );
 }
 
+function isTypingEventTarget(target: EventTarget | null) {
+  if (!isHtmlElementTarget(target)) {
+    return false;
+  }
+  const tagName = target.tagName.toLowerCase();
+  return (
+    tagName === "input" ||
+    tagName === "textarea" ||
+    tagName === "select" ||
+    target.isContentEditable ||
+    Boolean(target.closest('[contenteditable="true"]'))
+  );
+}
+
 function getActiveRuntimeSurface(host: HTMLElement): ActiveRuntimeSurface | null {
   const layer = host.querySelector<HTMLElement>('[data-layer="active"]');
   if (!layer) {
@@ -1365,19 +1379,6 @@ export function App() {
   }, [selectedTargets.length, shellState?.activeVersion?._id]);
 
   useEffect(() => {
-    const isTypingTarget = (target: EventTarget | null) => {
-      if (!(target instanceof HTMLElement)) {
-        return false;
-      }
-      const tagName = target.tagName.toLowerCase();
-      return (
-        tagName === "input" ||
-        tagName === "textarea" ||
-        tagName === "select" ||
-        target.isContentEditable
-      );
-    };
-
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat) {
         return;
@@ -1385,7 +1386,7 @@ export function App() {
       if (event.key.toLowerCase() !== "k" || event.metaKey || event.ctrlKey || event.altKey) {
         return;
       }
-      if (!composerHidden && isTypingTarget(event.target)) {
+      if (!composerHidden && isTypingEventTarget(event.target)) {
         return;
       }
       event.preventDefault();
@@ -1398,6 +1399,84 @@ export function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [composerHidden]);
+
+  useEffect(() => {
+    if (!appId) {
+      return;
+    }
+
+    const activeSurface = hostRef.current ? getActiveRuntimeSurface(hostRef.current) : null;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.repeat ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        switchingVersionId ||
+        submitting ||
+        appsOpen ||
+        pipelineOpen ||
+        versionsOpen ||
+        compareOpen
+      ) {
+        return;
+      }
+      if (isTypingEventTarget(event.target)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key !== "o" && key !== "p") {
+        return;
+      }
+
+      const currentIndex = versions.findIndex((version: any) => version._id === activeVersionId);
+      if (currentIndex < 0) {
+        return;
+      }
+
+      const targetIndex = key === "o" ? currentIndex + 1 : currentIndex - 1;
+      const targetVersion = versions[targetIndex];
+      if (!targetVersion || targetVersion.status === "failed") {
+        return;
+      }
+
+      event.preventDefault();
+      setSwitchingVersionId(targetVersion._id);
+      void activateVersionMutation({
+        appId,
+        versionId: targetVersion._id,
+        mode: "manual",
+      }).finally(() => {
+        setSwitchingVersionId((current) =>
+          current === targetVersion._id ? null : current,
+        );
+      });
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    if (activeSurface && activeSurface.window !== window) {
+      activeSurface.window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      if (activeSurface && activeSurface.window !== window) {
+        activeSurface.window.removeEventListener("keydown", handleKeyDown);
+      }
+    };
+  }, [
+    activeVersionId,
+    activateVersionMutation,
+    appId,
+    appsOpen,
+    compareOpen,
+    pipelineOpen,
+    submitting,
+    switchingVersionId,
+    versions,
+    versionsOpen,
+  ]);
 
   useLiveAppRuntime(hostRef, {
     appId: appId ?? "__unmounted__",
