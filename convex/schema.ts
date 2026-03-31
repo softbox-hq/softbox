@@ -13,6 +13,17 @@ const pipelineStageStatus = v.union(
   v.literal("failed"),
 );
 
+const failureClassification = v.union(
+  v.literal("infra_transient"),
+  v.literal("code_app"),
+  v.literal("unknown"),
+);
+
+const recoveryMode = v.union(
+  v.literal("stage_retry"),
+  v.literal("repair_with_agent"),
+);
+
 const boxStatus = v.union(
   v.literal("unknown"),
   v.literal("ready"),
@@ -167,9 +178,16 @@ export default defineSchema({
     claimedAt: v.optional(v.number()),
     baseVersionId: v.optional(v.id("versions")),
     buildError: v.optional(v.string()),
+    failureStage: v.optional(v.string()),
+    failureClassification: v.optional(failureClassification),
     agentResult: v.optional(agentResult),
     resultVersionId: v.optional(v.id("versions")),
     pipelineRunId: v.optional(v.id("pipelineRuns")),
+    recoveryMode: v.optional(recoveryMode),
+    recoveryParentJobId: v.optional(v.id("jobs")),
+    recoveryAttempt: v.optional(v.number()),
+    autoRecoveryTriggered: v.optional(v.boolean()),
+    autoRecoveryJobId: v.optional(v.id("jobs")),
   })
     .index("by_status", ["status"])
     .index("by_status_and_submittedAt", ["status", "submittedAt"])
@@ -215,6 +233,11 @@ export default defineSchema({
     claimedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
     failedAt: v.optional(v.number()),
+    failureStage: v.optional(v.string()),
+    failureClassification: v.optional(failureClassification),
+    recoveryMode: v.optional(recoveryMode),
+    recoveryParentJobId: v.optional(v.id("jobs")),
+    recoveryAttempt: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_appId_and_submittedAt", ["appId", "submittedAt"])

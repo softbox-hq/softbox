@@ -156,6 +156,11 @@ Typical failure points:
 
 The system is designed so these failures do not automatically destroy the active version.
 
+See also:
+
+- [`pipeline-failure-recovery.md`](/home/fvrlak/ventures/softbox/docs/pipeline-failure-recovery.md)
+  - The worker-side policy for classifying failed runs, deciding when to auto-retry versus auto-repair, and what is still intentionally out of scope.
+
 ## Why This Flow Matters
 
 The important property is that the system does not treat code generation as a side artifact.

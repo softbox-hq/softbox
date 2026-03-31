@@ -18,6 +18,11 @@ import {
 import { LiveAppBundler } from "./build";
 import { ConvexRuntimeClient } from "./convex";
 import { backfillOpenClawBoxProfiles, ensureDefaultOpenClawProfiles } from "./engineProfiles";
+import {
+  buildRepairPrompt,
+  classifyFailure,
+  type FailureStage,
+} from "./failureRecovery";
 import { readLiveAppFiles } from "./filesystem";
 import { liveAppStateSchema } from "./shared/liveApp";
 import { R2Uploader } from "./r2";
@@ -51,6 +56,10 @@ function summarizePrompt(prompt: string): string {
 
 function logJob(jobId: string, message: string): void {
   console.log(`[worker][job ${jobId}] ${message}`);
+}
+
+function buildStageRetryDetail(stage: string): string {
+  return `Reused the failed workspace candidate and skipped the agent before retrying from ${stage}.`;
 }
 
 function buildAgentTranscript(messages: string[]): string | undefined {
@@ -209,6 +218,7 @@ export async function processJobById(
     | undefined;
   let boxEngineContext: ReturnType<typeof resolveBoxEngineContext> = null;
   const agentProgressMessages: string[] = [];
+  let activeStage: FailureStage = "agent";
   let latestAgentStageDetail: string | null = null;
   let agentStageUpdateChain: Promise<void> = Promise.resolve();
   const recordAgentStageDetail = (status: "running" | "completed" | "failed", detail?: string) => {
@@ -309,151 +319,175 @@ export async function processJobById(
       lastError: null,
     });
 
-    if (runningJob.pipelineRunId) {
-      await convex.recordPipelineStage({
-        runId: runningJob.pipelineRunId,
-        appId,
-        key: "agent",
-        status: "running",
-      });
-    }
+    let nextFiles = currentFiles;
+    if (runningJob.recoveryMode === "stage_retry") {
+      if (runningJob.pipelineRunId) {
+        await convex.recordPipelineStage({
+          runId: runningJob.pipelineRunId,
+          appId,
+          key: "agent",
+          status: "completed",
+          detail: buildStageRetryDetail(runningJob.failureStage ?? "build"),
+        });
+        await convex.recordPipelineStage({
+          runId: runningJob.pipelineRunId,
+          appId,
+          key: "build",
+          status: "running",
+        });
+      }
+      logJob(
+        runningJob._id,
+        `skipping agent and retrying from build using the current failed workspace candidate`,
+      );
+    } else {
+      if (runningJob.pipelineRunId) {
+        await convex.recordPipelineStage({
+          runId: runningJob.pipelineRunId,
+          appId,
+          key: "agent",
+          status: "running",
+        });
+      }
 
-    logJob(
-      runningJob._id,
-      `calling agent command '${config.agentCommand}' from ${config.projectRoot} with ${config.agentTimeoutMs}ms timeout`,
-    );
-    const rewrite = await rewriteLiveAppFiles(
-      {
-        appId,
-        boxId: boxEngineContext?.boxId ?? selectedBoxId,
-        command: config.agentCommand,
-        model: config.agentModel,
-        timeoutMs: config.agentTimeoutMs,
-        projectRoot: config.projectRoot,
-        liveAppRoot,
-        liveAppLabel,
-        ...boxEngineContext?.rewriteConfigPatch,
-      },
-      {
-        prompt: runningJob.prompt,
-        files: currentFiles,
-        liveAppLabel,
-        latestBuildError: shellState?.lastBuildError ?? null,
-        latestRuntimeError: shellState?.lastRuntimeError ?? null,
-        currentState: parseState(shellState?.currentStateJson ?? null),
-        codexThreadId:
-          usesCodexThread
-            ? (
-                boxEngineContext?.sessionId ??
-                (shouldUseMirroredAppSession ? appConfig.codexThreadId ?? null : null)
-              )
-            : (appConfig.codexThreadId ?? null),
-        openClawSessionId:
-          usesOpenClawSession
-            ? (
-                boxEngineContext?.sessionId ??
-                (shouldUseMirroredAppSession ? appConfig.openClawSessionId ?? null : null)
-              )
-            : (appConfig.openClawSessionId ?? null),
-        boxContext: boxEngineContext
-          ? {
-              boxId: boxEngineContext.boxId,
-              engine: boxEngineContext.engine,
-              role: boxEngineContext.policy.role ?? null,
-              instructions: boxEngineContext.policy.instructions ?? null,
-              readOnly: boxEngineContext.policy.readOnly === true,
-              proposalOnly: boxEngineContext.policy.proposalOnly === true,
-              canPromote: boxEngineContext.policy.canPromote === true,
-            }
-          : null,
-        primaryTargetFiles,
-      },
-      {
-        onProgress: pushAgentProgress,
-      },
-    );
-    for (const message of extractAgentProgressMessages(rewrite.details.notes ?? "")) {
-      pushAgentProgress(message);
-    }
-    await flushAgentStageUpdates();
-    logJob(
-      runningJob._id,
-      `agent returned ${rewrite.files.length} file write(s) and ${rewrite.deletedPaths.length} file deletion(s)`,
-    );
-    logJob(
-      runningJob._id,
-      `agent summary ${JSON.stringify(rewrite.details)}`,
-    );
-    logJob(
-      runningJob._id,
-      `agent observation\n${formatAgentObservation(rewrite.observation)}`,
-    );
-    agentResult = rewrite.details;
-    const resolvedSessionId = usesOpenClawSession
-      ? (rewrite.openClawSessionId ?? boxEngineContext?.sessionId ?? null)
-      : usesCodexThread
-        ? (rewrite.codexThreadId ?? boxEngineContext?.sessionId ?? null)
-        : null;
-    const isPrimaryBox = !boxEngineContext || boxEngineContext.boxId === selectedPrimaryBoxId;
-    if (
-      rewrite.codexThreadId !== null &&
-      rewrite.codexThreadId !== (appConfig.codexThreadId ?? null) &&
-      isPrimaryBox
-    ) {
-      await convex.setAppCodexThread({
-        appId,
-        threadId: rewrite.codexThreadId,
-      });
-    }
-    if (
-      rewrite.openClawSessionId !== null &&
-      rewrite.openClawSessionId !== (appConfig.openClawSessionId ?? null) &&
-      isPrimaryBox
-    ) {
-      await convex.setAppOpenClawSession({
-        appId,
-        sessionId: rewrite.openClawSessionId,
-      });
-    }
-    if (boxEngineContext) {
-      await persistBoxRunUpdate(
-        convex,
-        boxEngineContext,
-        buildSuccessfulBoxRunUpdate({
-          context: boxEngineContext,
-          observation: rewrite.observation,
-          sessionId: resolvedSessionId,
-        }),
+      logJob(
+        runningJob._id,
+        `calling agent command '${config.agentCommand}' from ${config.projectRoot} with ${config.agentTimeoutMs}ms timeout`,
+      );
+      const rewrite = await rewriteLiveAppFiles(
+        {
+          appId,
+          boxId: boxEngineContext?.boxId ?? selectedBoxId,
+          command: config.agentCommand,
+          model: config.agentModel,
+          timeoutMs: config.agentTimeoutMs,
+          projectRoot: config.projectRoot,
+          liveAppRoot,
+          liveAppLabel,
+          ...boxEngineContext?.rewriteConfigPatch,
+        },
+        {
+          prompt: runningJob.prompt,
+          files: currentFiles,
+          liveAppLabel,
+          latestBuildError: shellState?.lastBuildError ?? null,
+          latestRuntimeError: shellState?.lastRuntimeError ?? null,
+          currentState: parseState(shellState?.currentStateJson ?? null),
+          codexThreadId:
+            usesCodexThread
+              ? (
+                  boxEngineContext?.sessionId ??
+                  (shouldUseMirroredAppSession ? appConfig.codexThreadId ?? null : null)
+                )
+              : (appConfig.codexThreadId ?? null),
+          openClawSessionId:
+            usesOpenClawSession
+              ? (
+                  boxEngineContext?.sessionId ??
+                  (shouldUseMirroredAppSession ? appConfig.openClawSessionId ?? null : null)
+                )
+              : (appConfig.openClawSessionId ?? null),
+          boxContext: boxEngineContext
+            ? {
+                boxId: boxEngineContext.boxId,
+                engine: boxEngineContext.engine,
+                role: boxEngineContext.policy.role ?? null,
+                instructions: boxEngineContext.policy.instructions ?? null,
+                readOnly: boxEngineContext.policy.readOnly === true,
+                proposalOnly: boxEngineContext.policy.proposalOnly === true,
+                canPromote: boxEngineContext.policy.canPromote === true,
+              }
+            : null,
+          primaryTargetFiles,
+        },
+        {
+          onProgress: pushAgentProgress,
+        },
+      );
+      for (const message of extractAgentProgressMessages(rewrite.details.notes ?? "")) {
+        pushAgentProgress(message);
+      }
+      await flushAgentStageUpdates();
+      logJob(
+        runningJob._id,
+        `agent returned ${rewrite.files.length} file write(s) and ${rewrite.deletedPaths.length} file deletion(s)`,
+      );
+      logJob(
+        runningJob._id,
+        `agent summary ${JSON.stringify(rewrite.details)}`,
+      );
+      logJob(
+        runningJob._id,
+        `agent observation\n${formatAgentObservation(rewrite.observation)}`,
+      );
+      agentResult = rewrite.details;
+      const resolvedSessionId = usesOpenClawSession
+        ? (rewrite.openClawSessionId ?? boxEngineContext?.sessionId ?? null)
+        : usesCodexThread
+          ? (rewrite.codexThreadId ?? boxEngineContext?.sessionId ?? null)
+          : null;
+      const isPrimaryBox = !boxEngineContext || boxEngineContext.boxId === selectedPrimaryBoxId;
+      if (
+        rewrite.codexThreadId !== null &&
+        rewrite.codexThreadId !== (appConfig.codexThreadId ?? null) &&
+        isPrimaryBox
+      ) {
+        await convex.setAppCodexThread({
+          appId,
+          threadId: rewrite.codexThreadId,
+        });
+      }
+      if (
+        rewrite.openClawSessionId !== null &&
+        rewrite.openClawSessionId !== (appConfig.openClawSessionId ?? null) &&
+        isPrimaryBox
+      ) {
+        await convex.setAppOpenClawSession({
+          appId,
+          sessionId: rewrite.openClawSessionId,
+        });
+      }
+      if (boxEngineContext) {
+        await persistBoxRunUpdate(
+          convex,
+          boxEngineContext,
+          buildSuccessfulBoxRunUpdate({
+            context: boxEngineContext,
+            observation: rewrite.observation,
+            sessionId: resolvedSessionId,
+          }),
+        );
+      }
+      if (runningJob.pipelineRunId) {
+        const completedAgentDetail =
+          buildAgentTranscript(agentProgressMessages) ??
+          normalizeAgentSummary(rewrite.details.summary);
+        await convex.recordPipelineStage({
+          runId: runningJob.pipelineRunId,
+          appId,
+          key: "agent",
+          status: "completed",
+          detail: completedAgentDetail,
+        });
+        await convex.recordPipelineStage({
+          runId: runningJob.pipelineRunId,
+          appId,
+          key: "build",
+          status: "running",
+        });
+      }
+
+      nextFiles = rewrite.allFiles;
+      logJob(
+        runningJob._id,
+        `agent changed ${rewrite.files.length + rewrite.deletedPaths.length} file(s) in ${liveAppLabel}/src`,
       );
     }
-    if (runningJob.pipelineRunId) {
-      const completedAgentDetail =
-        buildAgentTranscript(agentProgressMessages) ??
-        normalizeAgentSummary(rewrite.details.summary);
-      await convex.recordPipelineStage({
-        runId: runningJob.pipelineRunId,
-        appId,
-        key: "agent",
-        status: "completed",
-        detail: completedAgentDetail,
-      });
-      await convex.recordPipelineStage({
-        runId: runningJob.pipelineRunId,
-        appId,
-        key: "build",
-        status: "running",
-      });
-    }
-
-    const nextFiles = rewrite.allFiles;
-    logJob(
-      runningJob._id,
-      `agent changed ${rewrite.files.length + rewrite.deletedPaths.length} file(s) in ${liveAppLabel}/src`,
-    );
 
     await assertAppStillExists();
     const nextVersionNumber = currentVersionNumber(shellState) + 1;
     logJob(runningJob._id, `building candidate version v${nextVersionNumber}`);
+    activeStage = "build";
     const buildResult = await bundler.buildVersion(appId, nextVersionNumber, liveAppRoot);
     if (runningJob.pipelineRunId) {
       await convex.recordPipelineStage({
@@ -474,6 +508,7 @@ export async function processJobById(
       `build produced ${buildResult.artifacts.length} artifact(s), uploading to R2`,
     );
     await assertAppStillExists();
+    activeStage = "upload";
     const uploadSummary = await uploader.uploadArtifacts(buildResult.artifacts);
     const uploadedBytes = uploadSummary.uploaded.reduce((sum, artifact) => sum + artifact.bytes, 0);
     const skippedBytes = uploadSummary.skipped.reduce((sum, artifact) => sum + artifact.bytes, 0);
@@ -509,11 +544,12 @@ export async function processJobById(
     }
     logJob(runningJob._id, "upload complete, recording ready version");
     await assertAppStillExists();
+    activeStage = "publish";
     await convex.recordReadyVersion({
       appId,
       jobId: runningJob._id,
       manifestUrl: `${config.r2PublicBaseUrl}/${manifestKeyForVersion(appId, nextVersionNumber)}`,
-      buildLog: rewrite.summary || buildResult.buildLog,
+      buildLog: agentResult?.summary || buildResult.buildLog,
       stateJson: buildResult.stateJson,
       agentResult,
       files: nextFiles,
@@ -535,6 +571,38 @@ export async function processJobById(
     await flushAgentStageUpdates().catch(() => undefined);
     logJob(runningJob._id, `failed after ${Date.now() - startedAt}ms`);
     console.error(message);
+    const recoveryDecision = classifyFailure({
+      stage: activeStage,
+      message,
+      recoveryAttempt: runningJob.recoveryAttempt ?? 0,
+    });
+    let autoRecoveryJobId: string | null = null;
+    if (recoveryDecision.shouldAutoRecover && recoveryDecision.recoveryMode) {
+      const recoveryPrompt =
+        recoveryDecision.recoveryMode === "repair_with_agent"
+          ? buildRepairPrompt({
+              originalPrompt: runningJob.prompt,
+              stage: activeStage,
+              message,
+            })
+          : runningJob.prompt;
+      autoRecoveryJobId = await convex
+        .enqueueFailureRecoveryJob({
+          appId,
+          failedJobId: runningJob._id,
+          prompt: recoveryPrompt,
+          recoveryMode: recoveryDecision.recoveryMode,
+          sourceStage: activeStage,
+          failureClassification: recoveryDecision.classification,
+        })
+        .catch(() => null);
+      if (autoRecoveryJobId) {
+        logJob(
+          runningJob._id,
+          `scheduled automatic ${recoveryDecision.recoveryMode} recovery as job ${autoRecoveryJobId} (${recoveryDecision.reason})`,
+        );
+      }
+    }
     if (boxEngineContext) {
       await persistBoxRunUpdate(
         convex,
@@ -553,8 +621,10 @@ export async function processJobById(
             status: "failed",
             detail:
               key === "agent" && failedAgentDetail
-                ? `${failedAgentDetail}\n\n${message}`
-                : message,
+                ? `${failedAgentDetail}\n\n${message}${
+                    autoRecoveryJobId ? `\n\nAutomatic recovery queued: ${autoRecoveryJobId}` : ""
+                  }`
+                : `${message}${autoRecoveryJobId ? `\n\nAutomatic recovery queued: ${autoRecoveryJobId}` : ""}`,
           })
           .catch(() => undefined);
       }
@@ -563,6 +633,8 @@ export async function processJobById(
       appId,
       jobId: runningJob._id,
       buildLog: message,
+      failureStage: activeStage,
+      failureClassification: recoveryDecision.classification,
       agentResult,
     });
   }

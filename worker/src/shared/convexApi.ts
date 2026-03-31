@@ -30,6 +30,8 @@ export const convexApi = {
   listVersions: "apps:listVersions",
   resetBoxSession: "apps:resetBoxSession",
   submitPrompt: "apps:submitPrompt",
+  enqueueFailureRecoveryJob: "apps:enqueueFailureRecoveryJob",
+  requestPipelineRepair: "apps:requestPipelineRepair",
   publishState: "apps:publishState",
   activateVersion: "apps:activateVersion",
   deleteVersion: "apps:deleteVersion",

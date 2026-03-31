@@ -15,6 +15,17 @@ const pipelineStageStatus = v.union(
   v.literal("failed"),
 );
 
+const failureClassification = v.union(
+  v.literal("infra_transient"),
+  v.literal("code_app"),
+  v.literal("unknown"),
+);
+
+const recoveryMode = v.union(
+  v.literal("stage_retry"),
+  v.literal("repair_with_agent"),
+);
+
 const boxStatus = v.union(
   v.literal("unknown"),
   v.literal("ready"),
@@ -221,6 +232,75 @@ async function getBoxByBoxId(ctx: any, boxId: string) {
     .query("boxes")
     .withIndex("by_boxId", (q: any) => q.eq("boxId", boxId))
     .first();
+}
+
+async function createQueuedJobAndRun(
+  ctx: any,
+  args: {
+    appId: string;
+    boxId?: string | null;
+    prompt: string;
+    baseVersionId?: any;
+    clearLastBuildError?: boolean;
+    recoveryMode?: "stage_retry" | "repair_with_agent";
+    recoveryParentJobId?: any;
+    recoveryAttempt?: number;
+    failureStage?: string;
+    failureClassification?: "infra_transient" | "code_app" | "unknown";
+  },
+) {
+  const submittedAt = Date.now();
+  const app = await getAppByIdOrThrow(ctx, args.appId);
+  if (args.clearLastBuildError !== false) {
+    await ctx.db.patch(app._id, {
+      lastBuildError: null,
+      updatedAt: submittedAt,
+    });
+  } else {
+    await ctx.db.patch(app._id, {
+      updatedAt: submittedAt,
+    });
+  }
+
+  const jobId = await ctx.db.insert("jobs", {
+    appId: args.appId,
+    boxId: args.boxId ?? null,
+    prompt: args.prompt,
+    status: "pending",
+    submittedAt,
+    baseVersionId: args.baseVersionId ?? app.activeVersionId,
+    recoveryMode: args.recoveryMode,
+    recoveryParentJobId: args.recoveryParentJobId,
+    recoveryAttempt: args.recoveryAttempt,
+    failureStage: args.failureStage,
+    failureClassification: args.failureClassification,
+  });
+  const pipelineRunId = await ctx.db.insert("pipelineRuns", {
+    appId: args.appId,
+    boxId: args.boxId ?? null,
+    jobId,
+    prompt: args.prompt,
+    status: "pending",
+    submittedAt,
+    updatedAt: submittedAt,
+    recoveryMode: args.recoveryMode,
+    recoveryParentJobId: args.recoveryParentJobId,
+    recoveryAttempt: args.recoveryAttempt,
+    failureStage: args.failureStage,
+    failureClassification: args.failureClassification,
+  });
+  await ctx.db.patch(jobId, {
+    pipelineRunId,
+  });
+  await upsertPipelineStage(ctx, {
+    runId: pipelineRunId,
+    appId: args.appId,
+    key: "queued",
+    status: "running",
+    startedAt: submittedAt,
+  });
+
+  return jobId;
 }
 
 async function getEngineProfileById(ctx: any, engineProfileId: string) {
@@ -572,6 +652,21 @@ function buildPipelineRunReplacementDoc(run: any, nextAppId: string, updatedAt: 
   if (run.failedAt !== undefined) {
     nextDoc.failedAt = run.failedAt;
   }
+  if (run.failureStage !== undefined) {
+    nextDoc.failureStage = run.failureStage;
+  }
+  if (run.failureClassification !== undefined) {
+    nextDoc.failureClassification = run.failureClassification;
+  }
+  if (run.recoveryMode !== undefined) {
+    nextDoc.recoveryMode = run.recoveryMode;
+  }
+  if (run.recoveryParentJobId !== undefined) {
+    nextDoc.recoveryParentJobId = run.recoveryParentJobId;
+  }
+  if (run.recoveryAttempt !== undefined) {
+    nextDoc.recoveryAttempt = run.recoveryAttempt;
+  }
 
   return nextDoc;
 }
@@ -605,6 +700,27 @@ function buildJobReplacementDoc(job: any) {
   if (job.pipelineRunId !== undefined) {
     nextDoc.pipelineRunId = job.pipelineRunId;
   }
+  if (job.failureStage !== undefined) {
+    nextDoc.failureStage = job.failureStage;
+  }
+  if (job.failureClassification !== undefined) {
+    nextDoc.failureClassification = job.failureClassification;
+  }
+  if (job.recoveryMode !== undefined) {
+    nextDoc.recoveryMode = job.recoveryMode;
+  }
+  if (job.recoveryParentJobId !== undefined) {
+    nextDoc.recoveryParentJobId = job.recoveryParentJobId;
+  }
+  if (job.recoveryAttempt !== undefined) {
+    nextDoc.recoveryAttempt = job.recoveryAttempt;
+  }
+  if (job.autoRecoveryTriggered !== undefined) {
+    nextDoc.autoRecoveryTriggered = job.autoRecoveryTriggered;
+  }
+  if (job.autoRecoveryJobId !== undefined) {
+    nextDoc.autoRecoveryJobId = job.autoRecoveryJobId;
+  }
 
   return nextDoc;
 }
@@ -624,6 +740,32 @@ function buildRuntimeErrorReplacementDoc(runtimeError: any) {
   }
 
   return nextDoc;
+}
+
+function getLatestFailedStage(stages: any[]) {
+  const failedStages = stages
+    .filter((stage) => stage?.status === "failed")
+    .sort((left, right) => (right.sortOrder ?? 0) - (left.sortOrder ?? 0));
+  return failedStages[0] ?? null;
+}
+
+function buildManualRepairPrompt(args: {
+  originalPrompt: string;
+  stageLabel: string;
+  stageKey: string;
+  detail: string | null;
+}) {
+  const failureLog = (args.detail ?? "").trim() || "No failure detail was recorded.";
+  return [
+    "Repair the current failed candidate in place instead of starting from the live version.",
+    "Only make the minimum code or dependency changes needed so the pipeline can complete.",
+    "",
+    `Original request: ${args.originalPrompt.trim()}`,
+    `Failed stage: ${args.stageLabel} (${args.stageKey})`,
+    "",
+    "Failure log:",
+    failureLog.length > 4000 ? `${failureLog.slice(0, 3985)}\n...[truncated]` : failureLog,
+  ].join("\n");
 }
 
 async function applyLegacyAppIdMigration(ctx: any, migration: LegacyAppIdMigration): Promise<void> {
@@ -926,39 +1068,142 @@ export const submitPrompt = mutation({
         throw new Error(`Box '${args.boxId}' does not belong to app '${args.appId}'.`);
       }
     }
-    const submittedAt = Date.now();
-    await ctx.db.patch(app._id, {
-      lastBuildError: null,
-      updatedAt: submittedAt,
-    });
-    const jobId = await ctx.db.insert("jobs", {
+    return await createQueuedJobAndRun(ctx, {
       appId: args.appId,
       boxId: args.boxId ?? null,
       prompt: args.prompt,
-      status: "pending",
-      submittedAt,
       baseVersionId: app.activeVersionId,
+      clearLastBuildError: true,
     });
-    const pipelineRunId = await ctx.db.insert("pipelineRuns", {
+  },
+});
+
+export const enqueueFailureRecoveryJob = mutation({
+  args: {
+    appId: v.string(),
+    failedJobId: v.id("jobs"),
+    prompt: v.string(),
+    recoveryMode,
+    sourceStage: v.string(),
+    failureClassification,
+  },
+  handler: async (ctx, args) => {
+    const failedJob = await ctx.db.get(args.failedJobId);
+    if (!failedJob || failedJob.appId !== args.appId) {
+      throw new Error("Failed job not found for app");
+    }
+
+    const app = await getAppByIdOrThrow(ctx, args.appId);
+    const currentAttempt = Math.max(
+      0,
+      Math.trunc(failedJob.recoveryAttempt ?? 0),
+    );
+    const recoveryAttempt = currentAttempt + 1;
+
+    const recoveryJobId = await createQueuedJobAndRun(ctx, {
       appId: args.appId,
-      boxId: args.boxId ?? null,
-      jobId,
+      boxId: failedJob.boxId ?? null,
       prompt: args.prompt,
-      status: "pending",
-      submittedAt,
-      updatedAt: submittedAt,
+      baseVersionId: failedJob.baseVersionId ?? app.activeVersionId,
+      clearLastBuildError: false,
+      recoveryMode: args.recoveryMode,
+      recoveryParentJobId: args.failedJobId,
+      recoveryAttempt,
+      failureStage: args.sourceStage,
+      failureClassification: args.failureClassification,
     });
-    await ctx.db.patch(jobId, {
-      pipelineRunId,
+
+    await ctx.db.patch(args.failedJobId, {
+      autoRecoveryTriggered: true,
+      autoRecoveryJobId: recoveryJobId,
+      failureStage: args.sourceStage,
+      failureClassification: args.failureClassification,
     });
-    await upsertPipelineStage(ctx, {
-      runId: pipelineRunId,
+
+    if (failedJob.pipelineRunId) {
+      const run = await ctx.db.get(failedJob.pipelineRunId);
+      if (run) {
+        await ctx.db.patch(failedJob.pipelineRunId, {
+          failureStage: args.sourceStage,
+          failureClassification: args.failureClassification,
+          updatedAt: Date.now(),
+        });
+      }
+    }
+
+    return recoveryJobId;
+  },
+});
+
+export const requestPipelineRepair = mutation({
+  args: {
+    appId: v.string(),
+    runId: v.id("pipelineRuns"),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run || run.appId !== args.appId) {
+      throw new Error("Pipeline run not found for app");
+    }
+    if (run.status !== "failed") {
+      throw new Error("Only failed pipeline runs can be repaired");
+    }
+
+    const failedJob = await ctx.db.get(run.jobId);
+    if (!failedJob || failedJob.appId !== args.appId) {
+      throw new Error("Failed job not found for pipeline run");
+    }
+
+    const stages = await ctx.db
+      .query("pipelineStages")
+      .withIndex("by_runId_and_sortOrder", (q: any) => q.eq("runId", args.runId))
+      .collect();
+    const failedStage = getLatestFailedStage(stages);
+    const stageKey = failedStage?.key ?? run.failureStage ?? "unknown";
+    const stageLabel = failedStage?.label ?? pipelineStageMeta[stageKey]?.label ?? "Failed Stage";
+    const stageDetail =
+      typeof failedStage?.detail === "string" && failedStage.detail.trim()
+        ? failedStage.detail
+        : (failedJob.buildError ?? null);
+    const recoveryPrompt = buildManualRepairPrompt({
+      originalPrompt: run.prompt,
+      stageLabel,
+      stageKey,
+      detail: stageDetail,
+    });
+
+    const app = await getAppByIdOrThrow(ctx, args.appId);
+    const currentAttempt = Math.max(0, Math.trunc(failedJob.recoveryAttempt ?? 0));
+    const recoveryAttempt = currentAttempt + 1;
+    const recoveryJobId = await createQueuedJobAndRun(ctx, {
       appId: args.appId,
-      key: "queued",
-      status: "running",
-      startedAt: submittedAt,
+      boxId: run.boxId ?? failedJob.boxId ?? null,
+      prompt: recoveryPrompt,
+      baseVersionId: failedJob.baseVersionId ?? app.activeVersionId,
+      clearLastBuildError: false,
+      recoveryMode: "repair_with_agent",
+      recoveryParentJobId: failedJob._id,
+      recoveryAttempt,
+      failureStage: stageKey,
+      failureClassification:
+        run.failureClassification ?? failedJob.failureClassification ?? "code_app",
     });
-    return jobId;
+
+    await ctx.db.patch(failedJob._id, {
+      autoRecoveryTriggered: true,
+      autoRecoveryJobId: recoveryJobId,
+      failureStage: stageKey,
+      failureClassification:
+        run.failureClassification ?? failedJob.failureClassification ?? "code_app",
+    });
+    await ctx.db.patch(run._id, {
+      failureStage: stageKey,
+      failureClassification:
+        run.failureClassification ?? failedJob.failureClassification ?? "code_app",
+      updatedAt: Date.now(),
+    });
+
+    return recoveryJobId;
   },
 });
 
@@ -2428,6 +2673,8 @@ export const recordBuildFailure = mutation({
     appId: v.string(),
     jobId: v.id("jobs"),
     buildLog: v.string(),
+    failureStage: v.optional(v.string()),
+    failureClassification: v.optional(failureClassification),
     agentResult: v.optional(agentResult),
   },
   handler: async (ctx, args) => {
@@ -2436,6 +2683,8 @@ export const recordBuildFailure = mutation({
       await ctx.db.patch(args.jobId, {
         status: "failed",
         buildError: args.buildLog,
+        failureStage: args.failureStage,
+        failureClassification: args.failureClassification,
         agentResult: args.agentResult,
       });
     }
@@ -2452,6 +2701,8 @@ export const recordBuildFailure = mutation({
         await ctx.db.patch(job.pipelineRunId, {
           status: "failed",
           failedAt: Date.now(),
+          failureStage: args.failureStage,
+          failureClassification: args.failureClassification,
           updatedAt: Date.now(),
         });
       }

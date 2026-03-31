@@ -14,7 +14,14 @@ export type JobRecord = {
   claimedAt?: number;
   baseVersionId?: string;
   buildError?: string;
+  failureStage?: string;
+  failureClassification?: "infra_transient" | "code_app" | "unknown";
   pipelineRunId?: string;
+  recoveryMode?: "stage_retry" | "repair_with_agent";
+  recoveryParentJobId?: string;
+  recoveryAttempt?: number;
+  autoRecoveryTriggered?: boolean;
+  autoRecoveryJobId?: string;
   agentResult?: {
     summary: string;
     changed_files: string[];
@@ -259,6 +266,17 @@ export class ConvexRuntimeClient {
     await this.client.mutation(convexApi.setAppOpenClawSession as any, args);
   }
 
+  async enqueueFailureRecoveryJob(args: {
+    appId: string;
+    failedJobId: string;
+    prompt: string;
+    recoveryMode: "stage_retry" | "repair_with_agent";
+    sourceStage: string;
+    failureClassification: "infra_transient" | "code_app" | "unknown";
+  }): Promise<string | null> {
+    return await this.client.mutation(convexApi.enqueueFailureRecoveryJob as any, args);
+  }
+
   async upsertBox(args: {
     boxId: string;
     subjectId: string;
@@ -401,6 +419,8 @@ export class ConvexRuntimeClient {
     appId: string;
     jobId: string;
     buildLog: string;
+    failureStage?: string;
+    failureClassification?: "infra_transient" | "code_app" | "unknown";
     agentResult?: {
       summary: string;
       changed_files: string[];

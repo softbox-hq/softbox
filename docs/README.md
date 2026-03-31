@@ -14,6 +14,8 @@ Instead of using an LLM only to produce structured actions or mutate app state, 
   - The step-by-step lifecycle from prompt to live swap.
 - [`preview-promotion-race.md`](/home/fvrlak/ventures/softbox/docs/preview-promotion-race.md)
   - Incident note for the iframe-era preview/promotion regression: why `Preview Mount` hung or flashed, and what fixed it.
+- [`pipeline-failure-recovery.md`](/home/fvrlak/ventures/softbox/docs/pipeline-failure-recovery.md)
+  - Recovery policy for failed worker runs: how Softbox classifies failures, when it auto-retries, when it auto-repairs with the agent, and what is not automated yet.
 - [`mounted-routing.md`](/home/fvrlak/ventures/softbox/docs/mounted-routing.md)
   - Why routed apps cannot use `BrowserRouter` unchanged when mounted in the iframe runtime, and the recommended `BrowserRouter` / `MemoryRouter` split.
 - [`router-scaffolding-decision.md`](/home/fvrlak/ventures/softbox/docs/router-scaffolding-decision.md)

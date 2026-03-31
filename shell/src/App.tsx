@@ -1,6 +1,7 @@
 import { startTransition, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useMutation, useQuery } from "convex/react";
 import {
+  CircleAlert,
   AppWindow,
   ArrowUpFromLine,
   ListRestart,
@@ -323,6 +324,21 @@ function getRunProgress(run: any) {
     currentStep,
     total: PIPELINE_STAGE_KEYS.length,
   };
+}
+
+function getFailedStage(run: any) {
+  const stages = Array.isArray(run?.stages) ? run.stages : [];
+  const failedStages = stages
+    .filter((stage: any) => stage?.status === "failed")
+    .sort((left: any, right: any) => (right?.sortOrder ?? 0) - (left?.sortOrder ?? 0));
+  return failedStages[0] ?? null;
+}
+
+function getRepairableStage(run: any) {
+  if (run?.status !== "failed") {
+    return null;
+  }
+  return getFailedStage(run);
 }
 
 type InspectTarget = {
@@ -839,6 +855,7 @@ export function App() {
   const updateBoxPolicyMutation = useMutation(convexApi.updateBoxPolicy as any);
   const deletePipelineRunMutation = useMutation(convexApi.deletePipelineRun as any);
   const submitPrompt = useMutation(convexApi.submitPrompt as any);
+  const requestPipelineRepairMutation = useMutation(convexApi.requestPipelineRepair as any);
   const publishStateMutation = useMutation(convexApi.publishState as any);
   const activateVersionMutation = useMutation(convexApi.activateVersion as any);
   const resetBoxSessionMutation = useMutation(convexApi.resetBoxSession as any);
@@ -859,7 +876,9 @@ export function App() {
   const [switchingAppId, setSwitchingAppId] = useState<string | null>(null);
   const [deletingAppId, setDeletingAppId] = useState<string | null>(null);
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
+  const [repairingRunId, setRepairingRunId] = useState<string | null>(null);
   const [deletingVersionId, setDeletingVersionId] = useState<string | null>(null);
+  const [repairModalRunId, setRepairModalRunId] = useState<string | null>(null);
   const [resettingBoxSessionId, setResettingBoxSessionId] = useState<string | null>(null);
   const [boxActionKey, setBoxActionKey] = useState<string | null>(null);
   const [switchingVersionId, setSwitchingVersionId] = useState<string | null>(null);
@@ -990,6 +1009,15 @@ export function App() {
     setPipelineOpen(true);
     setExpandedRunId(latestPipelineRuns[0]?._id ?? null);
   };
+  const repairModalRun =
+    repairModalRunId
+      ? latestPipelineRuns.find((run: any) => run._id === repairModalRunId) ?? null
+      : null;
+  const repairModalStage = getRepairableStage(repairModalRun);
+  const repairModalStageDetail = getStageDisplayDetail(
+    repairModalStage?.detail ?? repairModalRun?.buildError ?? null,
+    repairModalStage?.key ?? repairModalRun?.failureStage ?? null,
+  );
 
   useEffect(() => {
     if (!appsQuery || apps.length === 0 || shellSelection === undefined) {
@@ -1068,6 +1096,8 @@ export function App() {
     setResettingBoxSessionId(null);
     setExpandedRunId(null);
     setDeletingRunId(null);
+    setRepairingRunId(null);
+    setRepairModalRunId(null);
     setSelectionMode(null);
     setHoveredTarget(null);
     setSelectedTargets([]);
@@ -2181,6 +2211,10 @@ export function App() {
                                     stage.detail,
                                     stage.key,
                                   );
+                                  const canRepairStage =
+                                    run.status === "failed" &&
+                                    stage.status === "failed" &&
+                                    Boolean(appId);
                                   const stageTone =
                                     stage.status === "completed"
                                       ? "bg-emerald-500/5"
@@ -2211,6 +2245,20 @@ export function App() {
                                           <p className="mt-1 text-xs text-gray-500">
                                             {formatDuration(stage.durationMs ?? null)}
                                           </p>
+                                          {canRepairStage ? (
+                                            <button
+                                              type="button"
+                                              onClick={(event) => {
+                                                event.stopPropagation();
+                                                setRepairModalRunId(run._id);
+                                              }}
+                                              className="mt-2 inline-flex items-center gap-1 rounded-lg bg-rose-500/10 px-2 py-1 text-[11px] font-medium text-rose-200 transition-colors hover:bg-rose-500/20"
+                                              title="Repair this failed run"
+                                            >
+                                              <CircleAlert className="size-3.5" />
+                                              Repair
+                                            </button>
+                                          ) : null}
                                         </div>
                                       </div>
                                       {stageDisplayDetail ? (
@@ -2233,6 +2281,115 @@ export function App() {
                     No pipeline runs yet.
                   </div>
                 )}
+              </div>
+            </section>
+          </div>
+        </div>
+      ) : null}
+
+      {repairModalRun ? (
+        <div
+          className="fixed inset-0 z-30 bg-black/65 backdrop-blur-sm"
+          onClick={() => {
+            if (!repairingRunId) {
+              setRepairModalRunId(null);
+            }
+          }}
+        >
+          <div className="flex min-h-screen items-center justify-center px-4 py-8">
+            <section
+              className="flex w-full max-w-2xl flex-col overflow-hidden rounded-[2rem] border border-rose-500/15 bg-[#0c0c0f]/98 shadow-2xl shadow-black/40"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Repair failed run"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5 sm:px-8">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <CircleAlert className="size-4 text-rose-300" />
+                    <p className="text-sm font-semibold text-white">Repair failed run</p>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Review the failed stage and send a repair job to the agent.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={Boolean(repairingRunId)}
+                  onClick={() => setRepairModalRunId(null)}
+                  className="rounded-lg bg-[#1a1a1f] px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:bg-[#25252b] disabled:cursor-wait disabled:opacity-50"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="space-y-4 px-6 py-5 sm:px-8">
+                <div className="rounded-2xl border border-white/8 bg-[#141419] px-4 py-4">
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Prompt</p>
+                  <p className="mt-2 text-sm leading-6 text-gray-100">{repairModalRun.prompt}</p>
+                </div>
+
+                <div className="rounded-2xl border border-rose-500/15 bg-rose-500/5 px-4 py-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold text-rose-100">
+                      {repairModalStage?.label ?? "Failed stage"}
+                    </p>
+                    <span className="rounded-md bg-black/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-rose-200/80">
+                      {repairModalStage?.key ?? repairModalRun.failureStage ?? "unknown"}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-rose-100/70">
+                    {repairModalRun.failureClassification ?? "code_app"}
+                  </p>
+                  <div className="mt-3 rounded-xl bg-black/20 px-3 py-3">
+                    <p className="whitespace-pre-wrap text-xs leading-6 text-gray-300">
+                      {repairModalStageDetail ?? "No failure detail was recorded for this run."}
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-sm leading-6 text-gray-400">
+                  This will create a new repair job that tells the agent to fix the failed candidate
+                  in place instead of restarting from the live version.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 border-t border-white/10 px-6 py-4 sm:px-8">
+                <button
+                  type="button"
+                  disabled={Boolean(repairingRunId)}
+                  onClick={() => setRepairModalRunId(null)}
+                  className="rounded-xl border border-white/10 bg-[#1a1a1f] px-4 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-[#25252b] disabled:cursor-wait disabled:opacity-50"
+                >
+                  No
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(repairingRunId) || !appId}
+                  onClick={async () => {
+                    if (!appId) {
+                      return;
+                    }
+                    setRepairingRunId(repairModalRun._id);
+                    try {
+                      await requestPipelineRepairMutation({
+                        appId,
+                        runId: repairModalRun._id,
+                      });
+                      setPipelineOpen(false);
+                      setRepairModalRunId(null);
+                    } finally {
+                      setRepairingRunId((current) =>
+                        current === repairModalRun._id ? null : current,
+                      );
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl bg-rose-500 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-rose-400 disabled:cursor-wait disabled:bg-rose-500/40"
+                >
+                  <CircleAlert className="size-3.5" />
+                  {repairingRunId === repairModalRun._id ? "Repairing..." : "Yes, repair"}
+                </button>
               </div>
             </section>
           </div>
