@@ -773,24 +773,6 @@ export function App() {
         : pipelineProgress.status === "running"
           ? "bg-amber-500/12 text-amber-100 ring-1 ring-amber-500/25"
           : "bg-white/8 text-slate-200 ring-1 ring-white/10";
-  const targetBoxSummary =
-    promptTargetBoxIds.length === 0
-      ? "No target box selected"
-      : promptTargetBoxIds.length === 1
-        ? `Sending to ${formatBoxLabel(
-            currentBoxes.find((box: any) => box.boxId === promptTargetBoxIds[0]) ?? {
-              boxId: promptTargetBoxIds[0],
-              appId: appId ?? null,
-            },
-          )}`
-        : `Sending to ${promptTargetBoxIds.length} boxes`;
-  const selectionSummary =
-    selectedTargets.length > 0 || selectedRegions.length > 0
-      ? `${selectedTargets.length} element${selectedTargets.length === 1 ? "" : "s"} · ${selectedRegions.length} region${selectedRegions.length === 1 ? "" : "s"}`
-      : "No selection context";
-  const currentVersionLabel = shellState?.activeVersion
-    ? `v${shellState.activeVersion.versionNumber}`
-    : "No active version";
   const openPipelinePanel = () => {
     setPipelineOpen(true);
     setExpandedRunId(latestPipelineRuns[0]?._id ?? null);
@@ -1416,25 +1398,6 @@ export function App() {
           className="pointer-events-auto mx-auto w-full max-w-3xl"
         >
           <div className="overflow-hidden rounded-[1.25rem] bg-[#101317]/90 shadow-[0_20px_64px_rgba(0,0,0,0.3)] backdrop-blur-2xl">
-            <div className="px-3 py-2.5 sm:px-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-                    Prompt workspace
-                  </p>
-                  <p className="mt-1 text-xs text-slate-300">{targetBoxSummary}</p>
-                </div>
-                <div className="flex flex-wrap gap-1.5 text-[11px]">
-                  <span className="rounded-full bg-white/6 px-2.5 py-1 text-slate-300">
-                    {selectionSummary}
-                  </span>
-                  <span className="rounded-full bg-white/6 px-2.5 py-1 text-slate-400">
-                    {currentVersionLabel}
-                  </span>
-                </div>
-              </div>
-            </div>
-
             <div className="p-3 sm:p-4">
               {queuedTooLong ? (
                 <div className="mb-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
@@ -1490,8 +1453,8 @@ export function App() {
                 rows={3}
               />
 
-              <div className="mt-3 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-                <div className="flex flex-wrap items-center gap-1.5">
+              <div className="mt-3 flex flex-col gap-3 xl:flex-row xl:items-end">
+                <div className="flex flex-1 flex-wrap items-center gap-1.5">
                   <button
                     type="button"
                     disabled={noMountedApp || showEmptyState}
@@ -1577,7 +1540,19 @@ export function App() {
                   </label>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5 xl:ml-auto">
+                  {pipelineProgress.total > 0 ? (
+                    <button
+                      type="button"
+                      onClick={openPipelinePanel}
+                      disabled={noMountedApp}
+                      className={`inline-flex h-9 items-center rounded-xl px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${pipelineToneClass}`}
+                      title={latestPipelineRun ? `${pipelineProgress.activeLabel} · ${elapsedSeconds}s` : "Pipeline progress"}
+                    >
+                      {pipelineStepLabel}
+                    </button>
+                  ) : null}
+
                   <button
                     type="submit"
                     disabled={submitting || promptDisabled}
