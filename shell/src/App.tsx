@@ -3,11 +3,24 @@ import { useMutation, useQuery } from "convex/react";
 import { ArrowUpFromLine, Check, Crosshair, Trash2 } from "lucide-react";
 import { convexApi } from "@shared/convexApi";
 import type { LiveAppState } from "@shared/liveApp";
-import { defaultAppId } from "@shared/liveApp";
+import { defaultAppId, defaultShellId } from "@shared/liveApp";
 import { useLiveAppRuntime } from "./runtime";
 import { getOrCreateShellId } from "./shellId";
 import { getRuntimeStatus } from "./state";
 import "./styles.css";
+
+type CompareableVersionRecord = {
+  _id: string;
+  versionNumber: number;
+  status: string;
+  runtimeHealth: string;
+  createdAt: number;
+  manifestUrl: string;
+  stateJson: string;
+  agentResult?: {
+    summary?: string | null;
+  } | null;
+};
 
 function formatDuration(durationMs: number | null | undefined) {
   if (typeof durationMs !== "number" || Number.isNaN(durationMs)) {
@@ -87,6 +100,115 @@ function toggleStringSelection(values: string[], value: string) {
   return values.includes(value)
     ? values.filter((current) => current !== value)
     : [...values, value];
+}
+
+function buildCompareFrameDoc(version: CompareableVersionRecord) {
+  const payload = JSON.stringify({
+    manifestUrl: version.manifestUrl,
+    stateJson: version.stateJson,
+    versionNumber: version.versionNumber,
+  }).replace(/</g, "\\u003c");
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background: #050505;
+        color: #e5e7eb;
+        font-family: Inter, system-ui, sans-serif;
+      }
+
+      body {
+        min-height: 100vh;
+      }
+
+      #root {
+        min-height: 100vh;
+      }
+
+      #status {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        z-index: 9999;
+        max-width: min(420px, calc(100vw - 32px));
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(12, 12, 15, 0.92);
+        padding: 12px 14px;
+        font-size: 12px;
+        line-height: 1.5;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.32);
+      }
+
+      #status[data-state="error"] {
+        border-color: rgba(248, 113, 113, 0.28);
+        color: #fecaca;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="status">Loading version preview…</div>
+    <script type="module">
+      const payload = JSON.parse(${JSON.stringify(payload)});
+      const root = document.getElementById("root");
+      const status = document.getElementById("status");
+
+      const setStatus = (message, state = "loading") => {
+        if (!status) return;
+        status.dataset.state = state;
+        status.textContent = message;
+      };
+
+      const mountVersion = async () => {
+        const response = await fetch(payload.manifestUrl, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(\`Failed to load manifest: \${response.status}\`);
+        }
+
+        const manifest = await response.json();
+        for (const href of manifest.cssUrls ?? []) {
+          const link = document.createElement("link");
+          link.rel = "stylesheet";
+          link.href = href;
+          document.head.appendChild(link);
+        }
+
+        const module = await import(\`\${manifest.entryUrl}?t=\${Date.now()}\`);
+        if (typeof module.mount !== "function") {
+          throw new Error("Live app module is missing mount()");
+        }
+
+        const initialState = JSON.parse(payload.stateJson);
+        await module.mount({
+          root,
+          initialState,
+          publishState: () => {},
+          reportHealthy: () => {
+            status?.remove();
+          },
+          reportError: (error) => {
+            throw error instanceof Error ? error : new Error(String(error));
+          },
+        });
+
+        status?.remove();
+      };
+
+      mountVersion().catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("[softbox/compare-frame]", error);
+        setStatus(\`Version v\${payload.versionNumber} failed: \${message}\`, "error");
+      });
+    </script>
+  </body>
+</html>`;
 }
 
 function getRunDuration(run: any) {
@@ -489,10 +611,27 @@ function getInspectBadgeStyle(target: { rect: InspectRect } | null): CSSProperti
 export function App() {
   const [shellId] = useState(() => getOrCreateShellId());
   const shellSelection = useQuery(convexApi.getShellSelection as any, { shellId }) as any;
+  const defaultShellSelection = useQuery(
+    convexApi.getShellSelection as any,
+    shellId === defaultShellId ? "skip" : { shellId: defaultShellId },
+  ) as any;
   const appsQuery = useQuery(convexApi.listApps as any, {}) as any[] | undefined;
   const apps = appsQuery ?? [];
-  const shellSelectedAppId = shellSelection?.selectedAppId ?? null;
-  const hasPersistedSelection = shellSelection?.updatedAt != null;
+  const sessionSelectionUpdatedAt =
+    typeof shellSelection?.updatedAt === "number" ? shellSelection.updatedAt : null;
+  const defaultSelectionUpdatedAt =
+    typeof defaultShellSelection?.updatedAt === "number"
+      ? defaultShellSelection.updatedAt
+      : null;
+  const effectiveShellSelection =
+    sessionSelectionUpdatedAt !== null &&
+    (defaultSelectionUpdatedAt === null || sessionSelectionUpdatedAt >= defaultSelectionUpdatedAt)
+      ? shellSelection
+      : defaultSelectionUpdatedAt !== null
+        ? defaultShellSelection
+        : shellSelection;
+  const shellSelectedAppId = effectiveShellSelection?.selectedAppId ?? null;
+  const hasPersistedSelection = effectiveShellSelection?.updatedAt != null;
   const selectedAppExists = shellSelectedAppId
     ? apps.some((app) => app.appId === shellSelectedAppId)
     : false;
@@ -531,6 +670,8 @@ export function App() {
   const [appsOpen, setAppsOpen] = useState(false);
   const [pipelineOpen, setPipelineOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [compareVersionIds, setCompareVersionIds] = useState<string[]>([]);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [switchingAppId, setSwitchingAppId] = useState<string | null>(null);
   const [deletingAppId, setDeletingAppId] = useState<string | null>(null);
@@ -579,6 +720,9 @@ export function App() {
   const latestPipelineRuns = shellState?.latestPipelineRuns ?? [];
   const latestPipelineRun = shellState?.latestPipelineRun ?? latestPipelineRuns[0] ?? null;
   const activeVersionId = shellState?.activeVersion?._id ?? null;
+  const comparedVersions = compareVersionIds
+    .map((versionId) => versions.find((version: any) => version._id === versionId) ?? null)
+    .filter((version): version is CompareableVersionRecord => Boolean(version));
   const templateSourceStatus =
     selectedApp?.templateSourceStatus ??
     shellState?.templateSourceStatus ??
@@ -661,6 +805,8 @@ export function App() {
     setAppsOpen(false);
     setSwitchingAppId(null);
     setVersionsOpen(false);
+    setCompareOpen(false);
+    setCompareVersionIds([]);
     setSwitchingVersionId(null);
     setExpandedRunId(null);
     setDeletingRunId(null);
@@ -672,6 +818,12 @@ export function App() {
     setSelectedBoxId(null);
     setSelectedTargetBoxIds([]);
   }, [appId]);
+
+  useEffect(() => {
+    setCompareVersionIds((current) =>
+      current.filter((versionId) => versions.some((version: any) => version._id === versionId)),
+    );
+  }, [versions]);
 
   useEffect(() => {
     if (currentBoxes.length === 0) {
@@ -733,13 +885,13 @@ export function App() {
   }, [showEmptyState]);
 
   useEffect(() => {
-    if (!appsOpen && !pipelineOpen && !versionsOpen) {
+    if (!appsOpen && !pipelineOpen && !versionsOpen && !compareOpen) {
       return;
     }
     setSelectionMode(null);
     setHoveredTarget(null);
     setDraftRegion(null);
-  }, [appsOpen, pipelineOpen, versionsOpen]);
+  }, [appsOpen, compareOpen, pipelineOpen, versionsOpen]);
 
   useEffect(() => {
     if (!inspectMode) {
@@ -2052,14 +2204,27 @@ export function App() {
                     App <span className="font-medium text-gray-300">{selectedApp?.appId ?? appId ?? "none"}</span> only.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  disabled={Boolean(switchingVersionId)}
-                  onClick={() => setVersionsOpen(false)}
-                  className="rounded-lg bg-[#1a1a1f] px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:bg-[#25252b] disabled:cursor-wait disabled:opacity-50"
-                >
-                  Close
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={comparedVersions.length !== 2 || Boolean(switchingVersionId)}
+                    onClick={() => {
+                      setCompareOpen(true);
+                      setVersionsOpen(false);
+                    }}
+                    className="rounded-lg bg-cyan-500/12 px-3 py-1.5 text-xs font-medium text-cyan-200 transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:bg-white/5 disabled:text-gray-500"
+                  >
+                    Compare {comparedVersions.length === 2 ? "2 versions" : `(${comparedVersions.length}/2)`}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={Boolean(switchingVersionId)}
+                    onClick={() => setVersionsOpen(false)}
+                    className="rounded-lg bg-[#1a1a1f] px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:bg-[#25252b] disabled:cursor-wait disabled:opacity-50"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
 
               <div className="max-h-[70vh] overflow-y-auto px-4 py-4 sm:px-8 sm:py-6">
@@ -2104,32 +2269,59 @@ export function App() {
                             </div>
 
                             <div className="shrink-0">
-                              {isActive ? (
-                                <span className="inline-flex h-9 items-center rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 text-xs font-medium text-cyan-300">
-                                  Current
-                                </span>
-                              ) : (
+                              <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  disabled={isFailed || Boolean(switchingVersionId)}
-                                  onClick={async () => {
-                                    setSwitchingVersionId(version._id);
-                                    try {
-                                      await activateVersionMutation({
-                                        appId,
-                                        versionId: version._id,
-                                        mode: "manual",
-                                      });
-                                      setVersionsOpen(false);
-                                    } finally {
-                                      setSwitchingVersionId(null);
-                                    }
+                                  disabled={
+                                    Boolean(switchingVersionId) ||
+                                    (!compareVersionIds.includes(version._id) && compareVersionIds.length >= 2)
+                                  }
+                                  onClick={() => {
+                                    setCompareVersionIds((current) => {
+                                      if (current.includes(version._id)) {
+                                        return current.filter((value) => value !== version._id);
+                                      }
+                                      if (current.length >= 2) {
+                                        return [current[1], version._id];
+                                      }
+                                      return [...current, version._id];
+                                    });
                                   }}
-                                  className="inline-flex h-9 items-center rounded-xl bg-white px-3 text-xs font-medium text-black transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-gray-500"
+                                  className={`inline-flex h-9 items-center rounded-xl px-3 text-xs font-medium transition-colors ${
+                                    compareVersionIds.includes(version._id)
+                                      ? "bg-fuchsia-500/16 text-fuchsia-100 ring-1 ring-fuchsia-400/30"
+                                      : "bg-white/6 text-gray-300 hover:bg-white/10"
+                                  } disabled:cursor-not-allowed disabled:bg-white/5 disabled:text-gray-500`}
                                 >
-                                  {isSwitching ? "Switching..." : isFailed ? "Unavailable" : "Activate"}
+                                  {compareVersionIds.includes(version._id) ? "Compared" : "Compare"}
                                 </button>
-                              )}
+                                {isActive ? (
+                                  <span className="inline-flex h-9 items-center rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 text-xs font-medium text-cyan-300">
+                                    Current
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={isFailed || Boolean(switchingVersionId)}
+                                    onClick={async () => {
+                                      setSwitchingVersionId(version._id);
+                                      try {
+                                        await activateVersionMutation({
+                                          appId,
+                                          versionId: version._id,
+                                          mode: "manual",
+                                        });
+                                        setVersionsOpen(false);
+                                      } finally {
+                                        setSwitchingVersionId(null);
+                                      }
+                                    }}
+                                    className="inline-flex h-9 items-center rounded-xl bg-white px-3 text-xs font-medium text-black transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-gray-500"
+                                  >
+                                    {isSwitching ? "Switching..." : isFailed ? "Unavailable" : "Activate"}
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </article>
@@ -2141,6 +2333,136 @@ export function App() {
                     No versions found for this app yet.
                   </div>
                 )}
+              </div>
+            </section>
+          </div>
+        </div>
+      ) : null}
+
+      {compareOpen && comparedVersions.length === 2 ? (
+        <div
+          className="fixed inset-0 z-30 bg-black/72 backdrop-blur-sm"
+          onClick={() => setCompareOpen(false)}
+        >
+          <div className="flex min-h-screen items-center justify-center px-4 py-6">
+            <section
+              className="flex h-[92vh] w-full max-w-[min(1440px,96vw)] flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#07070a]/98 shadow-2xl shadow-black/50"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Version compare"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-white/10 px-6 py-5 sm:px-8">
+                <div>
+                  <p className="text-sm font-semibold text-white">Split compare</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Two isolated previews for{" "}
+                    <span className="font-medium text-gray-300">{selectedApp?.appId ?? appId ?? "none"}</span>.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCompareOpen(false);
+                      setVersionsOpen(true);
+                    }}
+                    className="rounded-lg bg-cyan-500/12 px-3 py-1.5 text-xs font-medium text-cyan-200 transition-colors hover:bg-cyan-500/20"
+                  >
+                    Back to versions
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCompareOpen(false)}
+                    className="rounded-lg bg-[#1a1a1f] px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:bg-[#25252b]"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-auto px-4 py-4 lg:grid-cols-2 lg:px-6 lg:py-6">
+                {comparedVersions.map((version) => {
+                  const isActive = activeVersionId === version._id;
+                  const isSwitching = switchingVersionId === version._id;
+
+                  return (
+                    <article
+                      key={version._id}
+                      className="flex min-h-[420px] flex-col overflow-hidden rounded-[1.5rem] border border-white/10 bg-[#111115]"
+                    >
+                      <div className="flex items-start justify-between gap-4 border-b border-white/8 px-4 py-4">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-base font-semibold text-white">v{version.versionNumber}</p>
+                            {isActive ? (
+                              <span className="rounded-md bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-300 ring-1 ring-cyan-500/20">
+                                Current
+                              </span>
+                            ) : null}
+                            <span className="rounded-md bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-300 ring-1 ring-white/10">
+                              {version.status}
+                            </span>
+                            <span className="rounded-md bg-black/20 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-gray-500">
+                              {version.runtimeHealth}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-xs text-gray-500">{formatTimestamp(version.createdAt)}</p>
+                          {version.agentResult?.summary ? (
+                            <p className="mt-3 text-sm leading-6 text-gray-300">
+                              {version.agentResult.summary}
+                            </p>
+                          ) : (
+                            <p className="mt-3 text-sm leading-6 text-gray-500">
+                              No agent summary recorded for this version.
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="shrink-0">
+                          {isActive ? (
+                            <span className="inline-flex h-9 items-center rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 text-xs font-medium text-cyan-300">
+                              Current
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={Boolean(switchingVersionId)}
+                              onClick={async () => {
+                                if (!appId) {
+                                  return;
+                                }
+                                setSwitchingVersionId(version._id);
+                                try {
+                                  await activateVersionMutation({
+                                    appId,
+                                    versionId: version._id,
+                                    mode: "manual",
+                                  });
+                                  setCompareOpen(false);
+                                } finally {
+                                  setSwitchingVersionId(null);
+                                }
+                              }}
+                              className="inline-flex h-9 items-center rounded-xl bg-white px-3 text-xs font-medium text-black transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-gray-500"
+                            >
+                              {isSwitching ? "Switching..." : "Make current"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="min-h-0 flex-1 bg-black">
+                        <iframe
+                          title={`Version ${version.versionNumber} preview`}
+                          srcDoc={buildCompareFrameDoc(version)}
+                          sandbox="allow-scripts allow-same-origin"
+                          className="h-full min-h-[520px] w-full border-0 bg-black"
+                        />
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             </section>
           </div>

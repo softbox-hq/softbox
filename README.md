@@ -129,12 +129,55 @@ Starting a new app:
 4. keep `src/entry.tsx`, `src/defaultState.ts`, and `src/adapter/`
 5. run `pnpm run doctor`
 
+You can also start the full local onboarding flow with:
+
+```bash
+pnpm new-app
+```
+
+That command now does the full local onboarding flow for a supported Softbox app:
+
+1. shows an arrow-key starter picker when you run it without arguments
+2. auto-generates a new app id such as `dashboard-1` or `react-app-1`
+3. either scaffolds a fresh Vite app or copies a wrapped starter app
+4. runs `pnpm wrap-app -- --path apps/<your-app>` when wrapping is needed
+5. runs `pnpm run doctor`
+6. runs `APP_ID=<your-app> pnpm seed`
+7. in per-app OpenClaw mode, runs `pnpm worker:openclaw-sync-agents -- --apply`
+8. sets the new app as the default shell selection so the shell can mount it on refresh
+
+Current starters:
+
+- blank React + TypeScript
+- blank React + JavaScript
+- dashboard example
+- grid example
+- tic tac toe example
+
+You can still override the Vite template if needed:
+
+```bash
+pnpm new-app my-app -- --template react
+```
+
+Or skip the picker with a specific starter:
+
+```bash
+pnpm new-app --starter dashboard-example
+```
+
+The command only injects `APP_ID` for its own `doctor` and `seed` steps. It does not rewrite `.env.local`.
+`doctor` output is shown, but `pnpm new-app` still attempts `seed` afterwards so app-local onboarding is not blocked by unrelated environment warnings.
+The starter picker uses a Node prompt UI, so users do not need Go or any external TUI runtime.
+If a worker is already running, `pnpm new-app` now prints a restart warning after onboarding so the first prompt does not hit a stale worker process.
+
 Then open the shell in the browser and submit a prompt.
 
 ## Useful Commands
 
 ```bash
 pnpm setup
+pnpm new-app
 pnpm run doctor
 pnpm dev
 pnpm dev:shell
