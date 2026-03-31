@@ -21,5 +21,8 @@ body,
 
 body {
   min-height: 100svh;
-  overflow: hidden;
+}
+
+a {
+  color: inherit;
 }
