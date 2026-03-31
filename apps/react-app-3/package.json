@@ -12,12 +12,9 @@
     "ui:install-browser": "pnpm --dir ../.. exec playwright install --with-deps chromium"
   },
   "dependencies": {
-    "@react-three/drei": "^10.7.7",
-    "@react-three/fiber": "^9.5.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "sql.js": "^1.14.1",
-    "three": "^0.183.2"
+    "sql.js": "^1.14.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
