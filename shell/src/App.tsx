@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "convex/react";
 import {
   AppWindow,
   ArrowUpFromLine,
+  ListRestart,
   SquareDashedMousePointer,
   SquareMousePointer,
   Trash2,
@@ -840,6 +841,8 @@ export function App() {
   const submitPrompt = useMutation(convexApi.submitPrompt as any);
   const publishStateMutation = useMutation(convexApi.publishState as any);
   const activateVersionMutation = useMutation(convexApi.activateVersion as any);
+  const resetBoxSessionMutation = useMutation(convexApi.resetBoxSession as any);
+  const deleteVersionMutation = useMutation(convexApi.deleteVersion as any);
   const reportRuntimeErrorMutation = useMutation(convexApi.reportRuntimeError as any);
   const recordPipelineStageForVersionMutation = useMutation(
     convexApi.recordPipelineStageForVersion as any,
@@ -856,6 +859,8 @@ export function App() {
   const [switchingAppId, setSwitchingAppId] = useState<string | null>(null);
   const [deletingAppId, setDeletingAppId] = useState<string | null>(null);
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
+  const [deletingVersionId, setDeletingVersionId] = useState<string | null>(null);
+  const [resettingBoxSessionId, setResettingBoxSessionId] = useState<string | null>(null);
   const [boxActionKey, setBoxActionKey] = useState<string | null>(null);
   const [switchingVersionId, setSwitchingVersionId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -882,6 +887,10 @@ export function App() {
   const selectedBox =
     currentBoxes.find((box: any) => box.boxId === selectedBoxId) ??
     primaryBox;
+  const canResetSelectedBoxSession =
+    Boolean(appId) &&
+    Boolean(selectedBox?.boxId) &&
+    selectedBox?.engine === "openclaw";
   const promptTargetBoxIds = Array.from(
     new Set(
       (selectedTargetBoxIds.length > 0
@@ -976,6 +985,7 @@ export function App() {
         : pipelineProgress.status === "running"
           ? "bg-amber-500/12 text-amber-100 ring-1 ring-amber-500/25"
           : "bg-white/8 text-slate-200 ring-1 ring-white/10";
+  const versionActionPending = Boolean(switchingVersionId) || Boolean(deletingVersionId);
   const openPipelinePanel = () => {
     setPipelineOpen(true);
     setExpandedRunId(latestPipelineRuns[0]?._id ?? null);
@@ -1054,6 +1064,8 @@ export function App() {
     setCompareOpen(false);
     setCompareVersionIds([]);
     setSwitchingVersionId(null);
+    setDeletingVersionId(null);
+    setResettingBoxSessionId(null);
     setExpandedRunId(null);
     setDeletingRunId(null);
     setSelectionMode(null);
@@ -1526,7 +1538,7 @@ export function App() {
         event.metaKey ||
         event.ctrlKey ||
         event.altKey ||
-        switchingVersionId ||
+        versionActionPending ||
         submitting ||
         appsOpen ||
         pipelineOpen ||
@@ -1586,7 +1598,7 @@ export function App() {
     compareOpen,
     pipelineOpen,
     submitting,
-    switchingVersionId,
+    versionActionPending,
     versions,
     versionsOpen,
   ]);
@@ -1913,6 +1925,38 @@ export function App() {
                       )}
                     </select>
                   </label>
+
+                  <button
+                    type="button"
+                    disabled={!canResetSelectedBoxSession || resettingBoxSessionId === selectedBox?.boxId}
+                    onClick={async () => {
+                      if (!appId || !selectedBox?.boxId) {
+                        return;
+                      }
+                      const confirmed = window.confirm(
+                        `Reset the saved OpenClaw session for box '${formatBoxLabel(selectedBox)}'? The next prompt will start a fresh conversation context.`,
+                      );
+                      if (!confirmed) {
+                        return;
+                      }
+                      setResettingBoxSessionId(selectedBox.boxId);
+                      try {
+                        await resetBoxSessionMutation({
+                          appId,
+                          boxId: selectedBox.boxId,
+                        });
+                      } finally {
+                        setResettingBoxSessionId((current) =>
+                          current === selectedBox.boxId ? null : current,
+                        );
+                      }
+                    }}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Reset OpenClaw session"
+                    aria-label="Reset OpenClaw session"
+                  >
+                    <ListRestart className="size-3.5" />
+                  </button>
                 </div>
 
                 {pipelineInlineThought ? (
@@ -2570,7 +2614,7 @@ export function App() {
         <div
           className="fixed inset-0 z-20 bg-black/60 backdrop-blur-sm"
           onClick={() => {
-            if (!switchingVersionId) {
+            if (!versionActionPending) {
               setVersionsOpen(false);
             }
           }}
@@ -2593,7 +2637,7 @@ export function App() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    disabled={comparedVersions.length !== 2 || Boolean(switchingVersionId)}
+                    disabled={comparedVersions.length !== 2 || versionActionPending}
                     onClick={() => {
                       setCompareOpen(true);
                       setVersionsOpen(false);
@@ -2604,7 +2648,7 @@ export function App() {
                   </button>
                   <button
                     type="button"
-                    disabled={Boolean(switchingVersionId)}
+                    disabled={versionActionPending}
                     onClick={() => setVersionsOpen(false)}
                     className="rounded-lg bg-[#1a1a1f] px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:bg-[#25252b] disabled:cursor-wait disabled:opacity-50"
                   >
@@ -2620,6 +2664,7 @@ export function App() {
                       const isActive = activeVersionId === version._id;
                       const isFailed = version.status === "failed";
                       const isSwitching = switchingVersionId === version._id;
+                      const isDeleting = deletingVersionId === version._id;
 
                       return (
                         <article
@@ -2659,7 +2704,7 @@ export function App() {
                                 <button
                                   type="button"
                                   disabled={
-                                    Boolean(switchingVersionId) ||
+                                    versionActionPending ||
                                     (!compareVersionIds.includes(version._id) && compareVersionIds.length >= 2)
                                   }
                                   onClick={() => {
@@ -2686,26 +2731,55 @@ export function App() {
                                     Current
                                   </span>
                                 ) : (
-                                  <button
-                                    type="button"
-                                    disabled={isFailed || Boolean(switchingVersionId)}
-                                    onClick={async () => {
-                                      setSwitchingVersionId(version._id);
-                                      try {
-                                        await activateVersionMutation({
-                                          appId,
-                                          versionId: version._id,
-                                          mode: "manual",
-                                        });
-                                        setVersionsOpen(false);
-                                      } finally {
-                                        setSwitchingVersionId(null);
-                                      }
-                                    }}
-                                    className="inline-flex h-9 items-center rounded-xl bg-white px-3 text-xs font-medium text-black transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-gray-500"
-                                  >
-                                    {isSwitching ? "Switching..." : isFailed ? "Unavailable" : "Activate"}
-                                  </button>
+                                  <>
+                                    <button
+                                      type="button"
+                                      disabled={versionActionPending}
+                                      onClick={async () => {
+                                        const confirmed = window.confirm(
+                                          `Delete version v${version.versionNumber} from history? This removes it from Softbox version history but does not purge shared build artifacts.`,
+                                        );
+                                        if (!confirmed || !appId) {
+                                          return;
+                                        }
+                                        setDeletingVersionId(version._id);
+                                        try {
+                                          await deleteVersionMutation({
+                                            appId,
+                                            versionId: version._id,
+                                          });
+                                        } finally {
+                                          setDeletingVersionId((current) =>
+                                            current === version._id ? null : current,
+                                          );
+                                        }
+                                      }}
+                                      className="inline-flex h-9 items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 text-xs font-medium text-rose-200 transition-colors hover:bg-rose-500/20 disabled:cursor-wait disabled:opacity-50"
+                                    >
+                                      <Trash2 className="size-3.5" />
+                                      {isDeleting ? "Deleting..." : "Delete"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={isFailed || versionActionPending}
+                                      onClick={async () => {
+                                        setSwitchingVersionId(version._id);
+                                        try {
+                                          await activateVersionMutation({
+                                            appId,
+                                            versionId: version._id,
+                                            mode: "manual",
+                                          });
+                                          setVersionsOpen(false);
+                                        } finally {
+                                          setSwitchingVersionId(null);
+                                        }
+                                      }}
+                                      className="inline-flex h-9 items-center rounded-xl bg-white px-3 text-xs font-medium text-black transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-gray-500"
+                                    >
+                                      {isSwitching ? "Switching..." : isFailed ? "Unavailable" : "Activate"}
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             </div>
@@ -2813,7 +2887,7 @@ export function App() {
                           ) : (
                             <button
                               type="button"
-                              disabled={Boolean(switchingVersionId)}
+                              disabled={versionActionPending}
                               onClick={async () => {
                                 if (!appId) {
                                   return;

@@ -58,6 +58,7 @@ export type BoxRecord = {
   targetPath: string | null;
   workspacePath: string | null;
   sessionId: string | null;
+  sessionKeyGeneration: number;
   provider: string | null;
   model: string | null;
   engineProfile?: EngineProfileRecord | null;
@@ -270,6 +271,7 @@ export class ConvexRuntimeClient {
     targetPath?: string | null;
     workspacePath?: string | null;
     sessionId?: string | null;
+    sessionKeyGeneration?: number;
     provider?: string | null;
     model: string | null;
     status: BoxStatus;

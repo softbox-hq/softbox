@@ -226,6 +226,20 @@ describe("buildOpenClawSessionKey", () => {
       }),
     ).toBe("agent:softbox:openclaw-softbox-critic");
   });
+
+  it("rotates the session key when the session generation increments", () => {
+    expect(
+      buildOpenClawSessionKey({
+        appId: "softbox",
+        boxId: "openclaw:softbox:critic",
+        openClaw: {
+          agentId: "softbox",
+          sessionKeyPrefix: "softbox",
+          sessionKeyGeneration: 2,
+        },
+      }),
+    ).toBe("agent:softbox:openclaw-softbox-critic:g2");
+  });
 });
 
 describe("buildConfiguredOpenClawAgentId", () => {

@@ -125,6 +125,7 @@ export default defineSchema({
     targetPath: v.optional(v.union(v.string(), v.null())),
     workspacePath: v.union(v.string(), v.null()),
     sessionId: v.union(v.string(), v.null()),
+    sessionKeyGeneration: v.optional(v.number()),
     provider: v.union(v.string(), v.null()),
     model: v.union(v.string(), v.null()),
     status: boxStatus,

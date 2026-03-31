@@ -344,7 +344,19 @@ async function main() {
     await runCommand({
       step: `scaffold apps/${appId} with npm create vite@latest`,
       command: "npm",
-      args: ["create", "vite@latest", `apps/${appId}`, "--", ...resolvedViteArgs],
+      args: [
+        "create",
+        "vite@latest",
+        `apps/${appId}`,
+        "--",
+        "--no-interactive",
+        ...resolvedViteArgs,
+      ],
+      env: {
+        // Skip npm's "Do you wish to install and run ..." confirmation so
+        // create-vite runs non-interactively and onboarding can always continue.
+        npm_config_yes: "true",
+      },
     });
 
     await runCommand({

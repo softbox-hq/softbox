@@ -344,6 +344,10 @@ function serializeBox(box: any, related?: { engineProfile?: any; providerProfile
     targetPath: box.targetPath ?? box.workspacePath ?? null,
     workspacePath: box.workspacePath ?? box.targetPath ?? null,
     sessionId: box.sessionId ?? null,
+    sessionKeyGeneration:
+      typeof box.sessionKeyGeneration === "number" && Number.isFinite(box.sessionKeyGeneration)
+        ? Math.max(0, Math.trunc(box.sessionKeyGeneration))
+        : 0,
     provider: box.provider ?? null,
     model: box.model ?? null,
     engineProfile: serializeEngineProfile(related?.engineProfile ?? null),
@@ -550,6 +554,12 @@ function buildPipelineRunReplacementDoc(run: any, nextAppId: string, updatedAt: 
     updatedAt,
   };
 
+  if (run.boxId !== undefined) {
+    nextDoc.boxId = run.boxId;
+  }
+  if (run.templateId !== undefined) {
+    nextDoc.templateId = run.templateId;
+  }
   if (run.versionId !== undefined) {
     nextDoc.versionId = run.versionId;
   }
@@ -561,6 +571,56 @@ function buildPipelineRunReplacementDoc(run: any, nextAppId: string, updatedAt: 
   }
   if (run.failedAt !== undefined) {
     nextDoc.failedAt = run.failedAt;
+  }
+
+  return nextDoc;
+}
+
+function buildJobReplacementDoc(job: any) {
+  const nextDoc: Record<string, unknown> = {
+    appId: job.appId,
+    prompt: job.prompt,
+    status: job.status,
+    submittedAt: job.submittedAt,
+  };
+
+  if (job.boxId !== undefined) {
+    nextDoc.boxId = job.boxId;
+  }
+  if (job.claimedAt !== undefined) {
+    nextDoc.claimedAt = job.claimedAt;
+  }
+  if (job.baseVersionId !== undefined) {
+    nextDoc.baseVersionId = job.baseVersionId;
+  }
+  if (job.buildError !== undefined) {
+    nextDoc.buildError = job.buildError;
+  }
+  if (job.agentResult !== undefined) {
+    nextDoc.agentResult = job.agentResult;
+  }
+  if (job.resultVersionId !== undefined) {
+    nextDoc.resultVersionId = job.resultVersionId;
+  }
+  if (job.pipelineRunId !== undefined) {
+    nextDoc.pipelineRunId = job.pipelineRunId;
+  }
+
+  return nextDoc;
+}
+
+function buildRuntimeErrorReplacementDoc(runtimeError: any) {
+  const nextDoc: Record<string, unknown> = {
+    appId: runtimeError.appId,
+    message: runtimeError.message,
+    createdAt: runtimeError.createdAt,
+  };
+
+  if (runtimeError.versionId !== undefined) {
+    nextDoc.versionId = runtimeError.versionId;
+  }
+  if (runtimeError.stack !== undefined) {
+    nextDoc.stack = runtimeError.stack;
   }
 
   return nextDoc;
@@ -1013,6 +1073,105 @@ export const activateVersion = mutation({
         updatedAt: now,
       });
     }
+  },
+});
+
+export const deleteVersion = mutation({
+  args: {
+    appId: v.string(),
+    versionId: v.id("versions"),
+  },
+  handler: async (ctx, args) => {
+    const app = await getAppById(ctx, args.appId);
+    if (!app) {
+      return { deleted: false };
+    }
+
+    const version = await ctx.db.get(args.versionId);
+    if (!version || version.appId !== args.appId) {
+      throw new Error("Version not found for app");
+    }
+    if (app.activeVersionId === args.versionId || version.status === "active") {
+      throw new Error("Cannot delete the active version");
+    }
+
+    const linkedRuns = await ctx.db
+      .query("pipelineRuns")
+      .withIndex("by_versionId", (q) => q.eq("versionId", args.versionId))
+      .collect();
+    if (linkedRuns.some((run) => run.status === "pending" || run.status === "running")) {
+      throw new Error("Cannot delete a version while its pipeline run is still active");
+    }
+
+    const now = Date.now();
+    const allVersions = await ctx.db
+      .query("versions")
+      .withIndex("by_appId_and_versionNumber", (q) => q.eq("appId", args.appId))
+      .collect();
+    const remainingVersions = allVersions.filter((candidate) => candidate._id !== args.versionId);
+    const highestRemainingVersionNumber = highestVersionNumber(remainingVersions);
+    const activeVersion = app.activeVersionId ? await ctx.db.get(app.activeVersionId) : null;
+    const previewCursorBase =
+      app.previewCursorVersionNumber ??
+      activeVersion?.versionNumber ??
+      highestRemainingVersionNumber;
+    const nextPreviewCursorVersionNumber = Math.max(
+      0,
+      Math.min(previewCursorBase, highestRemainingVersionNumber),
+    );
+
+    const jobs = await ctx.db
+      .query("jobs")
+      .withIndex("by_appId_and_submittedAt", (q) => q.eq("appId", args.appId))
+      .collect();
+    for (const job of jobs) {
+      const nextJobDoc = buildJobReplacementDoc(job);
+      let changed = false;
+
+      if (job.baseVersionId === args.versionId) {
+        delete nextJobDoc["baseVersionId"];
+        changed = true;
+      }
+      if (job.resultVersionId === args.versionId) {
+        delete nextJobDoc["resultVersionId"];
+        changed = true;
+      }
+
+      if (changed) {
+        await ctx.db.replace(job._id, nextJobDoc);
+      }
+    }
+
+    for (const run of linkedRuns) {
+      const nextRunDoc = buildPipelineRunReplacementDoc(run, run.appId, now);
+      delete nextRunDoc["versionId"];
+      await ctx.db.replace(run._id, nextRunDoc);
+    }
+
+    const runtimeErrors = await ctx.db
+      .query("runtimeErrors")
+      .withIndex("by_appId_and_createdAt", (q) => q.eq("appId", args.appId))
+      .collect();
+    for (const runtimeError of runtimeErrors) {
+      if (runtimeError.versionId !== args.versionId) {
+        continue;
+      }
+      const nextRuntimeErrorDoc = buildRuntimeErrorReplacementDoc(runtimeError);
+      delete nextRuntimeErrorDoc["versionId"];
+      await ctx.db.replace(runtimeError._id, nextRuntimeErrorDoc);
+    }
+
+    await ctx.db.patch(app._id, {
+      previewCursorVersionNumber: nextPreviewCursorVersionNumber,
+      updatedAt: now,
+    });
+
+    await ctx.db.delete(args.versionId);
+
+    return {
+      deleted: true,
+      versionNumber: version.versionNumber,
+    };
   },
 });
 
@@ -1669,6 +1828,45 @@ export const setAppOpenClawSession = mutation({
   },
 });
 
+export const resetBoxSession = mutation({
+  args: {
+    appId: v.string(),
+    boxId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const app = await getAppById(ctx, args.appId);
+    if (!app) {
+      return { reset: false };
+    }
+
+    const box = await getBoxByBoxId(ctx, args.boxId);
+    if (!box || box.appId !== args.appId) {
+      throw new Error(`Box '${args.boxId}' does not belong to app '${args.appId}'.`);
+    }
+
+    const now = Date.now();
+    const currentGeneration =
+      typeof box.sessionKeyGeneration === "number" && Number.isFinite(box.sessionKeyGeneration)
+        ? Math.max(0, Math.trunc(box.sessionKeyGeneration))
+        : 0;
+    await ctx.db.patch(box._id, {
+      sessionId: null,
+      sessionKeyGeneration: currentGeneration + 1,
+      updatedAt: now,
+    });
+
+    const primaryBox = await getBoxByAppId(ctx, args.appId);
+    if (primaryBox && primaryBox.boxId === box.boxId) {
+      await ctx.db.patch(app._id, {
+        openClawSessionId: null,
+        updatedAt: now,
+      });
+    }
+
+    return { reset: true };
+  },
+});
+
 export const upsertEngineProfile = mutation({
   args: {
     engineProfileId: v.string(),
@@ -1758,6 +1956,7 @@ export const upsertBox = mutation({
     targetPath: v.optional(v.union(v.string(), v.null())),
     workspacePath: v.optional(v.union(v.string(), v.null())),
     sessionId: v.optional(v.union(v.string(), v.null())),
+    sessionKeyGeneration: v.optional(v.number()),
     provider: v.optional(v.union(v.string(), v.null())),
     model: v.union(v.string(), v.null()),
     status: boxStatus,
@@ -1819,6 +2018,12 @@ export const upsertBox = mutation({
     if (Object.prototype.hasOwnProperty.call(args, "sessionId")) {
       patch.sessionId = args.sessionId ?? null;
     }
+    if (Object.prototype.hasOwnProperty.call(args, "sessionKeyGeneration")) {
+      patch.sessionKeyGeneration =
+        typeof args.sessionKeyGeneration === "number" && Number.isFinite(args.sessionKeyGeneration)
+          ? Math.max(0, Math.trunc(args.sessionKeyGeneration))
+          : 0;
+    }
     if (Object.prototype.hasOwnProperty.call(args, "lastRunAt")) {
       patch.lastRunAt = args.lastRunAt ?? null;
     }
@@ -1845,6 +2050,13 @@ export const upsertBox = mutation({
       sessionId: Object.prototype.hasOwnProperty.call(args, "sessionId")
         ? (args.sessionId ?? null)
         : null,
+      sessionKeyGeneration: Object.prototype.hasOwnProperty.call(args, "sessionKeyGeneration")
+        ? (
+            typeof args.sessionKeyGeneration === "number" && Number.isFinite(args.sessionKeyGeneration)
+              ? Math.max(0, Math.trunc(args.sessionKeyGeneration))
+              : 0
+          )
+        : 0,
       provider: args.provider ?? null,
       model: args.model,
       status: args.status,
@@ -1973,6 +2185,7 @@ export const createBox = mutation({
       targetPath: sourceBox?.targetPath ?? sourceBox?.workspacePath ?? null,
       workspacePath: sourceBox?.workspacePath ?? sourceBox?.targetPath ?? null,
       sessionId: null,
+      sessionKeyGeneration: 0,
       provider: sourceBox?.provider ?? null,
       model: sourceBox?.model ?? null,
       status: "ready",

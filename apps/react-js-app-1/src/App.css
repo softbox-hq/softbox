@@ -348,6 +348,39 @@
   word-break: break-word;
 }
 
+.answer-card {
+  padding: 20px 24px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.35);
+}
+
+.answer-card p {
+  margin: 0 0 8px;
+  font-family: 'Jersey 10', system-ui, sans-serif;
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.answer-card h1 {
+  margin: 0;
+  font-family: 'Jersey 10', system-ui, sans-serif;
+  font-size: 56px;
+  font-weight: 400;
+}
+
+.answer-subtext {
+  margin: 10px 0 0;
+  font-family: 'Jersey 10', system-ui, sans-serif;
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  opacity: 0.85;
+}
+
 .space-shell {
   width: 100%;
   height: 100%;

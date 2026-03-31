@@ -26,6 +26,7 @@ export type BoxEngineContext = {
   targetPath: string | null;
   workspacePath: string | null;
   sessionId: string | null;
+  sessionKeyGeneration: number;
   provider: string | null;
   model: string | null;
   engineProfile: EngineProfileRecord | null;
@@ -99,6 +100,10 @@ export function resolveBoxEngineContext(args: {
         ? (engine === "openclaw" ? appConfig.openClawSessionId : appConfig.codexThreadId)
         : null) ??
       null,
+    sessionKeyGeneration:
+      typeof box.sessionKeyGeneration === "number" && Number.isFinite(box.sessionKeyGeneration)
+        ? Math.max(0, Math.trunc(box.sessionKeyGeneration))
+        : 0,
     provider: box.provider ?? providerProfile?.provider ?? inferProviderFromModel(model),
     model: box.model ?? model,
     engineProfile,
@@ -155,6 +160,10 @@ export function resolveBoxEngineContext(args: {
     targetPath: box.targetPath ?? routedWorkspacePath,
     workspacePath: routedWorkspacePath,
     sessionId: box.sessionId ?? (isPrimaryBox ? appConfig.openClawSessionId ?? null : null),
+    sessionKeyGeneration:
+      typeof box.sessionKeyGeneration === "number" && Number.isFinite(box.sessionKeyGeneration)
+        ? Math.max(0, Math.trunc(box.sessionKeyGeneration))
+        : 0,
     provider: box.provider ?? providerProfile?.provider ?? inferProviderFromModel(routedModel),
     model: box.model ?? routedModel,
     engineProfile,
@@ -167,6 +176,10 @@ export function resolveBoxEngineContext(args: {
         agentId: routing.agentId ?? null,
         agentIdPrefix: routing.agentIdPrefix ?? null,
         sessionKeyPrefix: routing.sessionKeyPrefix ?? config.openClawSessionKeyPrefix,
+        sessionKeyGeneration:
+          typeof box.sessionKeyGeneration === "number" && Number.isFinite(box.sessionKeyGeneration)
+            ? Math.max(0, Math.trunc(box.sessionKeyGeneration))
+            : 0,
       },
     },
   };
@@ -187,6 +200,7 @@ export function buildBoxUpsertArgs(
   targetPath?: string | null;
   workspacePath?: string | null;
   sessionId?: string | null;
+  sessionKeyGeneration?: number;
   provider?: string | null;
   model: string | null;
   status: BoxStatus;
@@ -212,6 +226,7 @@ export function buildBoxUpsertArgs(
       Object.prototype.hasOwnProperty.call(update, "sessionId")
         ? (update.sessionId ?? null)
         : context.sessionId,
+    sessionKeyGeneration: context.sessionKeyGeneration,
     provider:
       Object.prototype.hasOwnProperty.call(update, "provider")
         ? (update.provider ?? null)

@@ -67,6 +67,7 @@ export type AgentCliConfig = {
     agentId?: string | null;
     agentIdPrefix?: string | null;
     sessionKeyPrefix: string;
+    sessionKeyGeneration?: number | null;
   };
 };
 
@@ -208,15 +209,22 @@ export function buildOpenClawSessionKey(
     openClaw: {
       agentId: string;
       sessionKeyPrefix: string;
+      sessionKeyGeneration?: number | null;
     };
   },
 ): string {
   const agentId = normalizeOpenClawSessionSegment(config.openClaw.agentId);
   const prefix = normalizeOpenClawSessionSegment(config.openClaw.sessionKeyPrefix);
   const sessionTarget = normalizeOpenClawSessionSegment(config.boxId ?? config.appId);
+  const sessionGeneration =
+    typeof config.openClaw.sessionKeyGeneration === "number" &&
+    Number.isFinite(config.openClaw.sessionKeyGeneration)
+      ? Math.max(0, Math.trunc(config.openClaw.sessionKeyGeneration))
+      : 0;
   const restSegments = [
     prefix !== agentId ? prefix : null,
     sessionTarget,
+    sessionGeneration > 0 ? `g${sessionGeneration}` : null,
   ].filter((value): value is string => Boolean(value));
   return `agent:${agentId}:${restSegments.join(":")}`;
 }
