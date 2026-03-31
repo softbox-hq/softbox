@@ -807,7 +807,7 @@ export function App() {
       : templateSourceMissing
         ? templateSourceMessage ??
           "Mounted artifacts are still available, but prompt-driven edits are disabled until the app source returns."
-        : "Inspect the mounted preview, route prompts to the right box, and use pipeline or version history only when you need detail.";
+        : null;
 
   useEffect(() => {
     if (!appsQuery || apps.length === 0 || shellSelection === undefined) {
@@ -1346,49 +1346,48 @@ export function App() {
           composerHidden ? "-translate-y-4 opacity-0" : "translate-y-0 opacity-100"
         } ${showEmptyState ? "hidden md:block" : ""}`}
       >
-        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="pointer-events-auto w-full max-w-3xl overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#0e1114]/86 p-5 shadow-[0_24px_90px_rgba(0,0,0,0.38)] backdrop-blur-2xl sm:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="pointer-events-auto w-full max-w-2xl overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#0e1114]/82 p-3 shadow-[0_18px_60px_rgba(0,0,0,0.32)] backdrop-blur-2xl sm:p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-cyan-200/65">
-                  Softbox shell
-                </p>
-                <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-[2rem]">
+                <h1 className="text-lg font-semibold tracking-tight text-white sm:text-[1.5rem]">
                   {showEmptyState ? "Shell status" : currentAppLabel}
                 </h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-                  {shellLead}
-                </p>
+                {shellLead ? (
+                  <p className="mt-1.5 max-w-xl text-xs leading-5 text-slate-300 sm:text-sm">
+                    {shellLead}
+                  </p>
+                ) : null}
               </div>
 
-              <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-right">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+              <div className="rounded-xl border border-white/8 bg-black/20 px-3 py-2 text-right">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
                   Mounted
                 </p>
-                <p className="mt-1 text-sm font-medium text-white">{currentAppMeta}</p>
-                <p className="mt-1 text-xs text-slate-400">
+                <p className="mt-1 text-xs font-medium text-white">{currentAppMeta}</p>
+                <p className="mt-0.5 text-[11px] text-slate-400">
                   {currentVersionLabel} · {selectedBoxLabel}
                 </p>
               </div>
             </div>
 
-            <div className="mt-5 flex flex-wrap gap-2 text-xs">
-              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5 text-slate-200">
+            <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
+              <span className="rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-slate-200">
                 {targetBoxSummary}
               </span>
-              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5 text-slate-300">
+              <span className="rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-slate-300">
                 {selectionSummary}
               </span>
-              <span className={`rounded-full px-3 py-1.5 font-medium ${pipelineToneClass}`}>
+              <span className={`rounded-full px-2.5 py-1 font-medium ${pipelineToneClass}`}>
                 {pipelineProgress.activeLabel} · {pipelineStepLabel}
               </span>
-              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5 text-slate-400">
+              <span className="rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-slate-400">
                 {elapsedSeconds}s elapsed
               </span>
             </div>
 
             {showErrorBanner ? (
-              <div className="mt-5 rounded-[1.25rem] border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+              <div className="mt-3 rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
                 <p className="font-semibold">{runtimeStatus?.title ?? "Build error"}</p>
                 <p className="mt-1 whitespace-pre-wrap text-rose-100/80">
                   {runtimeStatus?.body ?? lastBuildError}
@@ -1397,7 +1396,7 @@ export function App() {
             ) : null}
 
             {templateSourceMissing ? (
-              <div className="mt-4 rounded-[1.25rem] border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+              <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
                 <p className="font-semibold">Mounted version still works, but edits are disabled.</p>
                 <p className="mt-1 text-amber-100/80">
                   {templateSourceMessage ??
@@ -1407,35 +1406,35 @@ export function App() {
             ) : null}
           </div>
 
-          <aside className="pointer-events-auto w-full max-w-md overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#0b0f13]/84 p-5 shadow-[0_20px_70px_rgba(0,0,0,0.34)] backdrop-blur-2xl">
-            <div className="flex items-start justify-between gap-4">
+          <aside className="pointer-events-auto w-full max-w-[280px] overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#0b0f13]/80 p-3 shadow-[0_16px_56px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
+            <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                   Workflow
                 </p>
-                <p className="mt-2 text-lg font-semibold text-white">
+                <p className="mt-1.5 text-sm font-semibold text-white">
                   {pipelineProgress.activeLabel}
                 </p>
-                <p className="mt-1 text-sm text-slate-400">
+                <p className="mt-0.5 text-xs text-slate-400">
                   {pipelineStepLabel} stages · {elapsedSeconds}s
                 </p>
               </div>
               {pipelineProgress.status === "completed" ? (
-                <div className="flex size-11 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-300 ring-1 ring-emerald-500/20">
-                  <Check className="size-5" />
+                <div className="flex size-8 items-center justify-center rounded-xl bg-emerald-500/12 text-emerald-300 ring-1 ring-emerald-500/20">
+                  <Check className="size-4" />
                 </div>
               ) : (
-                <span className={`rounded-full px-3 py-1.5 text-xs font-medium ${pipelineToneClass}`}>
+                <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${pipelineToneClass}`}>
                   {pipelineProgress.status}
                 </span>
               )}
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="mt-3 grid grid-cols-2 gap-1.5">
               <button
                 type="button"
                 onClick={() => setAppsOpen(true)}
-                className="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/6 px-3 text-sm font-medium text-slate-100 transition-colors hover:bg-white/10"
+                className="inline-flex h-8 items-center justify-center rounded-xl border border-white/10 bg-white/6 px-2.5 text-xs font-medium text-slate-100 transition-colors hover:bg-white/10"
               >
                 Apps
               </button>
@@ -1446,7 +1445,7 @@ export function App() {
                   setExpandedRunId(latestPipelineRuns[0]?._id ?? null);
                 }}
                 disabled={noMountedApp}
-                className="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/6 px-3 text-sm font-medium text-slate-100 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-8 items-center justify-center rounded-xl border border-white/10 bg-white/6 px-2.5 text-xs font-medium text-slate-100 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Pipeline
               </button>
@@ -1454,27 +1453,27 @@ export function App() {
                 type="button"
                 onClick={() => setVersionsOpen(true)}
                 disabled={noMountedApp}
-                className="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/6 px-3 text-sm font-medium text-slate-100 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-8 items-center justify-center rounded-xl border border-white/10 bg-white/6 px-2.5 text-xs font-medium text-slate-100 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Versions
               </button>
               <button
                 type="button"
                 onClick={() => setComposerHidden(true)}
-                className="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-[#151b22] px-3 text-sm font-medium text-slate-300 transition-colors hover:bg-[#1d2631]"
+                className="inline-flex h-8 items-center justify-center rounded-xl border border-white/10 bg-[#151b22] px-2.5 text-xs font-medium text-slate-300 transition-colors hover:bg-[#1d2631]"
               >
                 Hide HUD
               </button>
             </div>
 
-            <div className="mt-4 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
-                <p className="font-semibold uppercase tracking-[0.2em] text-slate-500">Current box</p>
-                <p className="mt-1 text-sm font-medium text-slate-100">{selectedBoxLabel}</p>
+            <div className="mt-3 grid gap-1.5 text-[11px] text-slate-400">
+              <div className="rounded-xl border border-white/8 bg-black/20 px-3 py-2">
+                <p className="font-semibold uppercase tracking-[0.16em] text-slate-500">Current box</p>
+                <p className="mt-1 text-xs font-medium text-slate-100">{selectedBoxLabel}</p>
               </div>
-              <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
-                <p className="font-semibold uppercase tracking-[0.2em] text-slate-500">Prompt target</p>
-                <p className="mt-1 text-sm font-medium text-slate-100">{targetBoxSummary}</p>
+              <div className="rounded-xl border border-white/8 bg-black/20 px-3 py-2">
+                <p className="font-semibold uppercase tracking-[0.16em] text-slate-500">Prompt target</p>
+                <p className="mt-1 text-xs font-medium text-slate-100">{targetBoxSummary}</p>
               </div>
             </div>
           </aside>
@@ -1482,49 +1481,49 @@ export function App() {
       </section>
 
       {showEmptyState ? (
-        <section className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-4 pb-40 pt-36 sm:px-6 sm:pb-44 sm:pt-44">
-          <div className="pointer-events-auto relative w-full max-w-3xl overflow-hidden rounded-[2rem] border border-white/10 bg-[#0d1014]/88 p-8 shadow-[0_36px_120px_rgba(0,0,0,0.42)] backdrop-blur-2xl sm:p-10">
+        <section className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-4 pb-28 pt-24 sm:px-6 sm:pb-32 sm:pt-32">
+          <div className="pointer-events-auto relative w-full max-w-2xl overflow-hidden rounded-[1.5rem] border border-white/10 bg-[#0d1014]/86 p-5 shadow-[0_24px_84px_rgba(0,0,0,0.38)] backdrop-blur-2xl sm:p-6">
             <div
               className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.08),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_22%)]"
               aria-hidden="true"
             />
             <div className="relative">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-cyan-200/60">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-200/60">
                 Shell host
               </p>
-              <h2 className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+              <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
                 {emptyStateTitle}
               </h2>
-              <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+              <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
                 {emptyStateBody}
               </p>
 
-              <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
                 {emptyStateSteps.map((step, index) => (
                   <div
                     key={step}
-                    className="rounded-[1.5rem] border border-white/8 bg-black/20 px-5 py-4"
+                    className="rounded-[1.1rem] border border-white/8 bg-black/20 px-4 py-3"
                   >
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                       Step {index + 1}
                     </p>
-                    <p className="mt-2 text-sm leading-6 text-slate-200">{step}</p>
+                    <p className="mt-1.5 text-sm leading-5 text-slate-200">{step}</p>
                   </div>
                 ))}
               </div>
 
-              <div className="mt-8 flex flex-wrap gap-3">
+              <div className="mt-5 flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => setAppsOpen(true)}
-                  className="inline-flex h-11 items-center justify-center rounded-2xl bg-white px-4 text-sm font-medium text-black transition-colors hover:bg-slate-200"
+                  className="inline-flex h-9 items-center justify-center rounded-xl bg-white px-3.5 text-sm font-medium text-black transition-colors hover:bg-slate-200"
                 >
                   Open apps
                 </button>
                 <button
                   type="button"
                   onClick={() => setComposerHidden((current) => !current)}
-                  className="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/6 px-4 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
+                  className="inline-flex h-9 items-center justify-center rounded-xl border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
                 >
                   {composerHidden ? "Show prompt HUD" : "Hide prompt HUD"}
                 </button>
@@ -1576,31 +1575,31 @@ export function App() {
               setSubmitting(false);
             }
           }}
-          className="pointer-events-auto mx-auto w-full max-w-5xl"
+          className="pointer-events-auto mx-auto w-full max-w-3xl"
         >
-          <div className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#101317]/92 shadow-[0_28px_80px_rgba(0,0,0,0.36)] backdrop-blur-2xl">
-            <div className="border-b border-white/8 px-4 py-3 sm:px-5">
+          <div className="overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#101317]/90 shadow-[0_20px_64px_rgba(0,0,0,0.3)] backdrop-blur-2xl">
+            <div className="border-b border-white/8 px-3 py-2.5 sm:px-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
                     Prompt workspace
                   </p>
-                  <p className="mt-1 text-sm text-slate-300">{targetBoxSummary}</p>
+                  <p className="mt-1 text-xs text-slate-300">{targetBoxSummary}</p>
                 </div>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5 text-slate-300">
+                <div className="flex flex-wrap gap-1.5 text-[11px]">
+                  <span className="rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-slate-300">
                     {selectionSummary}
                   </span>
-                  <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5 text-slate-400">
+                  <span className="rounded-full border border-white/10 bg-white/6 px-2.5 py-1 text-slate-400">
                     {currentVersionLabel}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="p-4 sm:p-5">
+            <div className="p-3 sm:p-4">
               {queuedTooLong ? (
-                <div className="mb-4 rounded-[1.25rem] border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+                <div className="mb-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
                   <p className="font-semibold">Queued for 1 minute. Did you forget to run Docker?</p>
                   <p className="mt-1 text-rose-100/80">
                     Redis may not be running. Start it with{" "}
@@ -1613,7 +1612,7 @@ export function App() {
               ) : null}
 
               {inspectMode ? (
-                <div className="mb-4 rounded-[1.25rem] border border-cyan-500/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
+                <div className="mb-3 rounded-xl border border-cyan-500/20 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-100">
                   <p className="font-semibold text-cyan-200">Inspect mode is on.</p>
                   <p className="mt-1 text-cyan-100/80">
                     Click mounted app elements to add or remove them from the next prompt. Press Escape or click Inspect again when done.
@@ -1622,7 +1621,7 @@ export function App() {
               ) : null}
 
               {pixelInspectMode ? (
-                <div className="mb-4 rounded-[1.25rem] border border-fuchsia-400/20 bg-fuchsia-400/10 px-4 py-3 text-sm text-fuchsia-100">
+                <div className="mb-3 rounded-xl border border-fuchsia-400/20 bg-fuchsia-400/10 px-3 py-2 text-xs text-fuchsia-100">
                   <p className="font-semibold text-fuchsia-200">Pixel mode is on.</p>
                   <p className="mt-1 text-fuchsia-100/80">
                     Drag across the mounted app to select a pixel region. Click an existing region to remove it.
@@ -1642,12 +1641,12 @@ export function App() {
                       : "Describe what you want to change..."
                 }
                 disabled={promptDisabled}
-                className="min-h-[96px] w-full resize-none rounded-[1.5rem] border border-white/8 bg-black/20 px-4 py-4 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-400/40 disabled:cursor-not-allowed disabled:text-slate-500"
-                rows={4}
+                className="min-h-[64px] w-full resize-none rounded-[1rem] border border-white/8 bg-black/20 px-3 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-400/40 disabled:cursor-not-allowed disabled:text-slate-500"
+                rows={3}
               />
 
-              <div className="mt-4 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-                <div className="flex flex-wrap items-center gap-2">
+              <div className="mt-3 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <button
                     type="button"
                     disabled={noMountedApp || showEmptyState}
@@ -1656,13 +1655,13 @@ export function App() {
                       setHoveredTarget(null);
                       setDraftRegion(null);
                     }}
-                    className={`inline-flex h-11 items-center gap-2 rounded-2xl px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    className={`inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                       inspectMode
                         ? "bg-cyan-300 text-slate-950 hover:bg-cyan-200"
                         : "border border-white/10 bg-white/6 text-slate-200 hover:bg-white/10"
                     }`}
                   >
-                    <Crosshair className="size-4" />
+                    <Crosshair className="size-3.5" />
                     {inspectMode ? "Inspecting" : "Inspect"}
                   </button>
 
@@ -1674,25 +1673,25 @@ export function App() {
                       setHoveredTarget(null);
                       setDraftRegion(null);
                     }}
-                    className={`inline-flex h-11 items-center gap-2 rounded-2xl px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    className={`inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                       pixelInspectMode
                         ? "bg-fuchsia-300 text-slate-950 hover:bg-fuchsia-200"
                         : "border border-white/10 bg-white/6 text-slate-200 hover:bg-white/10"
                     }`}
                   >
-                    <Crosshair className="size-4" />
+                    <Crosshair className="size-3.5" />
                     {pixelInspectMode ? "Pixels on" : "Pixels"}
                   </button>
 
-                  <label className="flex h-11 items-center gap-3 rounded-2xl border border-white/10 bg-white/6 px-4 text-sm text-slate-300">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                  <label className="flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/6 px-3 text-xs text-slate-300">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                       Box
                     </span>
                     <select
                       value={selectedBox?.boxId ?? ""}
                       onChange={(event) => setSelectedBoxId(event.target.value || null)}
                       disabled={currentBoxes.length === 0 || noMountedApp}
-                      className="rounded bg-transparent text-sm font-medium text-slate-100 outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded bg-transparent text-xs font-medium text-slate-100 outline-none disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {currentBoxes.length === 0 ? (
                         <option value="">No box</option>
@@ -1707,11 +1706,11 @@ export function App() {
                   </label>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-1.5">
                   <button
                     type="button"
                     onClick={() => setAppsOpen(true)}
-                    className="inline-flex h-11 items-center rounded-2xl border border-white/10 bg-white/6 px-4 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
+                    className="inline-flex h-9 items-center rounded-xl border border-white/10 bg-white/6 px-3 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10"
                   >
                     {selectedApp?.appId ?? appId ?? "No app"}
                   </button>
@@ -1719,7 +1718,7 @@ export function App() {
                   <button
                     type="submit"
                     disabled={submitting || promptDisabled}
-                    className="inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-sm font-medium text-black transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-white px-3 text-xs font-medium text-black transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
                     aria-label={
                       noMountedApp
                         ? "Mount an app to enable prompts"
@@ -1727,17 +1726,17 @@ export function App() {
                           ? "Restore source to enable prompts"
                           : submitting
                             ? "Sending prompt"
-                            : "Send prompt"
+                        : "Send prompt"
                     }
                   >
-                    <ArrowUpFromLine className={`size-4 ${submitting ? "animate-pulse" : ""}`} />
+                    <ArrowUpFromLine className={`size-3.5 ${submitting ? "animate-pulse" : ""}`} />
                     {submitting ? "Sending" : "Send prompt"}
                   </button>
                 </div>
               </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/8 pt-4">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+              <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-white/8 pt-3">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Send to
                 </span>
                 {currentBoxes.length > 0 ? (
@@ -1754,7 +1753,7 @@ export function App() {
                             return next.length > 0 ? next : [box.boxId];
                           })
                         }
-                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                           targeted
                             ? "bg-cyan-500/16 text-cyan-100 ring-1 ring-cyan-400/30"
                             : "border border-white/10 bg-white/6 text-slate-300 hover:bg-white/10"
@@ -1766,7 +1765,7 @@ export function App() {
                     );
                   })
                 ) : (
-                  <span className="text-sm text-slate-500">No box</span>
+                  <span className="text-xs text-slate-500">No box</span>
                 )}
               </div>
             </div>
