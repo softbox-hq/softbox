@@ -994,8 +994,10 @@ export function App() {
   const agentThoughtSignature = agentThoughtLines.join("\n");
   const visibleThoughtBubbles = thoughtBubbles
     .filter((bubble) => !dismissedThoughtBubbleIds.includes(bubble.id))
-    .slice()
-    .reverse();
+    .slice();
+  const combinedThoughtMessage = visibleThoughtBubbles
+    .map((bubble) => truncateText(bubble.message, 180) ?? bubble.message)
+    .join("\n\n");
   const pipelineToneClass =
     pipelineProgress.status === "completed"
       ? "bg-emerald-500/12 text-emerald-200"
@@ -1534,6 +1536,7 @@ export function App() {
   }, [selectedTargets.length, shellState?.activeVersion?._id]);
 
   useEffect(() => {
+    const activeSurface = hostRef.current ? getActiveRuntimeSurface(hostRef.current) : null;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat) {
         return;
@@ -1552,8 +1555,16 @@ export function App() {
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [composerHidden]);
+    if (activeSurface && activeSurface.window !== window) {
+      activeSurface.window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      if (activeSurface && activeSurface.window !== window) {
+        activeSurface.window.removeEventListener("keydown", handleKeyDown);
+      }
+    };
+  }, [composerHidden, shellState?.activeVersion?._id]);
 
   useEffect(() => {
     if (!appId) {
@@ -2054,38 +2065,34 @@ export function App() {
           <aside className="pointer-events-auto w-full max-w-sm lg:mb-3 lg:w-80 lg:shrink-0">
             <div className="max-h-[45vh] overflow-y-auto rounded-[1.15rem] bg-[#0f1318]/92 p-2 shadow-[0_20px_64px_rgba(0,0,0,0.3)] backdrop-blur-2xl">
               <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Live notes
+                Openclaw says:
               </p>
-              <div className="flex flex-col gap-2">
-                {visibleThoughtBubbles.map((bubble) => (
-                  <article
-                    key={bubble.id}
-                    className="rounded-2xl bg-white/6 px-3 py-2.5 text-xs text-slate-200 ring-1 ring-white/8"
+              <article className="rounded-2xl bg-white/6 px-3 py-2.5 text-xs text-slate-200 ring-1 ring-white/8">
+                <div className="flex items-start gap-2">
+                  <p
+                    className="min-w-0 flex-1 whitespace-pre-wrap leading-5 text-slate-200"
+                    title={combinedThoughtMessage}
                   >
-                    <div className="flex items-start gap-2">
-                      <p
-                        className="min-w-0 flex-1 leading-5 text-slate-200"
-                        title={bubble.message}
-                      >
-                        {truncateText(bubble.message, 180) ?? bubble.message}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setDismissedThoughtBubbleIds((current) =>
-                            current.includes(bubble.id) ? current : [...current, bubble.id],
-                          )
-                        }
-                        className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-white/10 hover:text-slate-200"
-                        aria-label="Dismiss note"
-                        title="Dismiss note"
-                      >
-                        <X className="size-3.5" />
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
+                    {combinedThoughtMessage}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDismissedThoughtBubbleIds((current) => [
+                        ...current,
+                        ...visibleThoughtBubbles
+                          .map((bubble) => bubble.id)
+                          .filter((id) => !current.includes(id)),
+                      ])
+                    }
+                    className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-white/10 hover:text-slate-200"
+                    aria-label="Dismiss notes"
+                    title="Dismiss notes"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </div>
+              </article>
             </div>
           </aside>
         ) : null}

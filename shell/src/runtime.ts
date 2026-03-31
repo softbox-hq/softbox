@@ -84,7 +84,7 @@ function buildRuntimeFrameDoc() {
         margin: 0;
         height: 100%;
         min-height: 100%;
-        background: transparent;
+        background: #000;
       }
 
       body {
