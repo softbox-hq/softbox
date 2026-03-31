@@ -1,9 +1,34 @@
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import heroImg from './assets/hero.png'
+import DeckGL from 'deck.gl'
+import { ScatterplotLayer } from 'deck.gl'
 import './App.css'
 
+const points = [
+  { position: [-122.4194, 37.7749], radius: 1200, color: [255, 99, 71] },
+  { position: [-74.006, 40.7128], radius: 1000, color: [255, 215, 0] },
+  { position: [2.3522, 48.8566], radius: 900, color: [135, 206, 250] },
+]
+
 function App() {
+  const layers = [
+    new ScatterplotLayer({
+      id: 'cities-layer',
+      data: points,
+      pickable: false,
+      getPosition: (d) => d.position,
+      getRadius: (d) => d.radius,
+      radiusUnits: 'meters',
+      getFillColor: (d) => d.color,
+      opacity: 0.85,
+      stroked: true,
+      filled: true,
+      lineWidthMinPixels: 2,
+      getLineColor: [255, 255, 255],
+    }),
+  ]
+
   return (
     <>
       <section id="center">
@@ -17,6 +42,20 @@ function App() {
           <p>
             Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
           </p>
+        </div>
+        <div className="deck-preview" aria-label="Deck.gl visualization">
+          <DeckGL
+            layers={layers}
+            initialViewState={{
+              longitude: -25,
+              latitude: 42,
+              zoom: 1.6,
+              pitch: 35,
+              bearing: 0,
+            }}
+            controller={false}
+            style={{ width: '100%', height: '100%' }}
+          />
         </div>
       </section>
 
