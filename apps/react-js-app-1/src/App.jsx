@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Packery from 'packery'
 import Draggabilly from 'draggabilly'
 import './App.css'
@@ -15,6 +15,29 @@ const cards = [
 function App() {
   const gridRef = useRef(null)
   const packeryRef = useRef(null)
+  const [now, setNow] = useState(() => new Date())
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const timeParts = useMemo(() => {
+    const time = new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).format(now)
+
+    const date = new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }).format(now)
+
+    return { time, date }
+  }, [now])
 
   useEffect(() => {
     if (!gridRef.current) return
@@ -56,6 +79,14 @@ function App() {
         </div>
 
         <div className="grid" ref={gridRef}>
+          <article className="grid-item clock-card">
+            <div className="drag-handle" aria-label="Drag current time widget">
+              ≡
+            </div>
+            <h2>Current time</h2>
+            <p className="clock-time">{timeParts.time}</p>
+            <p className="clock-date">{timeParts.date}</p>
+          </article>
           {cards.map((card) => (
             <article className="grid-item" key={card.title}>
               <div className="drag-handle" aria-label={`Drag ${card.title}`}>
