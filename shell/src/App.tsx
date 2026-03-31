@@ -1,4 +1,12 @@
-import { startTransition, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  startTransition,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type DependencyList,
+  type RefObject,
+} from "react";
 import { useMutation, useQuery } from "convex/react";
 import {
   CircleAlert,
@@ -557,6 +565,59 @@ function getActiveRuntimeSurface(host: HTMLElement): ActiveRuntimeSurface | null
   };
 }
 
+function useRuntimeHotkey(
+  hostRef: RefObject<HTMLDivElement | null>,
+  onKeyDown: (event: KeyboardEvent) => void,
+  deps: DependencyList,
+) {
+  useEffect(() => {
+    const host = hostRef.current;
+    const cleanupFns: Array<() => void> = [];
+    const attachedTargets = new Set<EventTarget>();
+
+    const attachToTarget = (target: EventTarget | null | undefined) => {
+      if (!target || attachedTargets.has(target)) {
+        return;
+      }
+      attachedTargets.add(target);
+      target.addEventListener("keydown", onKeyDown as EventListener);
+      cleanupFns.push(() => {
+        target.removeEventListener("keydown", onKeyDown as EventListener);
+      });
+    };
+
+    const bindTargets = () => {
+      attachToTarget(window);
+      attachToTarget(document);
+      if (!host) {
+        return;
+      }
+      const activeSurface = getActiveRuntimeSurface(host);
+      attachToTarget(activeSurface?.window);
+      attachToTarget(activeSurface?.document);
+    };
+
+    bindTargets();
+
+    if (host && typeof MutationObserver !== "undefined") {
+      const observer = new MutationObserver(() => {
+        bindTargets();
+      });
+      observer.observe(host, {
+        childList: true,
+        subtree: true,
+      });
+      cleanupFns.push(() => observer.disconnect());
+    }
+
+    return () => {
+      while (cleanupFns.length > 0) {
+        cleanupFns.pop()?.();
+      }
+    };
+  }, deps);
+}
+
 function getInspectBoundarySelector(boundary: HTMLElement) {
   return boundary.matches(SOFTBOX_APP_ROOT_SELECTOR)
     ? SOFTBOX_APP_ROOT_SELECTOR
@@ -891,6 +952,7 @@ export function App() {
   const [composerHidden, setComposerHidden] = useState(false);
   const [thoughtBubbles, setThoughtBubbles] = useState<ThoughtBubble[]>([]);
   const [dismissedThoughtBubbleIds, setDismissedThoughtBubbleIds] = useState<string[]>([]);
+  const lastMountedVersionRef = useRef<any | null>(null);
 
   const runtimeStatus = getRuntimeStatus(shellState);
   const currentBoxes =
@@ -923,16 +985,23 @@ export function App() {
     ),
   );
   const lastBuildError = shellState?.lastBuildError ?? null;
-  const hasActiveVersion = Boolean(shellState?.activeVersion);
-  const showEmptyState =
-    shellState === undefined || shellState === null || !hasActiveVersion;
+  const noMountedApp = appId === null;
+  if (shellState?.activeVersion) {
+    lastMountedVersionRef.current = shellState.activeVersion;
+  } else if (noMountedApp) {
+    lastMountedVersionRef.current = null;
+  }
+  const runtimeActiveVersion =
+    noMountedApp ? null : shellState?.activeVersion ?? lastMountedVersionRef.current;
+  const hasActiveVersion = Boolean(runtimeActiveVersion);
+  const showEmptyState = noMountedApp || !hasActiveVersion;
   const showErrorBanner = !showEmptyState && (runtimeStatus || lastBuildError);
   const latestPipelineRuns = shellState?.latestPipelineRuns ?? [];
   const latestPipelineRun = shellState?.latestPipelineRun ?? latestPipelineRuns[0] ?? null;
-  const activeVersionId = shellState?.activeVersion?._id ?? null;
+  const activeVersionId = runtimeActiveVersion?._id ?? null;
   const mountedVersionLabel =
-    typeof shellState?.activeVersion?.versionNumber === "number"
-      ? `v${shellState.activeVersion.versionNumber}`
+    typeof runtimeActiveVersion?.versionNumber === "number"
+      ? `v${runtimeActiveVersion.versionNumber}`
       : "Versions";
   const comparedVersions = compareVersionIds
     .map((versionId) => versions.find((version: any) => version._id === versionId) ?? null)
@@ -945,7 +1014,6 @@ export function App() {
     selectedApp?.templateSourceMessage ??
     shellState?.templateSourceMessage ??
     null;
-  const noMountedApp = appId === null;
   const emptyStateTitle = noMountedApp
     ? "Nothing mounted"
     : runtimeStatus?.title ?? "No App Loaded";
@@ -1535,9 +1603,9 @@ export function App() {
     };
   }, [selectedTargets.length, shellState?.activeVersion?._id]);
 
-  useEffect(() => {
-    const activeSurface = hostRef.current ? getActiveRuntimeSurface(hostRef.current) : null;
-    const handleKeyDown = (event: KeyboardEvent) => {
+  useRuntimeHotkey(
+    hostRef,
+    (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat) {
         return;
       }
@@ -1552,27 +1620,16 @@ export function App() {
       setSelectionMode(null);
       setHoveredTarget(null);
       setDraftRegion(null);
-    };
+    },
+    [composerHidden, shellState?.activeVersion?._id, hostRef],
+  );
 
-    window.addEventListener("keydown", handleKeyDown);
-    if (activeSurface && activeSurface.window !== window) {
-      activeSurface.window.addEventListener("keydown", handleKeyDown);
-    }
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      if (activeSurface && activeSurface.window !== window) {
-        activeSurface.window.removeEventListener("keydown", handleKeyDown);
+  useRuntimeHotkey(
+    hostRef,
+    (event: KeyboardEvent) => {
+      if (!appId) {
+        return;
       }
-    };
-  }, [composerHidden, shellState?.activeVersion?._id]);
-
-  useEffect(() => {
-    if (!appId) {
-      return;
-    }
-
-    const activeSurface = hostRef.current ? getActiveRuntimeSurface(hostRef.current) : null;
-    const handleKeyDown = (event: KeyboardEvent) => {
       if (
         event.defaultPrevented ||
         event.repeat ||
@@ -1619,19 +1676,8 @@ export function App() {
           current === targetVersion._id ? null : current,
         );
       });
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    if (activeSurface && activeSurface.window !== window) {
-      activeSurface.window.addEventListener("keydown", handleKeyDown);
-    }
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      if (activeSurface && activeSurface.window !== window) {
-        activeSurface.window.removeEventListener("keydown", handleKeyDown);
-      }
-    };
-  }, [
+    },
+    [
     activeVersionId,
     activateVersionMutation,
     appId,
@@ -1642,11 +1688,74 @@ export function App() {
     versionActionPending,
     versions,
     versionsOpen,
-  ]);
+    hostRef,
+  ],
+  );
+
+  useRuntimeHotkey(
+    hostRef,
+    (event: KeyboardEvent) => {
+      if (
+        !appId ||
+        event.defaultPrevented ||
+        event.repeat ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        switchingAppId ||
+        deletingAppId ||
+        submitting ||
+        pipelineOpen ||
+        versionsOpen ||
+        compareOpen ||
+        isTypingEventTarget(event.target)
+      ) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key !== "q" && key !== "a") {
+        return;
+      }
+
+      const currentIndex = apps.findIndex((app) => app.appId === appId);
+      if (currentIndex < 0) {
+        return;
+      }
+
+      const targetIndex = key === "q" ? currentIndex - 1 : currentIndex + 1;
+      const targetApp = apps[targetIndex];
+      if (!targetApp) {
+        return;
+      }
+
+      event.preventDefault();
+      setSwitchingAppId(targetApp.appId);
+      void setSelectedAppMutation({
+        shellId,
+        appId: targetApp.appId,
+      }).finally(() => {
+        setSwitchingAppId((current) => (current === targetApp.appId ? null : current));
+      });
+    },
+    [
+      appId,
+      apps,
+      compareOpen,
+      deletingAppId,
+      pipelineOpen,
+      setSelectedAppMutation,
+      shellId,
+      submitting,
+      switchingAppId,
+      versionsOpen,
+      hostRef,
+    ],
+  );
 
   useLiveAppRuntime(hostRef, {
     appId: appId ?? "__unmounted__",
-    activeVersion: shellState?.activeVersion ?? null,
+    activeVersion: runtimeActiveVersion,
     nextReadyVersion: shellState?.nextReadyVersion ?? null,
     publishState: async (state: LiveAppState) => {
       if (!appId) return;
@@ -1894,7 +2003,7 @@ export function App() {
                       : "Describe what you want to change..."
                 }
                 disabled={promptDisabled}
-                className="min-h-[64px] w-full resize-none rounded-[1rem] bg-black/20 px-3 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:text-slate-500"
+                className="min-h-[64px] w-full resize-none rounded-[1rem] bg-transparent px-3 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:text-slate-500"
                 rows={3}
               />
 
@@ -1908,14 +2017,15 @@ export function App() {
                       setHoveredTarget(null);
                       setDraftRegion(null);
                     }}
-                    className={`inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    className={`inline-flex h-9 w-9 items-center justify-center rounded-xl text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                       inspectMode
                         ? "bg-cyan-300 text-slate-950 hover:bg-cyan-200"
                         : "text-slate-200 hover:bg-white/10"
                     }`}
+                    title={inspectMode ? "Inspecting" : "Inspect"}
+                    aria-label={inspectMode ? "Inspecting" : "Inspect"}
                   >
                     <SquareMousePointer className="size-3.5" />
-                    {inspectMode ? "Inspecting" : "Inspect"}
                   </button>
 
                   <button
@@ -1926,26 +2036,18 @@ export function App() {
                       setHoveredTarget(null);
                       setDraftRegion(null);
                     }}
-                    className={`inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    className={`inline-flex h-9 w-9 items-center justify-center rounded-xl text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                       pixelInspectMode
                         ? "bg-fuchsia-300 text-slate-950 hover:bg-fuchsia-200"
                         : "text-slate-200 hover:bg-white/10"
                     }`}
+                    title={pixelInspectMode ? "Pixels on" : "Pixels"}
+                    aria-label={pixelInspectMode ? "Pixels on" : "Pixels"}
                   >
                     <SquareDashedMousePointer className="size-3.5" />
-                    {pixelInspectMode ? "Pixels on" : "Pixels"}
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setAppsOpen(true)}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10"
-                  >
-                    <AppWindow className="size-3.5" />
-                    Apps
-                  </button>
-
-                  <label className="flex h-9 items-center gap-2 rounded-xl px-3 text-xs text-slate-300 transition-colors hover:bg-white/10">
+                  {/* <label className="flex h-9 items-center gap-2 rounded-xl px-3 text-xs text-slate-300 transition-colors hover:bg-white/10">
                     <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                       Box
                     </span>
@@ -1965,7 +2067,7 @@ export function App() {
                         ))
                       )}
                     </select>
-                  </label>
+                  </label> */}
 
                   <button
                     type="button"
@@ -1993,8 +2095,8 @@ export function App() {
                       }
                     }}
                     className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Reset OpenClaw session"
-                    aria-label="Reset OpenClaw session"
+                    title="Reset Session"
+                    aria-label="Reset Session"
                   >
                     <ListRestart className="size-3.5" />
                   </button>
@@ -2012,6 +2114,16 @@ export function App() {
                 ) : null}
 
                 <div className="flex flex-wrap items-center gap-1.5 xl:ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setAppsOpen(true)}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10"
+                    title={selectedApp?.name ?? appId ?? "Apps"}
+                  >
+                    <AppWindow className="size-3.5" />
+                    {selectedApp?.name ?? appId ?? "Apps"}
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setVersionsOpen(true)}

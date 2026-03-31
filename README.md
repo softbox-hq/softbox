@@ -1,10 +1,53 @@
 # Softbox
-Softbox is a Vite Agentic App Runtime for safe app modification and promotion.
-It lets an agent rewrite a Vite app, build a new immutable version, preview it inside a stable shell, validate it, and only then promote it live.
 
-Optimized for React + Vite apps that can be mounted inside the shell runtime.
+Softbox is a host system for mutable apps.
 
-Instead of using AI only to generate code in an editor, this project lets a coding agent rewrite a real app, build a new immutable version, preview it inside the shell, and only then promote it live.
+It lets an agent rewrite a Vite app, build a new immutable version, preview it inside a stable shell,
+validate it, and only then promote it live.
+
+Softbox is in the same general space as tools like Bolt.new, v0, and Lovable, but it is designed for
+more control over the environment, the runtime, and versioned changes.
+
+Softbox works together with OpenClaw.
+
+OpenClaw is responsible for making code changes inside the hosted application. Softbox is responsible
+for orchestrating the rest of the lifecycle: building, previewing, validating, versioning, and promoting
+the app safely.
+
+Softbox is optimized for React + Vite apps that can be mounted inside the shell.
+
+Instead of using AI only to generate code in an editor, Softbox lets a coding agent modify a real hosted
+app, build a new immutable version, preview it inside the shell, and only then promote it live.
+
+## Example
+Imagine you have a Vite app backed by SQLite.
+
+That app stores customer data.
+
+Once the app is mounted in Softbox, you can evolve the interface on demand.
+
+Today, you might want to see the median acquisition cost of your customers. You ask Softbox for that
+change, OpenClaw updates the app, and Softbox builds and previews the result before it goes live.
+
+Tomorrow, you might want a geographic view of your customers instead. You ask for that, and Softbox
+produces another version of the app.
+
+You can keep both features if you want. But sometimes you want a different interface for a different
+moment, and Softbox makes that kind of change practical.
+
+If you want to go back to yesterday’s version, you can switch back to it directly, including by keyboard
+shortcut.
+
+Now imagine that this SQLite app is your CRM, `my-crm`, and you also have a separate support dashboard.
+
+You can import the support dashboard into Softbox as another standalone app, mount it in the same shell,
+and customize it the same way.
+
+That means Softbox is not only about changing one app over time. It also lets you move between different
+apps and different versions of those apps inside the same host system.
+
+
+
 
 ## What It Is
 
