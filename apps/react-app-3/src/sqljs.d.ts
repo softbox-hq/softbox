@@ -13,7 +13,10 @@ declare module 'sql.js' {
     }
   }
 
-  type InitSqlJs = (options: { locateFile: (file: string) => string }) => Promise<SqlJsStatic>
+  type InitSqlJs = (options: {
+    locateFile?: (file: string) => string
+    wasmBinary?: ArrayBuffer
+  }) => Promise<SqlJsStatic>
 
   const initSqlJs: InitSqlJs
   export default initSqlJs

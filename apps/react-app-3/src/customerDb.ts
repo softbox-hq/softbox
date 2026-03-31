@@ -51,9 +51,15 @@ const customers: Omit<CustomerRow, 'id'>[] = [
 let dbPromise: Promise<SqlJsStatic> | null = null
 
 async function loadSqlJs() {
-  dbPromise ??= initSqlJs({
-    locateFile: (file: string) => (file === 'sql-wasm.wasm' ? wasmUrl : file),
-  })
+  if (!dbPromise) {
+    dbPromise = fetch(wasmUrl)
+      .then((response) => response.arrayBuffer())
+      .then((wasmBinary) =>
+        initSqlJs({
+          wasmBinary,
+        }),
+      )
+  }
 
   return dbPromise
 }
