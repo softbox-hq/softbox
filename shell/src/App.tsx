@@ -952,6 +952,7 @@ export function App() {
   const [composerHidden, setComposerHidden] = useState(false);
   const [thoughtBubbles, setThoughtBubbles] = useState<ThoughtBubble[]>([]);
   const [dismissedThoughtBubbleIds, setDismissedThoughtBubbleIds] = useState<string[]>([]);
+  const [runtimeMountTransitioning, setRuntimeMountTransitioning] = useState(false);
   const lastMountedVersionRef = useRef<any | null>(null);
 
   const runtimeStatus = getRuntimeStatus(shellState);
@@ -999,6 +1000,7 @@ export function App() {
   const showRuntimeTransitionOverlay = Boolean(
     switchingAppId ||
       switchingVersionId ||
+      runtimeMountTransitioning ||
       (!noMountedApp && shellState === undefined && lastMountedVersionRef.current),
   );
   const runtimeTransitionLabel = switchingAppId
@@ -1767,6 +1769,7 @@ export function App() {
     appId: appId ?? "__unmounted__",
     activeVersion: runtimeActiveVersion,
     nextReadyVersion: shellState?.nextReadyVersion ?? null,
+    onMountTransitionChange: setRuntimeMountTransitioning,
     publishState: async (state: LiveAppState) => {
       if (!appId) return;
       await publishStateMutation({

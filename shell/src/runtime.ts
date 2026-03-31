@@ -20,6 +20,7 @@ type RuntimeOptions = {
   appId: string;
   activeVersion: VersionRecord | null;
   nextReadyVersion: VersionRecord | null;
+  onMountTransitionChange?(isTransitioning: boolean): void;
   publishState(state: LiveAppState): Promise<void>;
   activateVersion(versionId: string): Promise<void>;
   reportRuntimeError(args: {
@@ -403,6 +404,7 @@ export function useLiveAppRuntime(
   const activateVersionRef = useRef(options.activateVersion);
   const reportRuntimeErrorRef = useRef(options.reportRuntimeError);
   const recordPipelineStageForVersionRef = useRef(options.recordPipelineStageForVersion);
+  const mountTransitionRef = useRef(options.onMountTransitionChange);
   const [browserRouteVersion, setBrowserRouteVersion] = useState(0);
   const {
     appId,
@@ -420,8 +422,10 @@ export function useLiveAppRuntime(
     activateVersionRef.current = options.activateVersion;
     reportRuntimeErrorRef.current = options.reportRuntimeError;
     recordPipelineStageForVersionRef.current = options.recordPipelineStageForVersion;
+    mountTransitionRef.current = options.onMountTransitionChange;
   }, [
     options.activateVersion,
+    options.onMountTransitionChange,
     options.publishState,
     options.recordPipelineStageForVersion,
     options.reportRuntimeError,
@@ -468,6 +472,7 @@ export function useLiveAppRuntime(
 
     void (async () => {
       if (!activeVersion) {
+        mountTransitionRef.current?.(false);
         activeRouteRef.current = null;
         publishedStateRef.current = null;
         clearActiveCss();
@@ -501,6 +506,7 @@ export function useLiveAppRuntime(
       }
 
       const activeLayer = ensureLayer(host, "active");
+      mountTransitionRef.current?.(true);
       const manifest = await loadManifest(activeVersion.manifestUrl);
       const existingActive = activeMountRef.current;
 
@@ -555,7 +561,9 @@ export function useLiveAppRuntime(
         versionId: activeVersion._id,
         state: initialState,
       };
+      mountTransitionRef.current?.(false);
     })().catch((error) => {
+      mountTransitionRef.current?.(false);
       void reportRuntimeErrorRef.current({
         versionId: activeVersion?._id,
         message: error instanceof Error ? error.message : String(error),
@@ -602,6 +610,7 @@ export function useLiveAppRuntime(
       const activeLayer = ensureLayer(host, "active");
       const previewLayer = ensureLayer(host, "preview");
       const version = nextReadyVersion!;
+      mountTransitionRef.current?.(true);
       const manifest = await loadManifest(version.manifestUrl);
       const initialState = applyShellRouteToState(
         liveAppStateSchema.parse(JSON.parse(version.stateJson)),
@@ -701,6 +710,7 @@ export function useLiveAppRuntime(
           versionId: version._id,
           state: initialState,
         };
+        mountTransitionRef.current?.(false);
       } catch (error) {
         if (previewMount) {
           await previewMount.unmount();
@@ -715,6 +725,7 @@ export function useLiveAppRuntime(
         previewVersionRef.current = null;
       }
     })().catch((error) => {
+      mountTransitionRef.current?.(false);
       void reportRuntimeErrorRef.current({
         versionId: nextReadyVersion?._id,
         message: error instanceof Error ? error.message : String(error),
