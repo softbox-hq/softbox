@@ -1,4 +1,5 @@
 import initSqlJs, { type SqlJsStatic } from 'sql.js'
+import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url'
 
 type CustomerRow = {
   id: number
@@ -51,7 +52,7 @@ let dbPromise: Promise<SqlJsStatic> | null = null
 
 async function loadSqlJs() {
   dbPromise ??= initSqlJs({
-    locateFile: (file: string) => new URL(`../node_modules/sql.js/dist/${file}`, import.meta.url).href,
+    locateFile: (file: string) => (file === 'sql-wasm.wasm' ? wasmUrl : file),
   })
 
   return dbPromise
