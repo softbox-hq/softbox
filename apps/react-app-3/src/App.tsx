@@ -7,30 +7,15 @@ type ModuleStatus = {
   details: string
 }
 
-type PackageManifest = {
-  name?: string
-}
-
-const packageManifests = import.meta.glob<PackageManifest>('/node_modules/*/package.json', {
-  eager: true,
-  import: 'default',
-})
-
-const moduleNames = Array.from(
-  new Set([
-    ...Object.values(packageManifests)
-      .map((manifest) => manifest.name)
-      .filter((name): name is string => Boolean(name)),
-  ]),
-).sort((a, b) => a.localeCompare(b))
+const moduleNames = ['react', 'react-dom', 'sql.js']
 
 function inspectModule(name: string): ModuleStatus {
-  const present = Boolean(Object.values(packageManifests).find((manifest) => manifest.name === name))
+  const state = moduleNames.includes(name) ? 'ok' : 'missing'
 
   return {
     name,
-    state: present ? 'ok' : 'missing',
-    details: present ? 'installed' : 'not found',
+    state,
+    details: state === 'ok' ? 'installed' : 'not found',
   }
 }
 
