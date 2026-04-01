@@ -10,9 +10,7 @@ import {
   shouldAutofillOpenClawAgentIdPrefix,
 } from "../worker/src/openClawRouting";
 import {
-  defaultWrappedAppId,
   discoverWrappedApps,
-  getDefaultWrappedAppId,
   inspectWrappedAppSource,
   softboxConfigFileName,
 } from "../worker/src/templates";
@@ -210,20 +208,19 @@ async function main(): Promise<void> {
     );
   }
 
-  const configuredAppId = readEnv("APP_ID") || getDefaultWrappedAppId(projectRoot);
-  const configuredWrappedApp =
-    discovery.apps.find((app) => app.appId === configuredAppId) ?? null;
+  const configuredAppId = readEnv("APP_ID");
+  const configuredWrappedApp = configuredAppId
+    ? discovery.apps.find((app) => app.appId === configuredAppId) ?? null
+    : null;
   pushResult(
     results,
-    discovery.apps.some((app) => app.appId === configuredAppId)
-      ? "ok"
-      : "warn",
-    "APP_ID",
-    discovery.apps.some((app) => app.appId === configuredAppId)
-      ? `Default seeded app is '${configuredAppId}'.`
-      : configuredAppId === defaultWrappedAppId
-        ? `Still using fallback '${defaultWrappedAppId}'. Set APP_ID after wrapping an app.`
-        : `'${configuredAppId}' does not match any wrapped app.`,
+    !configuredAppId || Boolean(configuredWrappedApp) ? "ok" : "warn",
+    "Seed target",
+    configuredWrappedApp
+      ? `APP_ID override targets '${configuredAppId}'.`
+      : configuredAppId
+        ? `'${configuredAppId}' does not match any wrapped app.`
+        : "No APP_ID override set. 'pnpm seed' will prompt you to choose a wrapped app.",
   );
 
   if (agentCommand.toLowerCase().startsWith("openclaw")) {
@@ -266,9 +263,15 @@ async function main(): Promise<void> {
       );
     }
 
-    if ((openClawAgentId || openClawAgentIdPrefix) && configuredWrappedApp) {
+    const openClawCheckApp =
+      configuredWrappedApp ??
+      discovery.apps.find((app) => app.appId === "vite-default") ??
+      discovery.apps[0] ??
+      null;
+
+    if ((openClawAgentId || openClawAgentIdPrefix) && openClawCheckApp) {
       try {
-        const expectedAgentId = buildConfiguredOpenClawAgentId(configuredAppId, {
+        const expectedAgentId = buildConfiguredOpenClawAgentId(openClawCheckApp.appId, {
           agentId: openClawAgentId || null,
           agentIdPrefix: openClawAgentIdPrefix || null,
         });
@@ -286,18 +289,18 @@ async function main(): Promise<void> {
             "fail",
             "OpenClaw agent",
             isPerAppOpenClawRouting({ agentIdPrefix: openClawAgentIdPrefix || null })
-              ? `Expected agent '${expectedAgentId}' for app '${configuredAppId}'. Run 'pnpm worker:openclaw-sync-agents -- --apply'.`
+              ? `Expected agent '${expectedAgentId}' for app '${openClawCheckApp.appId}'. Run 'pnpm worker:openclaw-sync-agents -- --apply'.`
               : `Configured agent '${expectedAgentId}' was not found in OpenClaw.`,
           );
         } else if (
           isPerAppOpenClawRouting({ agentIdPrefix: openClawAgentIdPrefix || null }) &&
-          matchingAgent.workspace !== resolve(configuredWrappedApp.root)
+          matchingAgent.workspace !== resolve(openClawCheckApp.root)
         ) {
           pushResult(
             results,
             "fail",
             "OpenClaw agent",
-            `Agent '${expectedAgentId}' points at '${matchingAgent.workspace ?? "unknown"}', expected '${resolve(configuredWrappedApp.root)}'.`,
+            `Agent '${expectedAgentId}' points at '${matchingAgent.workspace ?? "unknown"}', expected '${resolve(openClawCheckApp.root)}'.`,
           );
         } else if (
           normalizedAgentModel &&

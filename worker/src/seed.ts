@@ -1,3 +1,4 @@
+import { select } from "@inquirer/prompts";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import "./loadEnv";
@@ -9,12 +10,90 @@ import { LiveAppBundler } from "./build";
 import { ConvexRuntimeClient } from "./convex";
 import { readLiveAppFiles } from "./filesystem";
 import { R2Uploader } from "./r2";
-import { getWrappedAppLabel, resolveWrappedAppRoot } from "./templates";
+import {
+  discoverWrappedApps,
+  getWrappedAppLabel,
+  resolveWrappedAppRoot,
+} from "./templates";
 
 function parseArgs(argv: string[]) {
+  const positional = argv.filter((arg) => !arg.startsWith("-"));
+  const appIndex = argv.indexOf("--app");
+  const appId = (appIndex >= 0 ? argv[appIndex + 1] : positional[0])?.trim() || null;
+
+  if (positional.length > 1) {
+    throw new Error("Expected at most one app id. Use 'pnpm seed -- --app <app-id>'.");
+  }
+
   return {
     force: argv.includes("--force"),
+    help: argv.includes("--help") || argv.includes("-h"),
+    appId,
   };
+}
+
+function printHelp(): void {
+  output.write(
+    [
+      "Usage:",
+      "  pnpm seed",
+      "  pnpm seed -- --app <app-id>",
+      "  APP_ID=<app-id> pnpm seed",
+      "",
+      "Behavior:",
+      "  - interactive terminal: shows an arrow-key picker for wrapped apps",
+      "  - non-interactive terminal: requires --app or APP_ID",
+    ].join("\n") + "\n",
+  );
+}
+
+async function resolveSeedAppId(args: {
+  projectRoot: string;
+  explicitAppId: string | null;
+  envAppId: string | null;
+}): Promise<string> {
+  const discovery = discoverWrappedApps(args.projectRoot);
+  if (discovery.apps.length === 0) {
+    throw new Error("No wrapped apps found under /apps.");
+  }
+
+  const findApp = (appId: string) => discovery.apps.find((app) => app.appId === appId) ?? null;
+
+  if (args.explicitAppId) {
+    if (!findApp(args.explicitAppId)) {
+      throw new Error(
+        `Unknown app id '${args.explicitAppId}'. Re-run with 'pnpm seed' to choose from wrapped apps.`,
+      );
+    }
+    return args.explicitAppId;
+  }
+
+  if (input.isTTY && output.isTTY) {
+    const appId = await select({
+      message: "Select a wrapped app to seed",
+      choices: discovery.apps.map((app) => ({
+        value: app.appId,
+        name: `${app.label} (${app.appId})`,
+        description: app.relativeRoot,
+      })),
+    });
+    output.write(`[seed] selected '${appId}'\n`);
+    return appId;
+  }
+
+  const envAppId = args.envAppId?.trim() || "";
+  if (envAppId) {
+    if (!findApp(envAppId)) {
+      throw new Error(
+        `APP_ID='${envAppId}' does not match any wrapped app. Re-run with 'pnpm seed -- --app <app-id>'.`,
+      );
+    }
+    return envAppId;
+  }
+
+  throw new Error(
+    "No app selected. Re-run with 'pnpm seed -- --app <app-id>' or set APP_ID for non-interactive use.",
+  );
 }
 
 async function confirmReset(appId: string, details: string[]): Promise<boolean> {
@@ -41,7 +120,21 @@ async function confirmReset(appId: string, details: string[]): Promise<boolean> 
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const config = loadWorkerConfig();
+  if (args.help) {
+    printHelp();
+    return;
+  }
+
+  const baseConfig = loadWorkerConfig();
+  const appId = await resolveSeedAppId({
+    projectRoot: baseConfig.projectRoot,
+    explicitAppId: args.appId,
+    envAppId: process.env.APP_ID?.trim() || null,
+  });
+  const config = {
+    ...baseConfig,
+    appId,
+  };
   const convex = new ConvexRuntimeClient(config);
   const bundler = new LiveAppBundler(config);
   const uploader = new R2Uploader(config);

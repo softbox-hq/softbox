@@ -134,7 +134,7 @@ Notes:
 
 - the shell only needs `VITE_CONVEX_URL`
 - mounted app selection is stored in Convex, not in `.env.local`
-- `APP_ID` is the only source id used by `pnpm seed` and worker helper scripts
+- `pnpm seed` now shows an arrow-key picker for wrapped apps; use `pnpm seed -- --app <app-id>` for an explicit non-interactive target
 - `S3_API` should be pasted exactly from the Cloudflare dashboard S3 API field, including the bucket path
 - `PUBLIC_DEVELOPMENT_URL` should match the Cloudflare dashboard Public Development URL field
 - leave `OPENCLAW_AGENT_ID_PREFIX` blank unless you intentionally want a custom prefix; `pnpm setup` and `pnpm start` will generate a checkout-scoped value automatically so multiple local clones do not collide in OpenClaw
@@ -150,13 +150,14 @@ pnpm wrap-app -- --path apps/my-app
 
 That command creates the thin Softbox runtime bridge for a browser-first React/Vite app and writes `softbox.config.json` so the worker can discover it automatically. The folder name under `/apps/<app-id>` is the canonical app id. It does not make Next.js or server-heavy apps magically compatible.
 
-Seed the demo app once:
+Seed a wrapped app once:
 
 ```bash
 pnpm seed
 ```
 
-That seeds the app selected by `APP_ID`, which defaults to `vite-default` in `.env.example`.
+That opens an arrow-key picker over wrapped apps and seeds the one you choose.
+For automation, run `pnpm seed -- --app <app-id>`.
 After that, switch mounted apps from the shell UI instead of changing env vars.
 
 If you already have older local Convex data from the pre-migration `templateId` architecture, inspect it first and then apply the rewrite once:
@@ -193,7 +194,7 @@ That command now does the full local onboarding flow for a supported Softbox app
 3. either scaffolds a fresh Vite app or copies a wrapped starter app
 4. runs `pnpm wrap-app -- --path apps/<your-app>` when wrapping is needed
 5. runs `pnpm run doctor`
-6. runs `APP_ID=<your-app> pnpm seed`
+6. runs `pnpm seed -- --app <your-app>`
 7. in per-app OpenClaw mode, runs `pnpm worker:openclaw-sync-agents -- --apply`
 8. sets the new app as the default shell selection so the shell can mount it on refresh
 
@@ -217,7 +218,7 @@ Or skip the picker with a specific starter:
 pnpm new-app --starter dashboard-example
 ```
 
-The command only injects `APP_ID` for its own `doctor` and `seed` steps. It does not rewrite `.env.local`.
+The command only injects `APP_ID` for its own `doctor` step. It does not rewrite `.env.local`.
 `doctor` output is shown, but `pnpm new-app` still attempts `seed` afterwards so app-local onboarding is not blocked by unrelated environment warnings.
 The starter picker uses a Node prompt UI, so users do not need Go or any external TUI runtime.
 If a worker is already running, `pnpm new-app` now prints a restart warning after onboarding so the first prompt does not hit a stale worker process.

@@ -28,6 +28,30 @@ run `npx covex dev` and select existing project taht you just created.
  f, place that exact value into `.env.local` as the `S3_API` env var
  g, in the same settings, enable "Public Development URL" if it is not already enabled
  h, copy that exact value into `.env.local` as `PUBLIC_DEVELOPMENT_URL`
+
+Go to CORS Policy and put: 
+
+[
+  {
+    "AllowedOrigins": [
+      "*"
+    ],
+    "AllowedMethods": [
+      "GET",
+      "HEAD"
+    ],
+    "AllowedHeaders": [
+      "*"
+    ],
+    "ExposeHeaders": [
+      "ETag",
+      "Content-Length"
+    ],
+    "MaxAgeSeconds": 3600
+  }
+]
+
+
  i, go back to R2 Object Storage on route `/r2/overview` and on the right side of page is "Account Details" with API Tokens , click on button "{} Manage" and create Account API token:
   Provide name,
   And make it "Object Read & Write: Allows the ability to read, write, and list objects in specific buckets."

@@ -375,7 +375,7 @@ async function main(): Promise<void> {
     console.log(`[wrap-app] updated ${toRelativePath(projectRoot, resolve(inspection.appRoot, "package.json"))} with ui:screenshot`);
   }
   console.log(
-    `[wrap-app] next: set APP_ID=${inspection.relativeAppRoot.split("/").pop() ?? "app"}, run 'pnpm run doctor', then 'pnpm seed'`,
+    `[wrap-app] next: run 'pnpm run doctor', then 'pnpm seed' and choose '${inspection.relativeAppRoot.split("/").pop() ?? "app"}' or run 'pnpm seed -- --app ${inspection.relativeAppRoot.split("/").pop() ?? "app"}'`,
   );
 }
 

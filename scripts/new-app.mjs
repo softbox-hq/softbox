@@ -393,8 +393,7 @@ async function main() {
   await runCommand({
     step: `seed ${appId}`,
     command: "pnpm",
-    args: ["seed"],
-    env: softboxEnv,
+    args: ["seed", "--", "--app", appId],
   });
 
   if (isOpenClawPerAppRoutingEnabled()) {
@@ -420,7 +419,7 @@ async function main() {
   output.write(
     [
       `[new-app] completed onboarding for '${appId}'`,
-      `[new-app] note: APP_ID was only set for this command run.`,
+      `[new-app] note: APP_ID was only set for the doctor step in this command run.`,
       ...(isOpenClawPerAppRoutingEnabled() && isWorkerRunning()
         ? [
             "[new-app] worker restart recommended: a worker process is already running.",

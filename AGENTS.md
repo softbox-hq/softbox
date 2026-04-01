@@ -33,7 +33,7 @@ docker compose up -d redis
 pnpm start
 ```
 
-Seed the default app once:
+Seed a wrapped app once:
 
 ```bash
 pnpm seed
