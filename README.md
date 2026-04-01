@@ -47,6 +47,11 @@ That means Softbox is not only about changing one app over time. It also lets yo
 apps and different versions of those apps inside the same host system.
 
 
+## Installation - automatic
+
+Install this repository using ./SETUP.md by giving the file to the codex or claude code.
+
+## Installation - manual
 
 
 ## What It Is
@@ -122,7 +127,7 @@ Fill in the required values in `.env.local`, then run:
 
 ```bash
 pnpm run doctor
-pnpm dev
+pnpm start
 ```
 
 Notes:
@@ -131,7 +136,7 @@ Notes:
 - mounted app selection is stored in Convex, not in `.env.local`
 - `APP_ID` is the only source id used by `pnpm seed` and worker helper scripts
 - queueing is handled by BullMQ in the worker process; Redis is the only extra service you need to run locally
-- `pnpm dev` starts Convex, the worker, and the shell together
+- `pnpm start` starts Convex, the worker, and the shell together
 - use `pnpm run doctor` instead of `pnpm doctor` because `doctor` is a reserved pnpm command
 
 Wrapping a new app:
@@ -222,7 +227,7 @@ Then open the shell in the browser and submit a prompt.
 pnpm setup
 pnpm new-app
 pnpm run doctor
-pnpm dev
+pnpm start
 pnpm dev:shell
 pnpm dev:worker
 pnpm dev:convex

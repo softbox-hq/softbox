@@ -6,7 +6,7 @@
   "scripts": {
     "setup": "tsx scripts/setup.ts",
     "new-app": "node scripts/new-app.mjs",
-    "dev": "tsx scripts/dev.ts",
+    "start": "tsx scripts/dev.ts",
     "dev:shell": "vite --config shell/vite.config.ts",
     "dev:worker": "tsx watch --exclude '.tmp/**' --exclude '/tmp/live-runtime-state-*' worker/src/index.ts",
     "dev:convex": "convex dev",

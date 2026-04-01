@@ -417,7 +417,7 @@ async function main() {
       ...(isOpenClawPerAppRoutingEnabled() && isWorkerRunning()
         ? [
             "[new-app] worker restart recommended: a worker process is already running.",
-            "[new-app] restart `pnpm dev:worker` (or `pnpm dev`) before submitting the first prompt for this app.",
+            "[new-app] restart `pnpm dev:worker` (or `pnpm start`) before submitting the first prompt for this app.",
           ]
         : []),
     ].join("\n") + "\n",

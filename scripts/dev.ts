@@ -47,8 +47,8 @@ function killChild(child: ChildProcess): void {
 }
 
 async function main(): Promise<void> {
-  console.log("[dev] starting Convex, worker, and shell");
-  console.log("[dev] run 'pnpm run doctor' first if startup fails");
+  console.log("[start] starting Convex, worker, and shell");
+  console.log("[start] run 'pnpm run doctor' first if startup fails");
 
   const children = new Map<string, ChildProcess>();
   let shuttingDown = false;
@@ -85,23 +85,23 @@ async function main(): Promise<void> {
       }
 
       if (signal) {
-        console.error(`[dev] ${spec.name} exited from signal ${signal}`);
+        console.error(`[start] ${spec.name} exited from signal ${signal}`);
         shutdown(1);
         return;
       }
 
       if ((code ?? 0) !== 0) {
-        console.error(`[dev] ${spec.name} exited with code ${code ?? 1}`);
+        console.error(`[start] ${spec.name} exited with code ${code ?? 1}`);
         shutdown(code ?? 1);
         return;
       }
 
-      console.error(`[dev] ${spec.name} exited unexpectedly`);
+      console.error(`[start] ${spec.name} exited unexpectedly`);
       shutdown(1);
     });
 
     child.on("error", (error) => {
-      console.error(`[dev] failed to start ${spec.name}: ${error.message}`);
+      console.error(`[start] failed to start ${spec.name}: ${error.message}`);
       shutdown(1);
     });
   }

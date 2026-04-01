@@ -39,7 +39,7 @@ async function main(): Promise<void> {
     console.log("[setup] docker compose not available, skipping Redis startup");
   }
 
-  console.log("[setup] next: fill .env.local, run 'pnpm run doctor', then run 'pnpm dev'");
+  console.log("[setup] next: fill .env.local, run 'pnpm run doctor', then run 'pnpm start'");
 }
 
 main().catch((error) => {

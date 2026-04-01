@@ -30,9 +30,7 @@ Use `pnpm` at the repo root.
 pnpm install
 cp .env.example .env.local
 docker compose up -d redis
-pnpm dev:convex
-pnpm dev:worker
-pnpm dev:shell
+pnpm start
 ```
 
 Seed the default app once:
@@ -45,7 +43,7 @@ Notes:
 
 - Do not use `npm install` at the repo root.
 - Redis is required because BullMQ runs inside the worker and stores queue state in Redis.
-- The shell, worker, and Convex dev server all need to be running for the full runtime flow to work locally.
+- `pnpm start` runs the shell, worker, and Convex dev server together for the full local runtime flow.
 
 ## Repo Shape
 
