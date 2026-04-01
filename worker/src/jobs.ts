@@ -1,6 +1,7 @@
 import type { LiveAppState } from "./shared/liveApp";
 import { basename } from "node:path";
 import type { WorkerConfig } from "./config";
+import { ensureAppDependencies } from "./appDependencies";
 import {
   countSourceBytes,
   extractAgentProgressMessages,
@@ -488,6 +489,17 @@ export async function processJobById(
     const nextVersionNumber = currentVersionNumber(shellState) + 1;
     logJob(runningJob._id, `building candidate version v${nextVersionNumber}`);
     activeStage = "build";
+    const dependencyBootstrap = await ensureAppDependencies({
+      projectRoot: config.projectRoot,
+      appRoot: liveAppRoot,
+      logger: (message) => logJob(runningJob._id, message),
+    });
+    if (dependencyBootstrap.installed) {
+      logJob(
+        runningJob._id,
+        `dependency bootstrap completed for ${dependencyBootstrap.relativeAppRoot} via ${dependencyBootstrap.packageManager}`,
+      );
+    }
     const buildResult = await bundler.buildVersion(appId, nextVersionNumber, liveAppRoot);
     if (runningJob.pipelineRunId) {
       await convex.recordPipelineStage({

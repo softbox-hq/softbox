@@ -2,6 +2,7 @@ import { stdout as output } from "node:process";
 import "./loadEnv";
 import { basename } from "node:path";
 import { manifestKeyForVersion } from "./artifacts";
+import { ensureAppDependencies } from "./appDependencies";
 import { ensureAppTooling } from "./appAgents";
 import { loadWorkerConfig } from "./config";
 import { LiveAppBundler } from "./build";
@@ -168,6 +169,16 @@ async function main(): Promise<void> {
         appRoot: liveAppRoot,
         appName: basename(liveAppRoot),
       });
+      const dependencyBootstrap = await ensureAppDependencies({
+        projectRoot: config.projectRoot,
+        appRoot: liveAppRoot,
+        logger: (message) => console.log(`[seed] ${message}`),
+      });
+      if (dependencyBootstrap.installed) {
+        console.log(
+          `[seed] dependency bootstrap completed for '${config.appId}' via ${dependencyBootstrap.packageManager}`,
+        );
+      }
       const files = await readLiveAppFiles(liveAppRoot);
 
       const buildResult = await bundler.buildVersion(config.appId, 1, liveAppRoot);

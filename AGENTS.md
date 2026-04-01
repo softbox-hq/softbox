@@ -42,6 +42,7 @@ pnpm seed
 Notes:
 
 - Do not use `npm install` at the repo root.
+- `pnpm seed` and prompt-driven builds auto-install app-local dependencies on first use when a wrapped app has its own `package.json`.
 - Redis is required because BullMQ runs inside the worker and stores queue state in Redis.
 - `pnpm start` runs the shell, worker, and Convex dev server together for the full local runtime flow.
 

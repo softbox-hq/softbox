@@ -159,6 +159,7 @@ pnpm seed
 That opens an arrow-key picker over wrapped apps and seeds the one you choose.
 It also includes a `Seed all wrapped apps` choice.
 For automation, run `pnpm seed -- --app <app-id>` or `pnpm seed -- --all`.
+On a fresh clone, Softbox now auto-installs app-local dependencies for the selected app before building it.
 After that, switch mounted apps from the shell UI instead of changing env vars.
 
 If you already have older local Convex data from the pre-migration `templateId` architecture, inspect it first and then apply the rewrite once:
