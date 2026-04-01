@@ -23,3 +23,5 @@ CONVEX_URL=
  e, go to Settings and copy the URL from "S3 API" in the format
  `https://some-number.r2.cloudflarestorage.com/softbox-r2`
  f, place that exact value into `.env.local` as the `S3_API` env var
+ g, in the same settings, enable "Public Development URL" if it is not already enabled
+ h, copy that exact value into `.env.local` as `PUBLIC_DEVELOPMENT_URL`

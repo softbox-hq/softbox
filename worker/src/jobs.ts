@@ -548,7 +548,7 @@ export async function processJobById(
     await convex.recordReadyVersion({
       appId,
       jobId: runningJob._id,
-      manifestUrl: `${config.r2PublicBaseUrl}/${manifestKeyForVersion(appId, nextVersionNumber)}`,
+      manifestUrl: `${config.publicDevelopmentUrl}/${manifestKeyForVersion(appId, nextVersionNumber)}`,
       buildLog: agentResult?.summary || buildResult.buildLog,
       stateJson: buildResult.stateJson,
       agentResult,

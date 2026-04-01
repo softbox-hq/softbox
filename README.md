@@ -136,6 +136,7 @@ Notes:
 - mounted app selection is stored in Convex, not in `.env.local`
 - `APP_ID` is the only source id used by `pnpm seed` and worker helper scripts
 - `S3_API` should be pasted exactly from the Cloudflare dashboard S3 API field, including the bucket path
+- `PUBLIC_DEVELOPMENT_URL` should match the Cloudflare dashboard Public Development URL field
 - queueing is handled by BullMQ in the worker process; Redis is the only extra service you need to run locally
 - `pnpm start` starts Convex, the worker, and the shell together
 - use `pnpm run doctor` instead of `pnpm doctor` because `doctor` is a reserved pnpm command

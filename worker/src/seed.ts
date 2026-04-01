@@ -88,7 +88,7 @@ async function main(): Promise<void> {
     appId: config.appId,
     name: getWrappedAppLabel(config.appId, config.projectRoot),
     files,
-    manifestUrl: `${config.r2PublicBaseUrl}/${manifestKeyForVersion(config.appId, 1)}`,
+    manifestUrl: `${config.publicDevelopmentUrl}/${manifestKeyForVersion(config.appId, 1)}`,
     buildLog: "Seeded from source app",
     stateJson: buildResult.stateJson,
   });

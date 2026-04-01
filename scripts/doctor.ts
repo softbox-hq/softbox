@@ -115,9 +115,9 @@ async function main(): Promise<void> {
     "VITE_CONVEX_URL",
     "CONVEX_URL",
     "S3_API",
+    "PUBLIC_DEVELOPMENT_URL",
     "R2_ACCESS_KEY_ID",
     "R2_SECRET_ACCESS_KEY",
-    "R2_PUBLIC_BASE_URL",
   ];
 
   for (const envName of requiredEnvNames) {

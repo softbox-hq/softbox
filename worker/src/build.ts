@@ -105,7 +105,7 @@ export class LiveAppBundler {
     await this.prepareWorkspace(liveAppRoot);
     const env = await readAppEnv(liveAppRoot);
     const define = buildImportMetaEnvDefines(env);
-    const sharedAssetBaseUrl = `${this.config.r2PublicBaseUrl}/apps/${appId}/shared`;
+    const sharedAssetBaseUrl = `${this.config.publicDevelopmentUrl}/apps/${appId}/shared`;
     this.context = await esbuild.context({
       absWorkingDir: liveAppRoot,
       entryPoints: ["src/entry.tsx"],
@@ -205,10 +205,10 @@ export class LiveAppBundler {
       const fileName = basename(relativeName);
       const key = sharedArtifactKey(appId, fileName);
       if (fileName.startsWith("entry-") && fileName.endsWith(".js")) {
-        entryUrl = `${this.config.r2PublicBaseUrl}/${key}`;
+        entryUrl = `${this.config.publicDevelopmentUrl}/${key}`;
       }
       if (fileName.endsWith(".css")) {
-        cssUrls.push(`${this.config.r2PublicBaseUrl}/${key}`);
+        cssUrls.push(`${this.config.publicDevelopmentUrl}/${key}`);
       }
       artifacts.push({
         key,
@@ -226,7 +226,7 @@ export class LiveAppBundler {
       version: versionNumber,
       entryUrl,
       cssUrls: cssUrls.sort(),
-      chunkBaseUrl: `${this.config.r2PublicBaseUrl}/apps/${appId}/shared/`,
+      chunkBaseUrl: `${this.config.publicDevelopmentUrl}/apps/${appId}/shared/`,
       createdAt: Date.now(),
       appId,
       stateSchemaVersion: liveAppStateSchemaVersion,

@@ -80,7 +80,7 @@ export type WorkerConfig = {
   r2Bucket: string;
   r2AccessKeyId: string;
   r2SecretAccessKey: string;
-  r2PublicBaseUrl: string;
+  publicDevelopmentUrl: string;
   s3Api: string;
   appId: string;
   pollIntervalMs: number;
@@ -136,7 +136,7 @@ export function loadWorkerConfig(): WorkerConfig {
     r2Bucket: parsedS3Api.bucket,
     r2AccessKeyId: requireEnv("R2_ACCESS_KEY_ID"),
     r2SecretAccessKey: requireEnv("R2_SECRET_ACCESS_KEY"),
-    r2PublicBaseUrl: requireEnv("R2_PUBLIC_BASE_URL").replace(/\/+$/, ""),
+    publicDevelopmentUrl: requireEnv("PUBLIC_DEVELOPMENT_URL").replace(/\/+$/, ""),
     s3Api: parsedS3Api.s3Api,
     appId: process.env.APP_ID?.trim() || defaultConfiguredAppId || defaultAppId,
     pollIntervalMs,
