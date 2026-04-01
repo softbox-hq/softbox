@@ -1,4 +1,5 @@
 import { basename, resolve } from "node:path";
+import { resolveOpenClawAgentIdPrefix } from "./openClawRouting";
 import { defaultAppId } from "./shared/liveApp";
 import { getDefaultWrappedAppId } from "./templates";
 
@@ -114,14 +115,13 @@ export function loadWorkerConfig(): WorkerConfig {
   const openClawEnabled = isOpenClawCommand(agentCommand);
   const defaultConfiguredAppId = getDefaultWrappedAppId(projectRoot);
   const openClawAgentId = process.env.OPENCLAW_AGENT_ID?.trim() || undefined;
-  const openClawAgentIdPrefix =
-    process.env.OPENCLAW_AGENT_ID_PREFIX?.trim() || undefined;
-
-  if (openClawEnabled && !openClawAgentId && !openClawAgentIdPrefix) {
-    throw new Error(
-      "OpenClaw command selected, but no agent routing is configured. Set OPENCLAW_AGENT_ID for one shared agent or OPENCLAW_AGENT_ID_PREFIX for one agent per app.",
-    );
-  }
+  const openClawAgentIdPrefix = openClawEnabled
+    ? resolveOpenClawAgentIdPrefix({
+        projectRoot,
+        agentId: openClawAgentId,
+        agentIdPrefix: process.env.OPENCLAW_AGENT_ID_PREFIX?.trim() || undefined,
+      })
+    : undefined;
 
   return {
     convexUrl: requireEnv("CONVEX_URL"),

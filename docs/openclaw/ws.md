@@ -95,7 +95,7 @@ Per-app agent mode is also supported:
 AGENT_COMMAND=openclaw
 OPENCLAW_GATEWAY_BASE_URL=http://127.0.0.1:18789
 OPENCLAW_GATEWAY_TOKEN=...
-OPENCLAW_AGENT_ID_PREFIX=softbox-
+OPENCLAW_AGENT_ID_PREFIX=
 OPENCLAW_SESSION_KEY_PREFIX=softbox
 ```
 
@@ -104,6 +104,7 @@ Important points:
 - `OPENCLAW_GATEWAY_BASE_URL` can be `http://` or `ws://`
 - the worker normalizes `http://` to `ws://` and `https://` to `wss://`
 - either `OPENCLAW_AGENT_ID` or `OPENCLAW_AGENT_ID_PREFIX` must be set
+- if `OPENCLAW_AGENT_ID_PREFIX` is blank or still `softbox-`, `pnpm setup` and `pnpm start` rewrite it to a checkout-scoped value like `softbox-a1b2c3d4-` so multiple clones do not collide
 - the configured OpenClaw agent workspace was `/home/fvrlak/ventures/softbox`
 - the gateway was running locally on loopback
 
@@ -120,8 +121,8 @@ In per-app mode, Softbox derives the agent id as:
 
 For example:
 
-- `softbox-vite-default` -> `/home/fvrlak/ventures/softbox/apps/vite-default`
-- `softbox-dashboard-example` -> `/home/fvrlak/ventures/softbox/apps/dashboard-example`
+- `softbox-a1b2c3d4-vite-default` -> `/home/fvrlak/ventures/softbox/apps/vite-default`
+- `softbox-a1b2c3d4-dashboard-example` -> `/home/fvrlak/ventures/softbox/apps/dashboard-example`
 
 Softbox validates that a per-app agent exists and that its workspace exactly matches the target app root before starting the rewrite.
 

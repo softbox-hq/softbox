@@ -15,16 +15,33 @@ import {
 } from "../src/openClawAgents";
 import { discoverWrappedApps } from "../src/templates";
 
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function main(): Promise<void> {
   const apply = process.argv.includes("--apply");
   const config = loadWorkerConfig();
   const convex = new ConvexRuntimeClient(config);
   const expectedModel = normalizeOpenClawModelId(config.agentModel ?? null);
-  const defaultProfiles = await ensureDefaultOpenClawProfiles(convex, config);
+  let defaultProfiles:
+    | {
+        engineProfileId: string;
+        providerProfileId: string;
+      }
+    | null = null;
+
+  try {
+    defaultProfiles = await ensureDefaultOpenClawProfiles(convex, config);
+  } catch (error) {
+    console.warn(
+      `[sync-openclaw-agents] could not persist default OpenClaw profiles in Convex: ${formatError(error)}`,
+    );
+  }
 
   if (!config.openClawAgentIdPrefix) {
     throw new Error(
-      "Per-app OpenClaw mode is not enabled. Set OPENCLAW_AGENT_ID_PREFIX to something like 'softbox-' before syncing agents.",
+      "Per-app OpenClaw mode is not enabled. Set OPENCLAW_AGENT_ID_PREFIX or leave it blank so Softbox can generate a checkout-scoped prefix automatically.",
     );
   }
 
@@ -49,7 +66,17 @@ async function main(): Promise<void> {
   let hasConflict = false;
 
   for (const app of discovery.apps) {
-    const appConfig = await convex.getAppConfig(app.appId);
+    let appConfig = null;
+    let appConfigError: string | null = null;
+    try {
+      appConfig = await convex.getAppConfig(app.appId);
+    } catch (error) {
+      appConfigError = formatError(error);
+      console.warn(
+        `[sync-openclaw-agents] could not read Convex app config for ${app.appId}: ${appConfigError}`,
+      );
+    }
+
     const agentId = buildConfiguredOpenClawAgentId(app.appId, {
       agentIdPrefix: config.openClawAgentIdPrefix,
       agentId: config.openClawAgentId ?? null,
@@ -62,7 +89,60 @@ async function main(): Promise<void> {
       sessionKeyPrefix: config.openClawSessionKeyPrefix,
     });
     const existingAgent = existingAgents.find((agent) => agent.id === agentId);
-    const canPersistBox = Boolean(appConfig);
+    const canPersistBox = Boolean(appConfig && defaultProfiles);
+    const skipBoxUpsertReason = !defaultProfiles
+      ? "default OpenClaw engine/provider profiles are not available in Convex yet"
+      : appConfigError
+        ? "Convex app config is currently unavailable"
+        : appConfig
+          ? null
+          : "no Convex app record exists yet";
+
+    async function clearStoredSession(): Promise<void> {
+      try {
+        await convex.setAppOpenClawSession({
+          appId: app.appId,
+          sessionId: null,
+        });
+      } catch (error) {
+        console.warn(
+          `[sync-openclaw-agents] could not clear stored OpenClaw session for ${app.appId}: ${formatError(error)}`,
+        );
+      }
+    }
+
+    async function persistBox(sessionId: string | null): Promise<boolean> {
+      if (!canPersistBox || !defaultProfiles) {
+        return false;
+      }
+
+      try {
+        await convex.upsertBox({
+          boxId,
+          subjectId: app.appId,
+          subjectKind: "app",
+          appId: app.appId,
+          engine: "openclaw",
+          engineProfileId: defaultProfiles.engineProfileId,
+          providerProfileId: defaultProfiles.providerProfileId,
+          agentId,
+          targetPath: expectedWorkspace,
+          workspacePath: expectedWorkspace,
+          sessionId,
+          provider: inferProviderFromModel(expectedModel ?? existingAgent?.model ?? null),
+          model: expectedModel ?? existingAgent?.model ?? null,
+          status: "ready",
+          policy: boxPolicy,
+          lastError: null,
+        });
+        return true;
+      } catch (error) {
+        console.warn(
+          `[sync-openclaw-agents] could not upsert box ${boxId}: ${formatError(error)}`,
+        );
+        return false;
+      }
+    }
 
     if (existingAgent) {
       const hasWorkspaceMismatch = existingAgent.workspace !== expectedWorkspace;
@@ -97,56 +177,25 @@ async function main(): Promise<void> {
           workspace: expectedWorkspace,
           model: config.agentModel,
         });
-        await convex.setAppOpenClawSession({
-          appId: app.appId,
-          sessionId: null,
-        });
-        if (canPersistBox) {
-          await convex.upsertBox({
-            boxId,
-            subjectId: app.appId,
-            subjectKind: "app",
-            appId: app.appId,
-            engine: "openclaw",
-            engineProfileId: defaultProfiles.engineProfileId,
-            providerProfileId: defaultProfiles.providerProfileId,
-            agentId,
-            targetPath: expectedWorkspace,
-            workspacePath: expectedWorkspace,
-            sessionId: null,
-            provider: inferProviderFromModel(expectedModel),
-            model: expectedModel,
-            status: "ready",
-            policy: boxPolicy,
-            lastError: null,
-          });
-        }
+        await clearStoredSession();
+        const boxPersisted = await persistBox(null);
         createdCount += 1;
         console.log(
           `[sync-openclaw-agents] repaired ${agentId} -> ${expectedWorkspace}${expectedModel ? ` (${expectedModel})` : ""} and cleared stored session`,
         );
-      } else {
-        if (apply && canPersistBox) {
-          await convex.upsertBox({
-            boxId,
-            subjectId: app.appId,
-            subjectKind: "app",
-            appId: app.appId,
-            engine: "openclaw",
-            engineProfileId: defaultProfiles.engineProfileId,
-            providerProfileId: defaultProfiles.providerProfileId,
-            agentId,
-            targetPath: expectedWorkspace,
-            workspacePath: expectedWorkspace,
-            sessionId: appConfig?.openClawSessionId ?? null,
-            provider: inferProviderFromModel(expectedModel ?? existingAgent.model ?? null),
-            model: expectedModel ?? existingAgent.model ?? null,
-            status: "ready",
-            policy: boxPolicy,
-            lastError: null,
-          });
+        if (!boxPersisted && skipBoxUpsertReason) {
+          console.log(
+            `[sync-openclaw-agents] skipped box upsert for ${app.appId}; ${skipBoxUpsertReason}`,
+          );
         }
+      } else {
+        const boxPersisted = apply ? await persistBox(appConfig?.openClawSessionId ?? null) : false;
         console.log(`[sync-openclaw-agents] ok ${agentId} -> ${expectedWorkspace}`);
+        if (apply && !boxPersisted && skipBoxUpsertReason) {
+          console.log(
+            `[sync-openclaw-agents] skipped box upsert for ${app.appId}; ${skipBoxUpsertReason}`,
+          );
+        }
       }
       continue;
     }
@@ -165,37 +214,15 @@ async function main(): Promise<void> {
       workspace: expectedWorkspace,
       model: config.agentModel,
     });
-    await convex.setAppOpenClawSession({
-      appId: app.appId,
-      sessionId: null,
-    });
-    if (canPersistBox) {
-      await convex.upsertBox({
-        boxId,
-        subjectId: app.appId,
-        subjectKind: "app",
-        appId: app.appId,
-        engine: "openclaw",
-        engineProfileId: defaultProfiles.engineProfileId,
-        providerProfileId: defaultProfiles.providerProfileId,
-        agentId,
-        targetPath: expectedWorkspace,
-        workspacePath: expectedWorkspace,
-        sessionId: null,
-        provider: inferProviderFromModel(expectedModel),
-        model: expectedModel,
-        status: "ready",
-        policy: boxPolicy,
-        lastError: null,
-      });
-    }
+    await clearStoredSession();
+    const boxPersisted = await persistBox(null);
     createdCount += 1;
     console.log(
       `[sync-openclaw-agents] created ${agentId} -> ${expectedWorkspace}${expectedModel ? ` (${expectedModel})` : ""} and cleared stored session`,
     );
-    if (!canPersistBox) {
+    if (!boxPersisted && skipBoxUpsertReason) {
       console.log(
-        `[sync-openclaw-agents] skipped box upsert for ${app.appId}; no Convex app record exists yet`,
+        `[sync-openclaw-agents] skipped box upsert for ${app.appId}; ${skipBoxUpsertReason}`,
       );
     }
   }

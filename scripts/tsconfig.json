@@ -11,8 +11,11 @@
     "./**/*.ts",
     "../worker/src/appAgents.ts",
     "../worker/src/boxes.ts",
+    "../worker/src/config.ts",
     "../worker/src/loadEnv.ts",
     "../worker/src/openClawAgents.ts",
+    "../worker/src/openClawRouting.ts",
+    "../worker/src/shared/liveApp.ts",
     "../worker/src/templates.ts"
   ]
 }

@@ -1,4 +1,7 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { resolve } from "node:path";
+import { config as loadEnv } from "dotenv";
+import { ensureOpenClawAgentIdPrefixInEnvFile } from "../worker/src/openClawRouting";
 
 type ProcessSpec = {
   name: string;
@@ -11,6 +14,29 @@ const processes: ProcessSpec[] = [
   { name: "worker", command: "pnpm", args: ["dev:worker"] },
   { name: "shell", command: "pnpm", args: ["dev:shell"] },
 ];
+
+function isOpenClawCommand(command: string): boolean {
+  return command.trim().toLowerCase().startsWith("openclaw");
+}
+
+function runBlockingCommand(step: string, command: string, args: string[]): void {
+  const result = spawnSync(command, args, {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: "inherit",
+  });
+
+  if (result.status === 0) {
+    return;
+  }
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  const signalSuffix = result.signal ? ` (signal ${result.signal})` : "";
+  throw new Error(`${step} failed with exit code ${result.status ?? 1}${signalSuffix}`);
+}
 
 function prefixStream(
   stream: NodeJS.ReadableStream | null,
@@ -47,8 +73,44 @@ function killChild(child: ChildProcess): void {
 }
 
 async function main(): Promise<void> {
+  loadEnv({ path: ".env.local", quiet: true });
+  loadEnv({ path: ".env", quiet: true });
+
+  const projectRoot = resolve(process.cwd());
+  const envLocalPath = resolve(projectRoot, ".env.local");
+  const openClawRouting = await ensureOpenClawAgentIdPrefixInEnvFile({
+    envLocalPath,
+    projectRoot,
+  });
+  if (openClawRouting.prefix) {
+    process.env.OPENCLAW_AGENT_ID_PREFIX = openClawRouting.prefix;
+  }
+
+  const agentCommand =
+    process.env.AGENT_COMMAND?.trim() ||
+    process.env.CLAUDE_CODE_COMMAND?.trim() ||
+    "codex";
+  const sharedOpenClawAgentId = process.env.OPENCLAW_AGENT_ID?.trim() || "";
+
   console.log("[start] starting Convex, worker, and shell");
   console.log("[start] run 'pnpm run doctor' first if startup fails");
+  if (openClawRouting.updated && openClawRouting.prefix) {
+    console.log(
+      `[start] set checkout-scoped OPENCLAW_AGENT_ID_PREFIX=${openClawRouting.prefix}`,
+    );
+  }
+
+  console.log("[start] preflighting Convex deployment");
+  runBlockingCommand("Convex preflight", "pnpm", ["exec", "convex", "dev", "--once"]);
+
+  if (isOpenClawCommand(agentCommand) && !sharedOpenClawAgentId) {
+    console.log("[start] syncing OpenClaw agents for this checkout");
+    runBlockingCommand("OpenClaw agent sync", "pnpm", [
+      "worker:openclaw-sync-agents",
+      "--",
+      "--apply",
+    ]);
+  }
 
   const children = new Map<string, ChildProcess>();
   let shuttingDown = false;

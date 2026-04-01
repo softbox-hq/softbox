@@ -6,6 +6,10 @@ import { resolve } from "node:path";
 import "../worker/src/loadEnv";
 import { parseS3ApiUrl } from "../worker/src/config";
 import {
+  resolveOpenClawAgentIdPrefix,
+  shouldAutofillOpenClawAgentIdPrefix,
+} from "../worker/src/openClawRouting";
+import {
   defaultWrappedAppId,
   discoverWrappedApps,
   getDefaultWrappedAppId,
@@ -224,15 +228,27 @@ async function main(): Promise<void> {
 
   if (agentCommand.toLowerCase().startsWith("openclaw")) {
     const openClawAgentId = readEnv("OPENCLAW_AGENT_ID") || "";
-    const openClawAgentIdPrefix = readEnv("OPENCLAW_AGENT_ID_PREFIX") || "";
+    const rawOpenClawAgentIdPrefix = readEnv("OPENCLAW_AGENT_ID_PREFIX") || "";
+    const openClawAgentIdPrefix =
+      resolveOpenClawAgentIdPrefix({
+        projectRoot,
+        agentId: openClawAgentId || null,
+        agentIdPrefix: rawOpenClawAgentIdPrefix || null,
+      }) || "";
     const configuredAgentModel = readEnv("AGENT_MODEL") || "";
+    const usesGeneratedOpenClawPrefix =
+      !openClawAgentId &&
+      Boolean(openClawAgentIdPrefix) &&
+      shouldAutofillOpenClawAgentIdPrefix(rawOpenClawAgentIdPrefix);
 
     pushResult(
       results,
       openClawAgentId || openClawAgentIdPrefix ? "ok" : "fail",
       "OpenClaw routing",
       openClawAgentIdPrefix
-        ? `Per-app mode enabled with prefix '${openClawAgentIdPrefix}'.`
+        ? usesGeneratedOpenClawPrefix
+          ? `Per-app mode enabled with checkout-scoped prefix '${openClawAgentIdPrefix}'.`
+          : `Per-app mode enabled with prefix '${openClawAgentIdPrefix}'.`
         : openClawAgentId
           ? `Shared mode enabled with agent '${openClawAgentId}'.`
           : "Set OPENCLAW_AGENT_ID for one shared agent or OPENCLAW_AGENT_ID_PREFIX for one agent per app.",

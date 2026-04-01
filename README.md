@@ -137,6 +137,7 @@ Notes:
 - `APP_ID` is the only source id used by `pnpm seed` and worker helper scripts
 - `S3_API` should be pasted exactly from the Cloudflare dashboard S3 API field, including the bucket path
 - `PUBLIC_DEVELOPMENT_URL` should match the Cloudflare dashboard Public Development URL field
+- leave `OPENCLAW_AGENT_ID_PREFIX` blank unless you intentionally want a custom prefix; `pnpm setup` and `pnpm start` will generate a checkout-scoped value automatically so multiple local clones do not collide in OpenClaw
 - queueing is handled by BullMQ in the worker process; Redis is the only extra service you need to run locally
 - `pnpm start` starts Convex, the worker, and the shell together
 - use `pnpm run doctor` instead of `pnpm doctor` because `doctor` is a reserved pnpm command

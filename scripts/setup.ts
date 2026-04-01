@@ -2,6 +2,7 @@ import { copyFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { ensureOpenClawAgentIdPrefixInEnvFile } from "../worker/src/openClawRouting";
 
 async function main(): Promise<void> {
   const projectRoot = resolve(process.cwd());
@@ -17,6 +18,16 @@ async function main(): Promise<void> {
     console.log("[setup] created .env.local from .env.example");
   } else {
     console.log("[setup] .env.local already exists");
+  }
+
+  const openClawRouting = await ensureOpenClawAgentIdPrefixInEnvFile({
+    envLocalPath,
+    projectRoot,
+  });
+  if (openClawRouting.updated && openClawRouting.prefix) {
+    console.log(
+      `[setup] set checkout-scoped OPENCLAW_AGENT_ID_PREFIX=${openClawRouting.prefix}`,
+    );
   }
 
   const dockerCheck = spawnSync("docker", ["compose", "version"], {

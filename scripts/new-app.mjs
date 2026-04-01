@@ -1,10 +1,11 @@
 import { access, cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
+import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { select } from "@inquirer/prompts";
 import { config as loadEnv } from "dotenv";
 import { stdin as input, stdout as output, stderr } from "node:process";
-import { extname, join } from "node:path";
+import { extname, join, resolve as resolvePath } from "node:path";
 
 loadEnv({ path: ".env.local", quiet: true });
 loadEnv({ path: ".env", quiet: true });
@@ -314,7 +315,13 @@ function runCommand({ step, command, args, env, allowFailure = false }) {
 function isOpenClawPerAppRoutingEnabled() {
   const agentCommand = process.env.AGENT_COMMAND?.trim() || process.env.CLAUDE_CODE_COMMAND?.trim() || "codex";
   const usesOpenClaw = agentCommand.toLowerCase().startsWith("openclaw");
-  const agentIdPrefix = process.env.OPENCLAW_AGENT_ID_PREFIX?.trim() || "";
+  const sharedAgentId = process.env.OPENCLAW_AGENT_ID?.trim() || "";
+  const rawAgentIdPrefix = process.env.OPENCLAW_AGENT_ID_PREFIX?.trim() || "";
+  const agentIdPrefix = sharedAgentId
+    ? ""
+    : rawAgentIdPrefix && rawAgentIdPrefix !== "softbox-"
+      ? rawAgentIdPrefix
+      : `softbox-${createHash("sha256").update(resolvePath(process.cwd())).digest("hex").slice(0, 8)}-`;
   return usesOpenClaw && agentIdPrefix.length > 0;
 }
 
