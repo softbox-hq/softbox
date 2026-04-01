@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import type { WorkerConfig } from "./config";
 import { ensureAppDependencies } from "./appDependencies";
 import {
+  type AgentCliConfig,
   countSourceBytes,
   extractAgentProgressMessages,
   formatAgentObservation,
@@ -99,6 +100,45 @@ function isStaleRunningJob(
   }
 
   return Date.now() - latestJob.claimedAt > staleAfterMs;
+}
+
+export function buildRewriteAgentConfig(args: {
+  config: WorkerConfig;
+  appId: string;
+  selectedBoxId: string | null;
+  liveAppRoot: string;
+  liveAppLabel: string;
+  boxEngineContext: ReturnType<typeof resolveBoxEngineContext>;
+  usesOpenClawSession: boolean;
+}): AgentCliConfig {
+  const baseOpenClawConfig =
+    args.usesOpenClawSession &&
+    args.config.openClawGatewayBaseUrl &&
+    args.config.openClawGatewayToken
+      ? {
+          openClaw: {
+            baseUrl: args.config.openClawGatewayBaseUrl,
+            token: args.config.openClawGatewayToken,
+            agentId: args.config.openClawAgentId ?? null,
+            agentIdPrefix: args.config.openClawAgentIdPrefix ?? null,
+            sessionKeyPrefix: args.config.openClawSessionKeyPrefix,
+            sessionKeyGeneration: 0,
+          },
+        }
+      : {};
+
+  return {
+    appId: args.appId,
+    boxId: args.boxEngineContext?.boxId ?? args.selectedBoxId,
+    command: args.config.agentCommand,
+    model: args.config.agentModel,
+    timeoutMs: args.config.agentTimeoutMs,
+    projectRoot: args.config.projectRoot,
+    liveAppRoot: args.liveAppRoot,
+    liveAppLabel: args.liveAppLabel,
+    ...baseOpenClawConfig,
+    ...args.boxEngineContext?.rewriteConfigPatch,
+  };
 }
 
 export async function reclaimStaleRunningJobs(
@@ -356,17 +396,15 @@ export async function processJobById(
         `calling agent command '${config.agentCommand}' from ${config.projectRoot} with ${config.agentTimeoutMs}ms timeout`,
       );
       const rewrite = await rewriteLiveAppFiles(
-        {
+        buildRewriteAgentConfig({
+          config,
           appId,
-          boxId: boxEngineContext?.boxId ?? selectedBoxId,
-          command: config.agentCommand,
-          model: config.agentModel,
-          timeoutMs: config.agentTimeoutMs,
-          projectRoot: config.projectRoot,
+          selectedBoxId,
           liveAppRoot,
           liveAppLabel,
-          ...boxEngineContext?.rewriteConfigPatch,
-        },
+          boxEngineContext,
+          usesOpenClawSession,
+        }),
         {
           prompt: runningJob.prompt,
           files: currentFiles,
