@@ -29,6 +29,47 @@ function isOpenClawCommand(command: string): boolean {
   return basename(command.trim()).toLowerCase().startsWith("openclaw");
 }
 
+export type ParsedS3ApiConfig = {
+  s3Api: string;
+  endpoint: string;
+  bucket: string;
+};
+
+export function parseS3ApiUrl(raw: string): ParsedS3ApiConfig {
+  const trimmed = raw.trim();
+  let parsed: URL;
+
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error(
+      `Invalid S3_API '${raw}'. Expected a full URL like ` +
+        "'https://<account>.r2.cloudflarestorage.com/<bucket>'.",
+    );
+  }
+
+  const pathSegments = parsed.pathname
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  if (pathSegments.length !== 1) {
+    throw new Error(
+      `Invalid S3_API '${raw}'. Expected exactly one bucket path segment like ` +
+        "'https://<account>.r2.cloudflarestorage.com/<bucket>'.",
+    );
+  }
+
+  const bucket = pathSegments[0];
+  const endpoint = normalizeR2Endpoint(parsed.toString());
+
+  return {
+    s3Api: `${endpoint}/${bucket}`,
+    endpoint,
+    bucket,
+  };
+}
+
 export type WorkerConfig = {
   convexUrl: string;
   agentCommand: string;
@@ -40,6 +81,7 @@ export type WorkerConfig = {
   r2AccessKeyId: string;
   r2SecretAccessKey: string;
   r2PublicBaseUrl: string;
+  s3Api: string;
   appId: string;
   pollIntervalMs: number;
   staleJobTimeoutMs: number;
@@ -58,6 +100,7 @@ export type WorkerConfig = {
 
 export function loadWorkerConfig(): WorkerConfig {
   const projectRoot = resolve(process.cwd());
+  const parsedS3Api = parseS3ApiUrl(requireEnv("S3_API"));
   const agentCommand =
     process.env.AGENT_COMMAND ??
     process.env.CLAUDE_CODE_COMMAND ??
@@ -89,11 +132,12 @@ export function loadWorkerConfig(): WorkerConfig {
       undefined,
     agentTimeoutMs,
     redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
-    r2Endpoint: normalizeR2Endpoint(requireEnv("R2_ENDPOINT")),
-    r2Bucket: requireEnv("R2_BUCKET"),
+    r2Endpoint: parsedS3Api.endpoint,
+    r2Bucket: parsedS3Api.bucket,
     r2AccessKeyId: requireEnv("R2_ACCESS_KEY_ID"),
     r2SecretAccessKey: requireEnv("R2_SECRET_ACCESS_KEY"),
     r2PublicBaseUrl: requireEnv("R2_PUBLIC_BASE_URL").replace(/\/+$/, ""),
+    s3Api: parsedS3Api.s3Api,
     appId: process.env.APP_ID?.trim() || defaultConfiguredAppId || defaultAppId,
     pollIntervalMs,
     staleJobTimeoutMs,

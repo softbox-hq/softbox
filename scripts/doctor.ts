@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import net from "node:net";
 import { resolve } from "node:path";
 import "../worker/src/loadEnv";
+import { parseS3ApiUrl } from "../worker/src/config";
 import {
   defaultWrappedAppId,
   discoverWrappedApps,
@@ -37,16 +38,6 @@ function pushResult(
 
 function readEnv(name: string): string {
   return process.env[name]?.trim() ?? "";
-}
-
-function normalizeR2Endpoint(endpoint: string): string {
-  const trimmed = endpoint.trim();
-  try {
-    const parsed = new URL(trimmed);
-    return `${parsed.protocol}//${parsed.host}`;
-  } catch {
-    return trimmed.replace(/\/+$/, "");
-  }
 }
 
 function parseRedisTarget(redisUrl: string): { host: string; port: number } {
@@ -123,8 +114,7 @@ async function main(): Promise<void> {
   const requiredEnvNames = [
     "VITE_CONVEX_URL",
     "CONVEX_URL",
-    "R2_ENDPOINT",
-    "R2_BUCKET",
+    "S3_API",
     "R2_ACCESS_KEY_ID",
     "R2_SECRET_ACCESS_KEY",
     "R2_PUBLIC_BASE_URL",
@@ -139,16 +129,24 @@ async function main(): Promise<void> {
     );
   }
 
-  const r2Endpoint = readEnv("R2_ENDPOINT");
-  if (r2Endpoint) {
-    const normalizedR2Endpoint = normalizeR2Endpoint(r2Endpoint);
+  const s3Api = readEnv("S3_API");
+  if (s3Api) {
+    let s3ApiDetail = "";
+    let s3ApiLevel: CheckLevel = "ok";
+
+    try {
+      const parsed = parseS3ApiUrl(s3Api);
+      s3ApiDetail = `Using bucket '${parsed.bucket}' at endpoint '${parsed.endpoint}'.`;
+    } catch (error) {
+      s3ApiLevel = "fail";
+      s3ApiDetail = error instanceof Error ? error.message : "Invalid S3_API value.";
+    }
+
     pushResult(
       results,
-      r2Endpoint === normalizedR2Endpoint ? "ok" : "fail",
-      "R2 endpoint format",
-      r2Endpoint === normalizedR2Endpoint
-        ? `Using account endpoint '${normalizedR2Endpoint}'.`
-        : `R2_ENDPOINT should be the account endpoint only. Use '${normalizedR2Endpoint}', not '${r2Endpoint}'.`,
+      s3ApiLevel,
+      "S3_API format",
+      s3ApiDetail,
     );
   }
 
