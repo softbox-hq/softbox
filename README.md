@@ -134,7 +134,7 @@ Notes:
 
 - the shell only needs `VITE_CONVEX_URL`
 - mounted app selection is stored in Convex, not in `.env.local`
-- `pnpm seed` now shows an arrow-key picker for wrapped apps; use `pnpm seed -- --app <app-id>` for an explicit non-interactive target
+- `pnpm seed` now shows an arrow-key picker for wrapped apps; use `pnpm seed -- --app <app-id>` for one explicit app or `pnpm seed -- --all` to seed every wrapped app
 - `S3_API` should be pasted exactly from the Cloudflare dashboard S3 API field, including the bucket path
 - `PUBLIC_DEVELOPMENT_URL` should match the Cloudflare dashboard Public Development URL field
 - leave `OPENCLAW_AGENT_ID_PREFIX` blank unless you intentionally want a custom prefix; `pnpm setup` and `pnpm start` will generate a checkout-scoped value automatically so multiple local clones do not collide in OpenClaw
@@ -157,7 +157,8 @@ pnpm seed
 ```
 
 That opens an arrow-key picker over wrapped apps and seeds the one you choose.
-For automation, run `pnpm seed -- --app <app-id>`.
+It also includes a `Seed all wrapped apps` choice.
+For automation, run `pnpm seed -- --app <app-id>` or `pnpm seed -- --all`.
 After that, switch mounted apps from the shell UI instead of changing env vars.
 
 If you already have older local Convex data from the pre-migration `templateId` architecture, inspect it first and then apply the rewrite once:
