@@ -35,7 +35,7 @@ if (!convexUrl) {
           <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 700 }}>Shell Configuration Error</h1>
           <p style={{ margin: "12px 0 0", lineHeight: 1.6, color: "#cbd5e1" }}>
             <code>VITE_CONVEX_URL</code> is missing. Set it in the repo root <code>.env.local</code> and
-            restart <code>pnpm dev:shell</code>.
+            restart <code>pnpm start</code> (or <code>pnpm dev:shell</code> if you are only running the shell).
           </p>
         </div>
       </div>
