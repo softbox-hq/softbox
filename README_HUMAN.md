@@ -1,0 +1,1 @@
+Install this repository using ./SETUP.md by giving the file to the codex or claude code.
