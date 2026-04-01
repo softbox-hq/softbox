@@ -1,36 +1,158 @@
 ---
-name: setup
-description: Install softbox and openclaw if not installed. During each step that are dealing with env vars, like convex or R2 tell user what to do where to go and what to click, write to user step by step what to do.
+name: softbox-setup
+description: Set up a fresh local Softbox checkout end to end. When helping a user, walk them through each env var, tell them exactly where to go in Convex or Cloudflare, and verify each step before moving on.
 ---
 
-Git clone https://githib.com/softbox-hq/softbox
+# Softbox Setup
+
+Use this guide for a fresh local Softbox install.
+
+If you are an AI agent helping a human:
+- walk the user step by step
+- when a step requires dashboard work, tell them exactly what to click
+- when a step fills `.env.local`, tell them exactly which value goes into which env var
+- do not skip verification steps
+
+This guide keeps the current Softbox architecture:
+- Convex for control plane state
+- Cloudflare R2 for build artifacts
+- Redis for BullMQ queue state
+- OpenClaw for code editing
+
+## 1. Prerequisites
+
+Install these first:
+
+- Node.js 20+
+- `pnpm`
+- Docker Desktop or Docker Engine
+- an OpenClaw CLI install that is already authenticated locally
+- a Convex account
+- a Cloudflare account with R2 access
+
+## 2. Clone And Install
+
+```bash
+git clone https://github.com/softbox-hq/softbox.git
 cd softbox
+pnpm install
+pnpm setup
+```
 
+What `pnpm setup` does:
 
-1. cp .env.example .env.local
+- creates `.env.local` from `.env.example` if missing
+- generates a checkout-scoped `OPENCLAW_AGENT_ID_PREFIX` when that field is blank
+- tries to start Redis with Docker if Docker is available
 
+`pnpm setup` does not finish the whole install. You still need to fill `.env.local`.
 
-2. set convex variables: 
+## 3. Fill Convex Env Vars
 
-VITE_CONVEX_URL= 
-CONVEX_URL= 
+Open `.env.local`.
 
+You need to fill these two env vars with the same Convex deployment URL:
 
-run `npx covex dev` and select existing project taht you just created.
+```env
+VITE_CONVEX_URL=
+CONVEX_URL=
+```
 
-3. R2 setup
- a, go to Login to Cloudflare dash.cloudflare.com and go to /r2/overview
- b, click on create new bucket
- c, give it name for example `softbox-r2`; location Automatic, default storage class standard, and click on create bucket
- d, when the bucket is created, you should see 3 tabs: "Objects", "Metrics", and "Settings"
- e, go to Settings and copy the URL from "S3 API" in the format
- `https://some-number.r2.cloudflarestorage.com/softbox-r2`
- f, place that exact value into `.env.local` as the `S3_API` env var
- g, in the same settings, enable "Public Development URL" if it is not already enabled
- h, copy that exact value into `.env.local` as `PUBLIC_DEVELOPMENT_URL`
+How to get the value:
 
-Go to CORS Policy and put: 
+1. In the repo root, run:
 
+```bash
+pnpm exec convex dev
+```
+
+2. If Convex asks what to do:
+- choose `create a new project` for a brand new setup
+- or choose `choose an existing project` if you already have one
+
+3. Finish the Convex prompt flow.
+
+4. Convex will print or configure a deployment URL in the form:
+
+```text
+https://<your-deployment>.convex.cloud
+```
+
+5. Put that exact same value into both:
+- `VITE_CONVEX_URL`
+- `CONVEX_URL`
+
+Important:
+- these are intentionally duplicated because the browser shell reads `VITE_CONVEX_URL` and the worker reads `CONVEX_URL`
+- they should point to the same deployment
+
+## 4. Fill Cloudflare R2 Env Vars
+
+Open the Cloudflare dashboard at `https://dash.cloudflare.com/`.
+
+Go to:
+- `R2`
+- `Overview`
+
+### 4.1 Create the bucket
+
+1. Click `Create bucket`.
+2. Enter a bucket name.
+3. Example:
+
+```text
+softbox-r2
+```
+
+4. Leave region/storage class defaults unless you have a specific reason to change them.
+5. Click `Create bucket`.
+
+### 4.2 Fill `S3_API`
+
+1. Open the bucket you just created.
+2. Click the `Settings` tab.
+3. Find the field labeled `S3 API`.
+4. Copy the full value exactly as shown.
+
+Expected format:
+
+```text
+https://<account-id>.r2.cloudflarestorage.com/<bucket>
+```
+
+Example:
+
+```text
+https://8aa22264876d9a006b7ede7b002e53d8.r2.cloudflarestorage.com/softbox-r2
+```
+
+5. Put that exact value into `.env.local`:
+
+```env
+S3_API=https://<account-id>.r2.cloudflarestorage.com/<bucket>
+```
+
+Do not split this into endpoint and bucket. Softbox now expects the exact dashboard value in one env var.
+
+### 4.3 Fill `PUBLIC_DEVELOPMENT_URL`
+
+1. Stay on the same bucket `Settings` page.
+2. Find `Public Development URL`.
+3. Enable it if it is not already enabled.
+4. Copy the exact URL shown there.
+5. Put it into `.env.local`:
+
+```env
+PUBLIC_DEVELOPMENT_URL=https://<public-dev-url>
+```
+
+### 4.4 Set the bucket CORS policy
+
+1. Stay in the bucket settings.
+2. Find `CORS policy`.
+3. Paste this JSON:
+
+```json
 [
   {
     "AllowedOrigins": [
@@ -50,23 +172,249 @@ Go to CORS Policy and put:
     "MaxAgeSeconds": 3600
   }
 ]
+```
 
+4. Save the policy.
 
- i, go back to R2 Object Storage on route `/r2/overview` and on the right side of page is "Account Details" with API Tokens , click on button "{} Manage" and create Account API token:
-  Provide name,
-  And make it "Object Read & Write: Allows the ability to read, write, and list objects in specific buckets."
-  Specify bucket(s): Apply to specific buckets only, and choose the name of bucketm `sogtbox-r2`
-  Client IP Address Filtering: leave empty
-  click on create ACCount api token
-  It will give you : "Access Key ID" , paste to the .env.local as R2_ACCESS_KEY_ID= , aslo same for "Secret Access Key" as R2_SECRET_ACCESS_KEY=
+Without this, preview mounts can fail with fetch/CORS errors.
 
+### 4.5 Create an R2 API token
 
-4. BullMQ
+Go back to:
+- `R2`
+- `Overview`
 
-run ` docker compose up -d redis`
+On the right side, find:
+- `Account Details`
+- `API Tokens`
 
-5. openclaw
-run `jq -r '.gateway.auth.token' ~/.openclaw/openclaw.json`
-and save the token as OPENCLAW_GATEWAY_TOKEN=
-leave `OPENCLAW_AGENT_ID_PREFIX` blank in `.env.local`
-Softbox will generate a checkout-scoped prefix during `pnpm setup` or `pnpm start` so multiple local clones do not reuse the same OpenClaw agents
+Then:
+
+1. Click `Manage`.
+2. Create a new token.
+3. Give it a name.
+4. Choose permissions that allow object read and write.
+5. Scope it to the bucket you created.
+6. Leave IP filtering empty unless you intentionally need it.
+7. Create the token.
+
+Cloudflare will show:
+- `Access Key ID`
+- `Secret Access Key`
+
+Put them into `.env.local`:
+
+```env
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+```
+
+## 5. Fill OpenClaw Env Vars
+
+Softbox uses OpenClaw through the local gateway.
+
+These env vars should already exist in `.env.local`:
+
+```env
+AGENT_COMMAND=openclaw
+OPENCLAW_GATEWAY_BASE_URL=http://127.0.0.1:18789
+OPENCLAW_GATEWAY_TOKEN=
+OPENCLAW_AGENT_ID_PREFIX=
+OPENCLAW_SESSION_KEY_PREFIX=softbox
+```
+
+### 5.1 Get the gateway token
+
+Run:
+
+```bash
+jq -r '.gateway.auth.token' ~/.openclaw/openclaw.json
+```
+
+That prints the raw gateway token from your local OpenClaw config.
+
+Put it into `.env.local`:
+
+```env
+OPENCLAW_GATEWAY_TOKEN=<token>
+```
+
+### 5.2 Leave the prefix blank
+
+Leave this blank:
+
+```env
+OPENCLAW_AGENT_ID_PREFIX=
+```
+
+Why:
+- Softbox generates a checkout-scoped prefix during `pnpm setup` or `pnpm start`
+- that prevents multiple local clones from pointing at the same OpenClaw agents
+
+Do not invent your own shared prefix unless you intentionally want cross-checkout reuse.
+
+### 5.3 Verify the gateway
+
+Check status:
+
+```bash
+openclaw gateway status
+```
+
+If it is not healthy, try:
+
+```bash
+openclaw gateway run --port 18789 --verbose
+```
+
+If that says the port is already in use, a gateway is already running and the problem is not "gateway missing".
+
+## 6. Start Redis
+
+If `pnpm setup` did not already start it, run:
+
+```bash
+docker compose up -d redis
+```
+
+BullMQ runs inside the Softbox worker. Redis is the only extra service you need for the queue.
+
+## 7. Validate The Setup
+
+Run:
+
+```bash
+pnpm run doctor
+```
+
+Fix every blocking issue before continuing.
+
+Warnings about unwrapped example apps are not necessarily blockers.
+
+## 8. Start Softbox
+
+Run:
+
+```bash
+pnpm start
+```
+
+This starts:
+- Convex
+- the worker
+- the shell
+
+The shell URL is usually:
+
+```text
+http://localhost:4173/
+```
+
+If port `4173` is busy, Vite will choose another port and print it.
+
+## 9. Seed The First App
+
+Softbox will not mount apps in the shell until at least one wrapped app has been seeded into Convex.
+
+Run:
+
+```bash
+pnpm seed
+```
+
+This opens the interactive picker.
+
+Choices:
+- pick one wrapped app
+- or choose `Seed all wrapped apps`
+
+For automation:
+
+```bash
+pnpm seed -- --app vite-default
+pnpm seed -- --all
+```
+
+Notes:
+- `pnpm seed` now auto-installs app-local dependencies when needed
+- if you only want the quickest first success, seed `vite-default`
+
+## 10. Final Verification
+
+After seeding:
+
+1. Refresh the shell in the browser.
+2. Confirm a wrapped app mounts.
+3. Submit a simple prompt, for example:
+
+```text
+replace the current content with a centered div that says hello
+```
+
+4. Confirm the worker:
+- claims the job
+- invokes OpenClaw
+- builds a new candidate
+- uploads artifacts
+- mounts preview successfully
+
+## Common Problems
+
+### `VITE_CONVEX_URL` or `CONVEX_URL` missing
+
+You did not finish the Convex step.
+
+Fix:
+- run `pnpm exec convex dev`
+- copy the deployment URL into both env vars
+
+### Preview mount fails or says `Failed to fetch`
+
+Most common causes:
+- R2 CORS policy is missing
+- `PUBLIC_DEVELOPMENT_URL` is wrong
+- no app has been seeded yet
+
+Fix:
+- verify the CORS JSON
+- verify `PUBLIC_DEVELOPMENT_URL`
+- run `pnpm seed`
+
+### OpenClaw gateway settings missing
+
+Most common causes:
+- `OPENCLAW_GATEWAY_TOKEN` is blank
+- the gateway is not healthy
+- the worker is running from a different clone with stale state
+
+Fix:
+- verify `.env.local`
+- run `openclaw gateway status`
+- restart `pnpm start`
+
+### Nothing shows up in the shell even though `/apps` exists
+
+Putting files into `/apps` is not enough.
+
+A Softbox-hosted app still needs:
+- wrapping
+- seeding
+- Convex app state
+
+Fix:
+- run `pnpm wrap-app -- --path apps/<your-app>` if needed
+- then run `pnpm seed`
+
+## Short Version
+
+If you already know the services and only need the command order:
+
+```bash
+pnpm install
+pnpm setup
+# fill .env.local
+docker compose up -d redis
+pnpm run doctor
+pnpm start
+pnpm seed
+```
