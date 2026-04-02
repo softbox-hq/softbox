@@ -177,31 +177,167 @@ Verified live on this machine:
 3. confirmed local OpenClaw identity exists at `~/.openclaw/identity/device.json`
 4. applied gateway config via `openclaw config set ...`
 5. confirmed `~/.openclaw/openclaw.json` now contains the expected `gateway` block
-6. probed runtime state with `openclaw gateway status`
+6. repaired local OpenClaw state with `openclaw doctor --repair --non-interactive --yes`
+7. verified the real machine gateway path with an unsandboxed `openclaw gateway probe --token ...`
+8. completed OpenAI OAuth with `openclaw models auth login --provider openai-codex --method oauth --set-default`
+9. verified final runtime state with `openclaw status`
 
-## Machine-Specific Runtime Result
+## Machine Walkthrough
 
-The config bootstrap succeeded.
+This is the exact sequence that worked on this machine.
 
-The runtime probe still failed on this machine.
+### 1. Initial state
 
-Observed status:
+The repo `.env.local` already had:
 
-```text
-RPC probe: failed
-systemd user services unavailable
+```bash
+OPENCLAW_GATEWAY_BASE_URL=http://127.0.0.1:18789
+OPENCLAW_GATEWAY_TOKEN=...
+OPENCLAW_AGENT_ID_PREFIX=softbox-1997083b-
+OPENCLAW_SESSION_KEY_PREFIX=softbox
 ```
 
-Important details from the probe:
+`~/.openclaw/openclaw.json` existed, but the gateway and auth state were inconsistent:
 
-- gateway target: `ws://127.0.0.1:18789`
-- dashboard URL: `http://127.0.0.1:18789/`
-- user `systemd` services were unavailable in this environment
+- `openclaw status` reported the dashboard URL but showed the gateway as unreachable
+- `openclaw devices list --json` failed because `gateway.auth.token` was configured as a SecretRef that was unavailable on that command path
+- `openclaw doctor` reported a missing session store at `~/.openclaw/agents/main/sessions`
 
-So the current state is:
+### 2. Repair local OpenClaw state
 
-- config is correct
-- the gateway runtime is not yet healthy
+The missing session store was repaired with:
+
+```bash
+openclaw doctor --repair --non-interactive --yes
+```
+
+That created:
+
+```text
+~/.openclaw/agents/main/sessions
+```
+
+Important caveat:
+
+- `openclaw doctor` still warned that the gateway token SecretRef was unresolved in some command paths
+- that warning was real and later mattered
+
+### 3. Distinguish sandbox failures from real machine state
+
+Inside the Codex sandbox, local gateway probe commands still failed with errors like:
+
+```text
+listen EPERM: operation not permitted 0.0.0.0:18789
+gateway closed (1006)
+```
+
+Running the same probe outside the sandbox succeeded:
+
+```bash
+openclaw gateway probe --token "$OPENCLAW_GATEWAY_TOKEN"
+```
+
+Observed result:
+
+```text
+Reachable: yes
+Connect: ok
+RPC: ok
+```
+
+That meant the real machine gateway was healthy enough for OAuth, and the remaining sandbox-only failures were not the source of truth.
+
+### 4. Re-run local onboarding interactively
+
+The working interactive onboarding command was:
+
+```bash
+OPENCLAW_GATEWAY_TOKEN=... openclaw onboard \
+  --accept-risk \
+  --mode local \
+  --flow manual \
+  --skip-daemon \
+  --skip-health \
+  --skip-search \
+  --skip-skills \
+  --skip-channels \
+  --workspace /home/fvrlak/ventures/softbox \
+  --gateway-auth token \
+  --gateway-token "$OPENCLAW_GATEWAY_TOKEN" \
+  --gateway-token-ref-env OPENCLAW_GATEWAY_TOKEN \
+  --auth-choice oauth
+```
+
+During that wizard, the important choices were:
+
+- `Use existing values`
+- gateway port `18789`
+- gateway bind `Loopback (127.0.0.1)`
+- gateway auth `Token`
+- tailscale `Off`
+- token storage `Generate/store plaintext token`
+- keep the existing token value
+- hooks `Skip for now`
+
+That token storage choice matters.
+
+The earlier SecretRef-based gateway token setup caused command-path inconsistency on this machine. Rewriting the gateway token as a locally stored plaintext value in `~/.openclaw/openclaw.json` made the local gateway/tooling behave consistently.
+
+After that onboarding pass, OpenClaw showed:
+
+- Control UI reachable at `http://127.0.0.1:18789/`
+- Gateway reachable
+- gateway token stored locally
+
+### 5. OpenAI auth: what failed and what worked
+
+The plain OpenAI provider path was not the OAuth path.
+
+This command:
+
+```bash
+openclaw models auth login --provider openai --method oauth --set-default
+```
+
+opened an API key prompt instead of a browser login.
+
+The working OpenAI OAuth path on this machine was:
+
+```bash
+openclaw models auth login --provider openai-codex --method oauth --set-default
+```
+
+That launched a browser-based OpenAI OAuth flow with a localhost callback on port `1455`.
+
+After browser completion, OpenClaw reported:
+
+```text
+OpenAI OAuth complete
+Auth profile: openai-codex:fvrlak@gmail.com (openai-codex/oauth)
+Default model set to openai-codex/gpt-5.4
+```
+
+### 6. Final verification
+
+The final verification command was:
+
+```bash
+openclaw status
+```
+
+The important resulting state was:
+
+- gateway reachable at `ws://127.0.0.1:18789`
+- local loopback bind
+- auth token enabled
+- default session model `gpt-5.4`
+
+## Practical Notes
+
+- If the Softbox UI says the gateway is unhealthy, verify whether the failure is inside the sandbox or on the actual machine before changing config again.
+- If OpenClaw commands fail with unresolved SecretRef token errors, prefer a local plaintext gateway token for local-only development instead of an env SecretRef.
+- For OpenAI browser auth on this machine, use `openai-codex` OAuth, not `openai`.
+- The successful OAuth command was external to Convex and external to Softbox state. Softbox only orchestrates the local machine flow.
 
 ## Summary
 
@@ -214,3 +350,10 @@ What Softbox now does:
 - runs local auth from the UI
 - auto-starts the local gateway before `openclaw onboard` when local gateway mode is configured
 - exposes pairing approval and agent sync from the UI
+
+What worked on this machine:
+
+- repair OpenClaw local state first
+- validate the gateway outside the sandbox
+- switch gateway token storage away from SecretRef for local-only use
+- use `openai-codex` OAuth to authenticate OpenAI
