@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { DesktopActionCard } from "./DesktopActionCard";
 import { DesktopTabs } from "./DesktopTabs";
+import type { OpenClawStatus } from "./openClaw";
 import type { ServiceStatus } from "./serviceStatus";
 import type { ServerInfo } from "./serverInfo";
 import type { ShellHostEmptyStateContent } from "./shellHostConfig";
@@ -37,6 +38,20 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const [serviceStatuses, setServiceStatuses] = useState<ServiceStatus[] | null>(null);
   const [servicesPending, setServicesPending] = useState(false);
   const [servicesError, setServicesError] = useState<string | null>(null);
+  const [openClawStatus, setOpenClawStatus] = useState<OpenClawStatus | null>(null);
+  const [openClawPending, setOpenClawPending] = useState(false);
+  const [openClawError, setOpenClawError] = useState<string | null>(null);
+  const [openClawActionPending, setOpenClawActionPending] = useState<string | null>(null);
+  const [openClawConfigDirty, setOpenClawConfigDirty] = useState(false);
+  const [gatewayBaseUrl, setGatewayBaseUrl] = useState("http://127.0.0.1:18789");
+  const [gatewayToken, setGatewayToken] = useState("");
+  const [routingMode, setRoutingMode] = useState<"shared" | "per_app">("per_app");
+  const [agentId, setAgentId] = useState("");
+  const [agentIdPrefix, setAgentIdPrefix] = useState("");
+  const [sessionKeyPrefix, setSessionKeyPrefix] = useState("softbox");
+  const [authChoice, setAuthChoice] = useState("oauth");
+  const [providerSecret, setProviderSecret] = useState("");
+  const [tokenProvider, setTokenProvider] = useState("openai-codex");
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
   const [serverInfoError, setServerInfoError] = useState<string | null>(null);
 
@@ -106,6 +121,242 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
     }
   }
 
+  async function loadOpenClawStatus(options?: { silent?: boolean }) {
+    if (!options?.silent) {
+      setOpenClawPending(true);
+    }
+    try {
+      const response = await fetch("/__softbox/openclaw/status", { cache: "no-store" });
+      const payload = (await response.json()) as OpenClawStatus | { error?: string };
+      if (!response.ok || "error" in payload) {
+        throw new Error(("error" in payload && payload.error) || `Request failed with ${response.status}`);
+      }
+      const status = payload as OpenClawStatus;
+      setOpenClawStatus(status);
+      if (!openClawConfigDirty) {
+        setGatewayBaseUrl(status.config.gatewayBaseUrl ?? "http://127.0.0.1:18789");
+        setGatewayToken("");
+        setRoutingMode(status.config.routingMode);
+        setAgentId(status.config.agentId ?? "");
+        setAgentIdPrefix(status.config.agentIdPrefix ?? "");
+        setSessionKeyPrefix(status.config.sessionKeyPrefix ?? "softbox");
+      }
+      setOpenClawError(null);
+    } catch (error) {
+      setOpenClawError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (!options?.silent) {
+        setOpenClawPending(false);
+      }
+    }
+  }
+
+  async function saveOpenClawConfig() {
+    setOpenClawActionPending("save");
+    try {
+      const response = await fetch("/__softbox/openclaw/configure", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          gatewayBaseUrl,
+          gatewayToken,
+          routingMode,
+          agentId,
+          agentIdPrefix,
+          sessionKeyPrefix,
+        }),
+      });
+      const payload = (await response.json()) as
+        | { ok?: boolean; error?: string; status?: OpenClawStatus }
+        | undefined;
+      if (!response.ok || !payload?.ok || !payload.status) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+      setOpenClawStatus(payload.status);
+      setOpenClawConfigDirty(false);
+      setGatewayToken("");
+      setOpenClawError(null);
+    } catch (error) {
+      setOpenClawError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOpenClawActionPending(null);
+    }
+  }
+
+  async function bootstrapOpenClawGateway() {
+    setOpenClawActionPending("bootstrap");
+    try {
+      const response = await fetch("/__softbox/openclaw/gateway/bootstrap", {
+        method: "POST",
+      });
+      const payload = (await response.json()) as
+        | { ok?: boolean; error?: string; status?: OpenClawStatus }
+        | undefined;
+      if (!response.ok || !payload?.ok || !payload.status) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+      setOpenClawStatus(payload.status);
+      setGatewayBaseUrl(payload.status.config.gatewayBaseUrl ?? "http://127.0.0.1:18789");
+      setGatewayToken("");
+      setOpenClawError(null);
+      setOpenClawConfigDirty(false);
+    } catch (error) {
+      setOpenClawError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOpenClawActionPending(null);
+    }
+  }
+
+  async function startOpenClawGateway() {
+    setOpenClawActionPending("start-gateway");
+    try {
+      const response = await fetch("/__softbox/openclaw/gateway/start", { method: "POST" });
+      const payload = (await response.json()) as
+        | { ok?: boolean; error?: string; status?: OpenClawStatus }
+        | undefined;
+      if (!response.ok || !payload?.ok || !payload.status) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+      setOpenClawStatus(payload.status);
+      setOpenClawError(null);
+    } catch (error) {
+      setOpenClawError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOpenClawActionPending(null);
+    }
+  }
+
+  async function stopOpenClawGateway() {
+    setOpenClawActionPending("stop-gateway");
+    try {
+      const response = await fetch("/__softbox/openclaw/gateway/stop", { method: "POST" });
+      const payload = (await response.json()) as
+        | { ok?: boolean; error?: string; status?: OpenClawStatus }
+        | undefined;
+      if (!response.ok || !payload?.ok || !payload.status) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+      setOpenClawStatus(payload.status);
+      setOpenClawError(null);
+    } catch (error) {
+      setOpenClawError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOpenClawActionPending(null);
+    }
+  }
+
+  async function startOpenClawOnboard() {
+    setOpenClawActionPending("onboard");
+    try {
+      const response = await fetch("/__softbox/openclaw/onboard/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          authChoice,
+          providerSecret,
+          tokenProvider,
+          gatewayBaseUrl,
+          gatewayToken,
+        }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+      setProviderSecret("");
+      await loadOpenClawStatus({ silent: true });
+    } catch (error) {
+      setOpenClawError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOpenClawActionPending(null);
+    }
+  }
+
+  async function cancelOpenClawOnboard() {
+    setOpenClawActionPending("cancel");
+    try {
+      const response = await fetch("/__softbox/openclaw/onboard/cancel", {
+        method: "POST",
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+      await loadOpenClawStatus({ silent: true });
+    } catch (error) {
+      setOpenClawError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOpenClawActionPending(null);
+    }
+  }
+
+  async function approveLatestPairing() {
+    setOpenClawActionPending("approve");
+    try {
+      const response = await fetch("/__softbox/openclaw/pairing/approve-latest", {
+        method: "POST",
+      });
+      const payload = (await response.json()) as
+        | { ok?: boolean; error?: string; status?: OpenClawStatus }
+        | undefined;
+      if (!response.ok || !payload?.ok || !payload.status) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+      setOpenClawStatus(payload.status);
+      setOpenClawError(null);
+    } catch (error) {
+      setOpenClawError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOpenClawActionPending(null);
+    }
+  }
+
+  async function syncOpenClawAgents() {
+    setOpenClawActionPending("sync");
+    try {
+      const response = await fetch("/__softbox/openclaw/sync-agents", {
+        method: "POST",
+      });
+      const payload = (await response.json()) as
+        | { ok?: boolean; error?: string; status?: OpenClawStatus }
+        | undefined;
+      if (!response.ok || !payload?.ok || !payload.status) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+      setOpenClawStatus(payload.status);
+      setOpenClawError(null);
+    } catch (error) {
+      setOpenClawError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOpenClawActionPending(null);
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab !== "services" || openClawStatus) {
+      return;
+    }
+    void loadOpenClawStatus();
+  }, [activeTab, openClawStatus]);
+
+  useEffect(() => {
+    if (
+      activeTab !== "services" ||
+      (openClawStatus?.onboardSession.status !== "running" &&
+        openClawStatus?.gatewayRuntime.status !== "running")
+    ) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      void loadOpenClawStatus({ silent: true });
+    }, 2500);
+    return () => window.clearInterval(interval);
+  }, [activeTab, openClawStatus?.onboardSession.status, openClawStatus?.gatewayRuntime.status]);
+
   function formatCheckedAt(timestamp: number) {
     return new Date(timestamp).toLocaleTimeString([], {
       hour: "2-digit",
@@ -129,13 +380,13 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
 
   return (
     <>
-      <section className="pointer-events-none absolute inset-0 z-10 flex items-stretch justify-stretch">
-        <div className="pointer-events-auto relative h-full w-full overflow-hidden border-0 bg-[#0d1014]/72 px-6 py-6 shadow-none backdrop-blur-xl sm:px-8 sm:py-8">
+      <section className="pointer-events-none absolute inset-0 z-10 flex items-stretch justify-stretch overflow-y-auto">
+        <div className="pointer-events-auto relative min-h-full w-full overflow-y-auto border-0 bg-[#0d1014]/72 px-6 py-6 shadow-none backdrop-blur-xl sm:px-8 sm:py-8">
           <div
             className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.08),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_22%)]"
             aria-hidden="true"
           />
-          <div className="relative mx-auto flex h-full w-full max-w-6xl flex-col">
+          <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col">
             <div className="flex items-start justify-between gap-4">
               <div className="flex flex-col gap-4">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-200/60">
@@ -267,6 +518,362 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                     </table>
                   </div>
                 </div>
+
+                <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                  <section className="border border-white/10 bg-black/20 p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          OpenClaw Auth
+                        </p>
+                        <h3 className="mt-2 text-lg font-semibold text-white">Local engine setup</h3>
+                        <p className="mt-2 text-sm leading-6 text-slate-300">
+                          Softbox can bootstrap the local OpenClaw gateway from the machine config
+                          under <code>~/.openclaw</code>, then keep the worker env in sync.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void loadOpenClawStatus()}
+                        className="inline-flex h-9 items-center justify-center border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
+                      >
+                        {openClawPending ? "Checking..." : "Refresh OpenClaw"}
+                      </button>
+                    </div>
+
+                    {openClawError ? (
+                      <div className="mt-4 border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+                        {openClawError}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void bootstrapOpenClawGateway()}
+                        disabled={openClawActionPending !== null}
+                        className="inline-flex h-9 items-center justify-center bg-cyan-300 px-3.5 text-sm font-medium text-black transition-colors hover:bg-cyan-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                      >
+                        {openClawActionPending === "bootstrap" ? "Bootstrapping..." : "Auto setup gateway"}
+                      </button>
+                      {openClawStatus?.gatewayRuntime.status === "running" ? (
+                        <button
+                          type="button"
+                          onClick={() => void stopOpenClawGateway()}
+                          disabled={openClawActionPending !== null}
+                          className="inline-flex h-9 items-center justify-center border border-rose-500/30 bg-rose-500/10 px-3.5 text-sm font-medium text-rose-100 transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {openClawActionPending === "stop-gateway" ? "Stopping..." : "Stop gateway"}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void startOpenClawGateway()}
+                          disabled={openClawActionPending !== null}
+                          className="inline-flex h-9 items-center justify-center border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:bg-black/20 disabled:text-slate-500"
+                        >
+                          {openClawActionPending === "start-gateway" ? "Starting..." : "Start gateway"}
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="mt-5 grid gap-4 md:grid-cols-2">
+                      <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        Gateway URL
+                        <input
+                          type="text"
+                          value={gatewayBaseUrl}
+                          onChange={(event) => {
+                            setGatewayBaseUrl(event.target.value);
+                            setOpenClawConfigDirty(true);
+                          }}
+                          className="mt-2 h-11 w-full border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50"
+                        />
+                      </label>
+                      <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        Gateway token
+                        <input
+                          type="password"
+                          value={gatewayToken}
+                          onChange={(event) => {
+                            setGatewayToken(event.target.value);
+                            setOpenClawConfigDirty(true);
+                          }}
+                          placeholder={
+                            openClawStatus?.config.gatewayTokenConfigured
+                              ? "Stored locally. Enter a new token to rotate it."
+                              : "Paste the local gateway token"
+                          }
+                          className="mt-2 h-11 w-full border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 md:grid-cols-3">
+                      <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        Routing
+                        <select
+                          value={routingMode}
+                          onChange={(event) => {
+                            const nextRoutingMode = event.target.value === "shared" ? "shared" : "per_app";
+                            setRoutingMode(nextRoutingMode);
+                            setOpenClawConfigDirty(true);
+                          }}
+                          className="mt-2 h-11 w-full border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors focus:border-cyan-300/50"
+                        >
+                          <option value="per_app">Per app agents</option>
+                          <option value="shared">Shared agent</option>
+                        </select>
+                      </label>
+
+                      {routingMode === "shared" ? (
+                        <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                          Agent id
+                          <input
+                            type="text"
+                            value={agentId}
+                            onChange={(event) => {
+                              setAgentId(event.target.value);
+                              setOpenClawConfigDirty(true);
+                            }}
+                            placeholder="softbox"
+                            className="mt-2 h-11 w-full border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50"
+                          />
+                        </label>
+                      ) : (
+                        <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                          Agent id prefix
+                          <input
+                            type="text"
+                            value={agentIdPrefix}
+                            onChange={(event) => {
+                              setAgentIdPrefix(event.target.value);
+                              setOpenClawConfigDirty(true);
+                            }}
+                            placeholder="softbox-<checkout>-"
+                            className="mt-2 h-11 w-full border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50"
+                          />
+                        </label>
+                      )}
+
+                      <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        Session prefix
+                        <input
+                          type="text"
+                          value={sessionKeyPrefix}
+                          onChange={(event) => {
+                            setSessionKeyPrefix(event.target.value);
+                            setOpenClawConfigDirty(true);
+                          }}
+                          className="mt-2 h-11 w-full border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void saveOpenClawConfig()}
+                        disabled={openClawActionPending !== null}
+                        className="inline-flex h-9 items-center justify-center bg-cyan-300 px-3.5 text-sm font-medium text-black transition-colors hover:bg-cyan-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                      >
+                        {openClawActionPending === "save" ? "Saving..." : "Save advanced config"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void approveLatestPairing()}
+                        disabled={openClawActionPending !== null}
+                        className="inline-flex h-9 items-center justify-center border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:bg-black/20 disabled:text-slate-500"
+                      >
+                        {openClawActionPending === "approve" ? "Approving..." : "Approve latest pairing"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void syncOpenClawAgents()}
+                        disabled={openClawActionPending !== null}
+                        className="inline-flex h-9 items-center justify-center border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:bg-black/20 disabled:text-slate-500"
+                      >
+                        {openClawActionPending === "sync" ? "Syncing..." : "Sync agents"}
+                      </button>
+                    </div>
+                  </section>
+
+                  <section className="border border-white/10 bg-black/20 p-5">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      OpenClaw State
+                    </p>
+                    <div className="mt-4 space-y-3 text-sm text-slate-300">
+                      <div className="flex items-center justify-between gap-3">
+                        <span>Gateway</span>
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${statusTone(openClawStatus?.gateway.status ?? "unknown")}`}>
+                          {openClawStatus?.gateway.status ?? "unknown"}
+                        </span>
+                      </div>
+                      <p className="text-xs leading-5 text-slate-500">
+                        {openClawStatus?.gateway.message ?? "OpenClaw status has not been checked yet."}
+                      </p>
+
+                      <div className="flex items-center justify-between gap-3">
+                        <span>Pairing</span>
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${statusTone(openClawStatus?.devices.status ?? "unknown")}`}>
+                          {openClawStatus?.devices.status ?? "unknown"}
+                        </span>
+                      </div>
+                      <p className="text-xs leading-5 text-slate-500">
+                        {openClawStatus?.devices.message ?? "No pairing information yet."}
+                      </p>
+                      <p className="text-xs leading-5 text-slate-500">
+                        Pending: {openClawStatus?.devices.pendingCount ?? 0} · Paired: {openClawStatus?.devices.pairedCount ?? 0}
+                      </p>
+                      <p className="text-xs leading-5 text-slate-500">
+                        Pending scopes: {(openClawStatus?.devices.pendingScopes ?? []).join(", ") || "none"}
+                      </p>
+                      <p className="text-xs leading-5 text-slate-500">
+                        Paired scopes: {(openClawStatus?.devices.pairedScopes ?? []).join(", ") || "none"}
+                      </p>
+                      <p className="text-xs leading-5 text-slate-500">
+                        Gateway mode: {openClawStatus?.config.gatewayMode ?? "unset"} · Bind: {openClawStatus?.config.gatewayBind ?? "unset"}{openClawStatus?.config.gatewayCustomBindHost ? ` (${openClawStatus.config.gatewayCustomBindHost})` : ""} · Port: {openClawStatus?.config.gatewayPort ?? "unknown"}
+                      </p>
+                      <p className="text-xs leading-5 text-slate-500">
+                        Token source: {openClawStatus?.config.gatewayTokenSource ?? "missing"}
+                      </p>
+                      <p className="text-xs leading-5 text-slate-500">
+                        Runtime: {openClawStatus?.gatewayRuntime.status ?? "idle"}
+                      </p>
+                      <p className="text-xs leading-5 text-slate-500">
+                        Routing: {openClawStatus?.config.routingMode ?? "unknown"} · Session prefix: {openClawStatus?.config.sessionKeyPrefix ?? "softbox"}
+                      </p>
+                    </div>
+                  </section>
+                </div>
+
+                <section className="border border-white/10 bg-black/20 p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Gateway Runtime
+                      </p>
+                      <h3 className="mt-2 text-lg font-semibold text-white">Local gateway process</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-300">
+                        Start the local OpenClaw gateway from Softbox when no system service is available.
+                      </p>
+                    </div>
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${statusTone(openClawStatus?.gatewayRuntime.status === "completed" ? "healthy" : openClawStatus?.gatewayRuntime.status === "running" ? "warning" : openClawStatus?.gatewayRuntime.status === "failed" ? "error" : "unknown")}`}>
+                      {openClawStatus?.gatewayRuntime.status ?? "idle"}
+                    </span>
+                  </div>
+                  <div className="mt-4 border border-white/10 bg-[#0a0d10]">
+                    <div className="space-y-3 px-4 py-4">
+                      <p className="text-xs leading-5 text-slate-500">
+                        {openClawStatus?.gatewayRuntime.command ?? "No local gateway process started from Softbox yet."}
+                      </p>
+                      {openClawStatus?.gatewayRuntime.error ? (
+                        <p className="text-xs leading-5 text-rose-300">{openClawStatus.gatewayRuntime.error}</p>
+                      ) : null}
+                      <pre className="max-h-52 overflow-auto whitespace-pre-wrap text-xs leading-5 text-slate-300">
+                        {(openClawStatus?.gatewayRuntime.logs ?? []).join("\n") || "Gateway logs will appear here."}
+                      </pre>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="border border-white/10 bg-black/20 p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Provider Auth
+                      </p>
+                      <h3 className="mt-2 text-lg font-semibold text-white">Run OpenClaw onboard</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-300">
+                        This runs <code>openclaw onboard</code> locally from Softbox. The UI triggers the
+                        flow, but credentials stay on this machine.
+                      </p>
+                    </div>
+                    {openClawStatus?.onboardSession.status === "running" ? (
+                      <button
+                        type="button"
+                        onClick={() => void cancelOpenClawOnboard()}
+                        disabled={openClawActionPending !== null}
+                        className="inline-flex h-9 items-center justify-center border border-rose-500/30 bg-rose-500/10 px-3.5 text-sm font-medium text-rose-100 transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {openClawActionPending === "cancel" ? "Stopping..." : "Stop"}
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-5 grid gap-4 md:grid-cols-3">
+                    <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Auth mode
+                      <select
+                        value={authChoice}
+                        onChange={(event) => setAuthChoice(event.target.value)}
+                        className="mt-2 h-11 w-full border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors focus:border-cyan-300/50"
+                      >
+                        <option value="oauth">OAuth</option>
+                        <option value="openai-api-key">OpenAI API key</option>
+                        <option value="openai-codex">OpenAI Codex CLI</option>
+                        <option value="token">Manual provider token</option>
+                      </select>
+                    </label>
+                    <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      {authChoice === "token" ? "Token provider" : "Credential"}
+                      {authChoice === "token" ? (
+                        <input
+                          type="text"
+                          value={tokenProvider}
+                          onChange={(event) => setTokenProvider(event.target.value)}
+                          className="mt-2 h-11 w-full border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50"
+                        />
+                      ) : (
+                        <input
+                          type="password"
+                          value={providerSecret}
+                          onChange={(event) => setProviderSecret(event.target.value)}
+                          placeholder={
+                            authChoice === "oauth"
+                              ? "No secret needed unless the provider asks for one"
+                              : authChoice === "openai-api-key"
+                                ? "Paste the OpenAI API key"
+                                : "Optional"
+                          }
+                          className="mt-2 h-11 w-full border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50"
+                        />
+                      )}
+                    </label>
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        onClick={() => void startOpenClawOnboard()}
+                        disabled={openClawActionPending !== null || openClawStatus?.onboardSession.status === "running"}
+                        className="inline-flex h-11 w-full items-center justify-center bg-cyan-300 px-3.5 text-sm font-medium text-black transition-colors hover:bg-cyan-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                      >
+                        {openClawActionPending === "onboard" ? "Starting..." : "Run auth"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 border border-white/10 bg-[#0a0d10]">
+                    <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        Onboard session
+                      </p>
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${statusTone(openClawStatus?.onboardSession.status === "completed" ? "healthy" : openClawStatus?.onboardSession.status === "running" ? "warning" : openClawStatus?.onboardSession.status === "failed" ? "error" : "unknown")}`}>
+                        {openClawStatus?.onboardSession.status ?? "idle"}
+                      </span>
+                    </div>
+                    <div className="space-y-3 px-4 py-4">
+                      <p className="text-xs leading-5 text-slate-500">
+                        {openClawStatus?.onboardSession.command ?? "No OpenClaw onboard command has run yet."}
+                      </p>
+                      {openClawStatus?.onboardSession.error ? (
+                        <p className="text-xs leading-5 text-rose-300">{openClawStatus.onboardSession.error}</p>
+                      ) : null}
+                      <pre className="max-h-72 overflow-auto whitespace-pre-wrap text-xs leading-5 text-slate-300">
+                        {(openClawStatus?.onboardSession.logs ?? []).join("\n") || "Session output will appear here."}
+                      </pre>
+                    </div>
+                  </div>
+                </section>
               </div>
             ) : (
               <div className="mt-8 space-y-4">

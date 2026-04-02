@@ -27,6 +27,8 @@ See also:
 
 - [`gateway-control.md`](/home/fvrlak/ventures/softbox/docs/openclaw/gateway-control.md)
   - How to stop the local OpenClaw gateway cleanly when it is running under `systemctl --user`, and how to run it again in foreground interactive mode.
+- [`softbox-ui-auth.md`](/home/fvrlak/ventures/softbox/docs/openclaw/softbox-ui-auth.md)
+  - How the Softbox desktop bootstraps local OpenClaw gateway config and runs auth from the UI.
 
 ## Why WS Was Chosen
 
