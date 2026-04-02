@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { DesktopActionCard } from "./DesktopActionCard";
+import { DesktopTabs } from "./DesktopTabs";
 import type { ShellHostEmptyStateContent } from "./shellHostConfig";
 
 type ShellDesktopApp = {
@@ -25,6 +26,7 @@ type ShellHostSurfaceProps = {
 export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const { content, apps, selectedAppId, canCreateApp = false, onAppCreated, onOpenApps, onSelectApp } =
     props;
+  const [activeTab, setActiveTab] = useState<"apps" | "system">("apps");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [appName, setAppName] = useState("");
   const [createPending, setCreatePending] = useState(false);
@@ -81,14 +83,17 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
           />
           <div className="relative mx-auto flex h-full w-full max-w-6xl flex-col">
             <div className="flex items-start justify-between gap-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-200/60">
-                <span
-                  className="text-2xl font-normal tracking-[0.12em] text-cyan-200/80"
-                  style={{ fontFamily: "var(--font-display)" }}
-                >
-                  {content.eyebrow}
-                </span>
-              </p>
+              <div className="flex flex-col gap-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-200/60">
+                  <span
+                    className="text-2xl font-normal tracking-[0.12em] text-cyan-200/80"
+                    style={{ fontFamily: "var(--font-display)" }}
+                  >
+                    {content.eyebrow}
+                  </span>
+                </p>
+                <DesktopTabs activeTab={activeTab} onChange={setActiveTab} />
+              </div>
               {canCreateApp ? (
                 <button
                   type="button"
@@ -105,32 +110,45 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
               ) : null}
             </div>
 
-            <div className="mt-8 grid gap-4 lg:grid-cols-2">
-              {apps.map((app) => {
-                const isSelected = selectedAppId === app.appId;
-                const versionLabel =
-                  typeof app.activeVersion?.versionNumber === "number"
-                    ? `v${app.activeVersion.versionNumber}`
-                    : "No versions yet";
-                const sourceStatus = app.templateSourceStatus ?? "unknown";
-                return (
-                  <DesktopActionCard
-                    key={app.appId}
-                    eyebrow={isSelected ? "Mounted app" : "App"}
-                    title={app.name || app.appId}
-                    description={`Open ${app.appId} on the Softbox desktop and continue editing from its mounted runtime.`}
-                    detail={`Template source: ${sourceStatus} · Active version: ${versionLabel}`}
-                    accentClassName={
-                      isSelected
-                        ? "from-cyan-300/40 via-sky-300/15 to-transparent"
-                        : "from-fuchsia-300/30 via-rose-300/12 to-transparent"
-                    }
-                    onClick={() => onSelectApp(app.appId)}
-                    actions={[]}
-                  />
-                );
-              })}
-            </div>
+            {activeTab === "apps" ? (
+              <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {apps.map((app) => {
+                  const isSelected = selectedAppId === app.appId;
+                  const versionLabel =
+                    typeof app.activeVersion?.versionNumber === "number"
+                      ? `v${app.activeVersion.versionNumber}`
+                      : "No versions yet";
+                  const sourceStatus = app.templateSourceStatus ?? "unknown";
+                  return (
+                    <DesktopActionCard
+                      key={app.appId}
+                      eyebrow={isSelected ? "Mounted app" : "App"}
+                      title={app.name || app.appId}
+                      description={`Open ${app.appId} on the Softbox desktop and continue editing from its mounted runtime.`}
+                      detail={`Template source: ${sourceStatus} · Active version: ${versionLabel}`}
+                      accentClassName={
+                        isSelected
+                          ? "from-cyan-300/40 via-sky-300/15 to-transparent"
+                          : "from-fuchsia-300/30 via-rose-300/12 to-transparent"
+                      }
+                      onClick={() => onSelectApp(app.appId)}
+                      actions={[]}
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-8 max-w-xl border border-white/10 bg-black/20 p-5">
+                <p className="text-sm leading-6 text-slate-300">
+                  This desktop shows the apps available in this Softbox instance. Use the
+                  <span className="px-1 text-white">Apps</span>
+                  tab to mount an existing app, or use the plus button to create a new one.
+                </p>
+                <div className="mt-4 text-xs text-slate-500">
+                  Installed apps: {apps.length}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </section>
