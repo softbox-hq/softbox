@@ -1,8 +1,14 @@
 import { execFile, spawn } from "node:child_process";
 import { cpus, freemem, hostname, platform, release, totalmem, arch } from "node:os";
+import { Socket } from "node:net";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
+import { config as loadEnv } from "dotenv";
+import { systemServices } from "./src/systemServices";
+
+loadEnv({ path: resolve(import.meta.dirname, "../.env.local"), quiet: true });
+loadEnv({ path: resolve(import.meta.dirname, "../.env"), quiet: true });
 
 export default defineConfig({
   root: resolve(import.meta.dirname),
@@ -13,6 +19,60 @@ export default defineConfig({
       name: "softbox-create-app-api",
       configureServer(server) {
         let createAppInFlight = false;
+        async function checkRedis(redisUrl: string | undefined) {
+          if (!redisUrl) {
+            return { status: "warning", message: "REDIS_URL is not configured." } as const;
+          }
+          try {
+            const parsed = new URL(redisUrl);
+            const port = Number(parsed.port || 6379);
+            await new Promise<void>((resolvePromise, rejectPromise) => {
+              const socket = new Socket();
+              const cleanup = () => {
+                socket.removeAllListeners();
+                socket.destroy();
+              };
+              socket.setTimeout(1500);
+              socket.once("connect", () => {
+                cleanup();
+                resolvePromise();
+              });
+              socket.once("timeout", () => {
+                cleanup();
+                rejectPromise(new Error("Connection timed out"));
+              });
+              socket.once("error", (error) => {
+                cleanup();
+                rejectPromise(error);
+              });
+              socket.connect(port, parsed.hostname);
+            });
+            return { status: "healthy", message: `Reachable at ${parsed.hostname}:${port}.` } as const;
+          } catch (error) {
+            return {
+              status: "error",
+              message: error instanceof Error ? error.message : String(error),
+            } as const;
+          }
+        }
+
+        async function checkHttp(url: string | undefined, label: string) {
+          if (!url) {
+            return { status: "warning", message: `${label} is not configured.` } as const;
+          }
+          try {
+            const response = await fetch(url, { method: "GET" });
+            return {
+              status: response.ok ? "healthy" : "warning",
+              message: `${label} responded with ${response.status}.`,
+            } as const;
+          } catch (error) {
+            return {
+              status: "error",
+              message: error instanceof Error ? error.message : String(error),
+            } as const;
+          }
+        }
 
         server.middlewares.use("/__softbox/create-app", (req, res) => {
           if (req.method !== "POST") {
@@ -146,6 +206,81 @@ export default defineConfig({
             res.statusCode = 200;
             res.setHeader("Content-Type", "application/json");
             res.end(JSON.stringify(payload));
+          });
+        });
+
+        server.middlewares.use("/__softbox/service-status", async (_req, res) => {
+          const checkedAt = Date.now();
+          const redis = await checkRedis(process.env.REDIS_URL);
+          const convex = await checkHttp(
+            process.env.CONVEX_URL || process.env.VITE_CONVEX_URL,
+            "Convex URL",
+          );
+          const openClaw = await checkHttp(
+            process.env.OPENCLAW_GATEWAY_BASE_URL,
+            "OpenClaw gateway",
+          );
+
+          execFile("pgrep", ["-f", "worker/src/index.ts"], (workerError, workerStdout) => {
+            const workerHealthy = !workerError && workerStdout.trim().length > 0;
+            const statuses = systemServices.map((service) => {
+              if (service.name === "Convex") {
+                return { ...service, checkedAt, ...convex };
+              }
+              if (service.name === "Redis") {
+                return { ...service, checkedAt, ...redis };
+              }
+              if (service.name === "BullMQ") {
+                return {
+                  ...service,
+                  checkedAt,
+                  status: redis.status === "healthy" ? "healthy" : "warning",
+                  message:
+                    redis.status === "healthy"
+                      ? "Redis is reachable; BullMQ can use the queue backend."
+                      : "BullMQ depends on Redis; queue backend is not healthy.",
+                };
+              }
+              if (service.name === "Worker") {
+                return {
+                  ...service,
+                  checkedAt,
+                  status: workerHealthy ? "healthy" : "error",
+                  message: workerHealthy
+                    ? "Worker process is running."
+                    : "Worker process was not found.",
+                };
+              }
+              if (service.name === "OpenClaw") {
+                return { ...service, checkedAt, ...openClaw };
+              }
+              if (service.name === "Cloudflare R2") {
+                const configured = Boolean(
+                  process.env.S3_API &&
+                    process.env.PUBLIC_DEVELOPMENT_URL &&
+                    process.env.R2_ACCESS_KEY_ID &&
+                    process.env.R2_SECRET_ACCESS_KEY,
+                );
+                return {
+                  ...service,
+                  checkedAt,
+                  status: configured ? "healthy" : "warning",
+                  message: configured
+                    ? "R2 environment variables are configured."
+                    : "One or more R2 environment variables are missing.",
+                };
+              }
+              return {
+                ...service,
+                checkedAt,
+                status: "unknown" as const,
+                message: "No check implemented.",
+              };
+            });
+
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify(statuses));
           });
         });
       },

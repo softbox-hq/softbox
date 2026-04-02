@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { DesktopActionCard } from "./DesktopActionCard";
 import { DesktopTabs } from "./DesktopTabs";
+import type { ServiceStatus } from "./serviceStatus";
 import type { ServerInfo } from "./serverInfo";
 import type { ShellHostEmptyStateContent } from "./shellHostConfig";
 import { systemServices } from "./systemServices";
@@ -33,6 +34,9 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const [appName, setAppName] = useState("");
   const [createPending, setCreatePending] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [serviceStatuses, setServiceStatuses] = useState<ServiceStatus[] | null>(null);
+  const [servicesPending, setServicesPending] = useState(false);
+  const [servicesError, setServicesError] = useState<string | null>(null);
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
   const [serverInfoError, setServerInfoError] = useState<string | null>(null);
 
@@ -86,6 +90,41 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
     } catch (error) {
       setServerInfoError(error instanceof Error ? error.message : String(error));
     }
+  }
+
+  async function loadServiceStatuses() {
+    setServicesPending(true);
+    try {
+      const response = await fetch("/__softbox/service-status", { cache: "no-store" });
+      const payload = (await response.json()) as ServiceStatus[];
+      setServiceStatuses(payload);
+      setServicesError(null);
+    } catch (error) {
+      setServicesError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setServicesPending(false);
+    }
+  }
+
+  function formatCheckedAt(timestamp: number) {
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  }
+
+  function statusTone(status: ServiceStatus["status"]) {
+    if (status === "healthy") {
+      return "bg-emerald-500/12 text-emerald-300";
+    }
+    if (status === "warning") {
+      return "bg-amber-500/12 text-amber-200";
+    }
+    if (status === "error") {
+      return "bg-rose-500/12 text-rose-200";
+    }
+    return "bg-white/8 text-slate-300";
   }
 
   return (
@@ -153,37 +192,80 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                 })}
               </div>
             ) : activeTab === "services" ? (
-              <div className="mt-8 overflow-hidden border border-white/10 bg-[#0b0f13]/88">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-white/10 text-sm">
-                    <thead className="bg-white/[0.03]">
-                      <tr>
-                        <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium text-slate-400">
-                          Service
-                        </th>
-                        <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium text-slate-400">
-                          Role
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">
-                          Detail
-                        </th>
-                      </tr>
-                    </thead>
+              <div className="mt-8 space-y-4">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void loadServiceStatuses()}
+                    className="inline-flex h-9 items-center justify-center border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
+                  >
+                    {servicesPending ? "Checking..." : "Refresh services"}
+                  </button>
+                </div>
 
-                    <tbody className="divide-y divide-white/6">
-                      {systemServices.map((service) => (
-                        <tr key={service.name} className="bg-black/10">
-                          <td className="whitespace-nowrap px-4 py-3 font-medium text-white">
-                            {service.name}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3 text-slate-300">
-                            {service.role}
-                          </td>
-                          <td className="px-4 py-3 text-slate-400">{service.detail}</td>
+                {servicesError ? (
+                  <div className="max-w-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+                    {servicesError}
+                  </div>
+                ) : null}
+
+                <div className="overflow-hidden border border-white/10 bg-[#0b0f13]/88">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-white/10 text-sm">
+                      <thead className="bg-white/[0.03]">
+                        <tr>
+                          <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium text-slate-400">
+                            Service
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium text-slate-400">
+                            Role
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium text-slate-400">
+                            Status
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium text-slate-400">
+                            Checked
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">
+                            Message
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+
+                      <tbody className="divide-y divide-white/6">
+                        {(serviceStatuses ??
+                          systemServices.map((service) => ({
+                            ...service,
+                            status: "unknown" as const,
+                            message: "Not checked yet",
+                            checkedAt: Date.now(),
+                          }))).map((service) => (
+                          <tr key={service.name} className="bg-black/10">
+                            <td className="whitespace-nowrap px-4 py-3 font-medium text-white">
+                              <div>{service.name}</div>
+                              <div className="mt-1 text-xs text-slate-500">{service.detail}</div>
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 text-slate-300">
+                              {service.role}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3">
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${statusTone(
+                                  service.status,
+                                )}`}
+                              >
+                                {service.status}
+                              </span>
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 text-slate-400">
+                              {formatCheckedAt(service.checkedAt)}
+                            </td>
+                            <td className="px-4 py-3 text-slate-400">{service.message}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             ) : (
