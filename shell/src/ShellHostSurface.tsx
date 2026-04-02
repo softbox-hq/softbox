@@ -1,18 +1,15 @@
 import { useState } from "react";
 import type { ShellHostEmptyStateContent } from "./shellHostConfig";
 
-type ShellHostEmptyStateProps = {
+type ShellHostSurfaceProps = {
   content: ShellHostEmptyStateContent;
-  composerHidden: boolean;
   canCreateApp?: boolean;
   onAppCreated?: () => void;
   onOpenApps: () => void;
-  onTogglePromptHud: () => void;
 };
 
-export function ShellHostEmptyState(props: ShellHostEmptyStateProps) {
-  const { content, composerHidden, canCreateApp = false, onAppCreated, onOpenApps, onTogglePromptHud } =
-    props;
+export function ShellHostSurface(props: ShellHostSurfaceProps) {
+  const { content, canCreateApp = false, onAppCreated, onOpenApps } = props;
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [appName, setAppName] = useState("");
   const [createPending, setCreatePending] = useState(false);
@@ -61,8 +58,8 @@ export function ShellHostEmptyState(props: ShellHostEmptyStateProps) {
 
   return (
     <>
-      <section className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-4 pb-28 pt-24 sm:px-6 sm:pb-32 sm:pt-32">
-        <div className="pointer-events-auto relative w-full max-w-2xl overflow-hidden rounded-[1.5rem] border border-white/10 bg-[#0d1014]/86 p-5 shadow-[0_24px_84px_rgba(0,0,0,0.38)] backdrop-blur-2xl sm:p-6">
+      <section className="pointer-events-none absolute inset-0 z-10 flex items-stretch justify-stretch">
+        <div className="pointer-events-auto relative h-full w-full overflow-hidden border-0 bg-[#0d1014]/72 px-6 py-6 shadow-none backdrop-blur-xl sm:px-8 sm:py-8">
           <div
             className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.08),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_22%)]"
             aria-hidden="true"
@@ -109,13 +106,6 @@ export function ShellHostEmptyState(props: ShellHostEmptyStateProps) {
                 className="inline-flex h-9 items-center justify-center rounded-xl bg-white px-3.5 text-sm font-medium text-black transition-colors hover:bg-slate-200"
               >
                 Open apps
-              </button>
-              <button
-                type="button"
-                onClick={onTogglePromptHud}
-                className="inline-flex h-9 items-center justify-center rounded-xl border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
-              >
-                {composerHidden ? "Show prompt HUD" : "Hide prompt HUD"}
               </button>
             </div>
           </div>

@@ -27,7 +27,7 @@ import {
   useLiveAppRuntime,
 } from "./runtime";
 import { getOrCreateShellId } from "./shellId";
-import { ShellHostEmptyState } from "./ShellHostEmptyState";
+import { ShellHostSurface } from "./ShellHostSurface";
 import { shellHostEmptyStateContent } from "./shellHostConfig";
 import { getRuntimeStatus } from "./state";
 import "./styles.css";
@@ -1897,20 +1897,18 @@ export function App() {
       ) : null}
 
       {showEmptyState ? (
-        <ShellHostEmptyState
+        <ShellHostSurface
           content={emptyStateContent}
-          composerHidden={composerHidden}
           canCreateApp={import.meta.env.DEV}
           onAppCreated={() => setAppsOpen(true)}
           onOpenApps={() => setAppsOpen(true)}
-          onTogglePromptHud={() => setComposerHidden((current) => !current)}
         />
       ) : null}
 
       <section
         className={`pointer-events-none fixed inset-x-0 bottom-0 z-10 px-4 pb-4 transition-[opacity,transform] duration-200 ease-out sm:px-6 sm:pb-6 ${
           composerHidden ? "translate-y-8 opacity-0" : "translate-y-0 opacity-100"
-        } ${showEmptyState ? "hidden lg:block" : ""}`}
+        } ${showEmptyState ? "hidden" : ""}`}
       >
         <div className="mx-auto flex w-full max-w-6xl flex-col-reverse gap-3 lg:flex-row lg:items-end lg:justify-center">
         <form
