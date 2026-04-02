@@ -27,6 +27,8 @@ import {
   useLiveAppRuntime,
 } from "./runtime";
 import { getOrCreateShellId } from "./shellId";
+import { ShellHostEmptyState } from "./ShellHostEmptyState";
+import { shellHostEmptyStateContent } from "./shellHostConfig";
 import { getRuntimeStatus } from "./state";
 import "./styles.css";
 
@@ -1024,26 +1026,21 @@ export function App() {
     selectedApp?.templateSourceMessage ??
     shellState?.templateSourceMessage ??
     null;
-  const emptyStateTitle = noMountedApp
-    ? "Nothing mounted"
-    : runtimeStatus?.title ?? "No App Loaded";
-  const emptyStateBody = noMountedApp
-    ? "Your shell is running, but no app is currently mounted."
-    : runtimeStatus?.body ?? "The shell is running, but there is no hosted app mounted yet.";
-  const emptyStateSteps = noMountedApp
-    ? [
-        "Open Apps and mount an existing app.",
-        "Or keep the shell empty until you are ready to mount one.",
-      ]
-    : shellState === null
-      ? [
-          "Seed or register an app so the shell has something to load.",
-          "Then mount it from the Apps menu.",
-        ]
-      : [
-          "Open Apps and choose what you want to mount.",
-          "Or wait here while the shell finishes loading.",
-        ];
+  const emptyStateContent = noMountedApp
+    ? shellHostEmptyStateContent.noMountedApp
+    : runtimeStatus
+      ? {
+          eyebrow: shellHostEmptyStateContent.noActiveVersion.eyebrow,
+          title: runtimeStatus.title ?? shellHostEmptyStateContent.noActiveVersion.title,
+          body: runtimeStatus.body ?? shellHostEmptyStateContent.noActiveVersion.body,
+          steps:
+            shellState === null
+              ? shellHostEmptyStateContent.noShellState.steps
+              : shellHostEmptyStateContent.noActiveVersion.steps,
+        }
+      : shellState === null
+        ? shellHostEmptyStateContent.noShellState
+        : shellHostEmptyStateContent.noActiveVersion;
   const templateSourceMissing = templateSourceStatus === "missing";
   const promptDisabled = noMountedApp || templateSourceMissing;
   const pipelineProgress = getRunProgress(latestPipelineRun);
@@ -1900,56 +1897,14 @@ export function App() {
       ) : null}
 
       {showEmptyState ? (
-        <section className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-4 pb-28 pt-24 sm:px-6 sm:pb-32 sm:pt-32">
-          <div className="pointer-events-auto relative w-full max-w-2xl overflow-hidden rounded-[1.5rem] border border-white/10 bg-[#0d1014]/86 p-5 shadow-[0_24px_84px_rgba(0,0,0,0.38)] backdrop-blur-2xl sm:p-6">
-            <div
-              className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.08),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_22%)]"
-              aria-hidden="true"
-            />
-            <div className="relative">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-200/60">
-                Shell host
-              </p>
-              <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-                {emptyStateTitle}
-              </h2>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
-                {emptyStateBody}
-              </p>
-
-              <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                {emptyStateSteps.map((step, index) => (
-                  <div
-                    key={step}
-                    className="rounded-[1.1rem] border border-white/8 bg-black/20 px-4 py-3"
-                  >
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      Step {index + 1}
-                    </p>
-                    <p className="mt-1.5 text-sm leading-5 text-slate-200">{step}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-5 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setAppsOpen(true)}
-                  className="inline-flex h-9 items-center justify-center rounded-xl bg-white px-3.5 text-sm font-medium text-black transition-colors hover:bg-slate-200"
-                >
-                  Open apps
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setComposerHidden((current) => !current)}
-                  className="inline-flex h-9 items-center justify-center rounded-xl border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
-                >
-                  {composerHidden ? "Show prompt HUD" : "Hide prompt HUD"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
+        <ShellHostEmptyState
+          content={emptyStateContent}
+          composerHidden={composerHidden}
+          canCreateApp={import.meta.env.DEV}
+          onAppCreated={() => setAppsOpen(true)}
+          onOpenApps={() => setAppsOpen(true)}
+          onTogglePromptHud={() => setComposerHidden((current) => !current)}
+        />
       ) : null}
 
       <section

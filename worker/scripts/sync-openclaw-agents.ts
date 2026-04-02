@@ -55,7 +55,8 @@ async function main(): Promise<void> {
 
   const discovery = discoverWrappedApps(config.projectRoot);
   if (discovery.apps.length === 0) {
-    throw new Error("No wrapped apps found under /apps.");
+    console.log("[sync-openclaw-agents] no wrapped apps found under /apps; skipping sync");
+    return;
   }
 
   const existingAgents = await listOpenClawAgents({
