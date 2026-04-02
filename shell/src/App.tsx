@@ -1899,9 +1899,24 @@ export function App() {
       {showEmptyState ? (
         <ShellHostSurface
           content={emptyStateContent}
+          apps={apps}
+          selectedAppId={appId}
           canCreateApp={import.meta.env.DEV}
           onAppCreated={() => setAppsOpen(true)}
           onOpenApps={() => setAppsOpen(true)}
+          onSelectApp={(nextAppId) => {
+            void (async () => {
+              setSwitchingAppId(nextAppId);
+              try {
+                await setSelectedAppMutation({
+                  shellId,
+                  appId: nextAppId,
+                });
+              } finally {
+                setSwitchingAppId(null);
+              }
+            })();
+          }}
         />
       ) : null}
 

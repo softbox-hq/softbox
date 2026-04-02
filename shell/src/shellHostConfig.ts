@@ -7,7 +7,7 @@ export type ShellHostEmptyStateContent = {
 
 export const shellHostEmptyStateContent = {
   noMountedApp: {
-    eyebrow: "Shell host",
+    eyebrow: "DESKTOP",
     title: "Nothing mounted",
     body: "Your shell is running, but no app is currently mounted.",
     steps: [
@@ -16,7 +16,7 @@ export const shellHostEmptyStateContent = {
     ],
   },
   noActiveVersion: {
-    eyebrow: "Shell host",
+    eyebrow: "DESKTOP",
     title: "No App Loaded",
     body: "The shell is running, but there is no hosted app mounted yet.",
     steps: [
@@ -25,7 +25,7 @@ export const shellHostEmptyStateContent = {
     ],
   },
   noShellState: {
-    eyebrow: "Shell host",
+    eyebrow: "DESKTOP",
     title: "No App Loaded",
     body: "The shell is running, but there is no hosted app mounted yet.",
     steps: [

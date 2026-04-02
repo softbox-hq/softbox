@@ -1,9 +1,11 @@
+@import url("https://fonts.googleapis.com/css2?family=Jersey+10&display=swap");
 @import "tailwindcss";
 @source "./**/*.{ts,tsx}";
 
 @theme {
   --font-sans: "Inter", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", monospace;
+  --font-display: "Jersey 10", "Inter", system-ui, sans-serif;
 }
 
 @layer base {

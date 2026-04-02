@@ -1,15 +1,30 @@
 import { useState } from "react";
+import { Plus } from "lucide-react";
+import { DesktopActionCard } from "./DesktopActionCard";
 import type { ShellHostEmptyStateContent } from "./shellHostConfig";
+
+type ShellDesktopApp = {
+  appId: string;
+  name: string;
+  activeVersion?: {
+    versionNumber: number;
+  } | null;
+  templateSourceStatus?: string | null;
+};
 
 type ShellHostSurfaceProps = {
   content: ShellHostEmptyStateContent;
+  apps: ShellDesktopApp[];
+  selectedAppId: string | null;
   canCreateApp?: boolean;
   onAppCreated?: () => void;
   onOpenApps: () => void;
+  onSelectApp: (appId: string) => void;
 };
 
 export function ShellHostSurface(props: ShellHostSurfaceProps) {
-  const { content, canCreateApp = false, onAppCreated, onOpenApps } = props;
+  const { content, apps, selectedAppId, canCreateApp = false, onAppCreated, onOpenApps, onSelectApp } =
+    props;
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [appName, setAppName] = useState("");
   const [createPending, setCreatePending] = useState(false);
@@ -64,30 +79,16 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
             className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.08),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_22%)]"
             aria-hidden="true"
           />
-          <div className="relative">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-200/60">
-              {content.eyebrow}
-            </p>
-            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-              {content.title}
-            </h2>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">{content.body}</p>
-
-            <div className="mt-5 grid gap-2 sm:grid-cols-2">
-              {content.steps.map((step, index) => (
-                <div
-                  key={`${index}-${step}`}
-                  className="rounded-[1.1rem] border border-white/8 bg-black/20 px-4 py-3"
+          <div className="relative mx-auto flex h-full w-full max-w-6xl flex-col">
+            <div className="flex items-start justify-between gap-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-200/60">
+                <span
+                  className="text-2xl font-normal tracking-[0.12em] text-cyan-200/80"
+                  style={{ fontFamily: "var(--font-display)" }}
                 >
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    Step {index + 1}
-                  </p>
-                  <p className="mt-1.5 text-sm leading-5 text-slate-200">{step}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-5 flex flex-wrap gap-2">
+                  {content.eyebrow}
+                </span>
+              </p>
               {canCreateApp ? (
                 <button
                   type="button"
@@ -95,18 +96,40 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                     setCreateError(null);
                     setCreateModalOpen(true);
                   }}
-                  className="inline-flex h-9 items-center justify-center rounded-xl bg-cyan-300 px-3.5 text-sm font-medium text-black transition-colors hover:bg-cyan-200"
+                  aria-label="Create app"
+                  title="Create app"
+                  className="inline-flex h-10 w-10 items-center justify-center border border-white/10 bg-white/6 text-slate-100 transition-colors hover:bg-white/10"
                 >
-                  Create app
+                  <Plus className="size-4" />
                 </button>
               ) : null}
-              <button
-                type="button"
-                onClick={onOpenApps}
-                className="inline-flex h-9 items-center justify-center rounded-xl bg-white px-3.5 text-sm font-medium text-black transition-colors hover:bg-slate-200"
-              >
-                Open apps
-              </button>
+            </div>
+
+            <div className="mt-8 grid gap-4 lg:grid-cols-2">
+              {apps.map((app) => {
+                const isSelected = selectedAppId === app.appId;
+                const versionLabel =
+                  typeof app.activeVersion?.versionNumber === "number"
+                    ? `v${app.activeVersion.versionNumber}`
+                    : "No versions yet";
+                const sourceStatus = app.templateSourceStatus ?? "unknown";
+                return (
+                  <DesktopActionCard
+                    key={app.appId}
+                    eyebrow={isSelected ? "Mounted app" : "App"}
+                    title={app.name || app.appId}
+                    description={`Open ${app.appId} on the Softbox desktop and continue editing from its mounted runtime.`}
+                    detail={`Template source: ${sourceStatus} · Active version: ${versionLabel}`}
+                    accentClassName={
+                      isSelected
+                        ? "from-cyan-300/40 via-sky-300/15 to-transparent"
+                        : "from-fuchsia-300/30 via-rose-300/12 to-transparent"
+                    }
+                    onClick={() => onSelectApp(app.appId)}
+                    actions={[]}
+                  />
+                );
+              })}
             </div>
           </div>
         </div>
