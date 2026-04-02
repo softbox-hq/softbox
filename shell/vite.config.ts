@@ -1,7 +1,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { cpus, freemem, hostname, platform, release, totalmem, arch } from "node:os";
 import { Socket } from "node:net";
 import { defineConfig } from "vite";
@@ -40,6 +40,10 @@ const idleOnboardSession = (): OpenClawOnboardSession => ({
   authChoice: null,
   command: null,
   logs: [],
+  authUrl: null,
+  awaitingInput: false,
+  inputPrompt: null,
+  logFilePath: null,
   error: null,
   exitCode: null,
 });
@@ -63,6 +67,23 @@ let openClawGatewayRuntime: MutableGatewayRuntime = {
   ...idleGatewayRuntime(),
   child: null,
 };
+
+function serializeOnboardSession(): OpenClawOnboardSession {
+  return {
+    status: openClawOnboardSession.status,
+    startedAt: openClawOnboardSession.startedAt,
+    endedAt: openClawOnboardSession.endedAt,
+    authChoice: openClawOnboardSession.authChoice,
+    command: openClawOnboardSession.command,
+    logs: openClawOnboardSession.logs,
+    authUrl: openClawOnboardSession.authUrl,
+    awaitingInput: openClawOnboardSession.awaitingInput,
+    inputPrompt: openClawOnboardSession.inputPrompt,
+    logFilePath: openClawOnboardSession.logFilePath,
+    error: openClawOnboardSession.error,
+    exitCode: openClawOnboardSession.exitCode,
+  };
+}
 
 async function readEnvFileSource(filePath: string) {
   if (!existsSync(filePath)) {
@@ -229,20 +250,122 @@ function summarizeDevicePayload(payload: unknown) {
   };
 }
 
+function normalizeSessionLine(line: string) {
+  const normalized = line
+    .replace(/^([│┆┃])\s*/u, "")
+    .replace(/\s*([│┆┃])$/u, "")
+    .replace(/^[◇◆◓◐◑◒■□▪▸▹▻►]\s*/u, "")
+    .replace(/[─╮╯╰╭┐┘└┌]+$/u, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized || normalized === "_") {
+    return null;
+  }
+
+  if (/^[│┆┃─╮╯╰╭┐┘└┌\s]+$/u.test(normalized)) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function shouldKeepSessionLine(line: string) {
+  if (/^Open:\s*https:\/\/\S+$/i.test(line)) {
+    return true;
+  }
+  if (/^Paste the authorization code \(or full redirect URL\):$/i.test(line)) {
+    return true;
+  }
+
+  const compact = line.replace(/\s+/g, "");
+  if (!compact) {
+    return false;
+  }
+  if (/^[a-z0-9]$/i.test(compact)) {
+    return false;
+  }
+  if (/^(?:\.\.\.|…)+$/u.test(compact)) {
+    return false;
+  }
+  if (/^[\[\]();:.0-9a-fm]+$/i.test(compact)) {
+    return false;
+  }
+
+  return true;
+}
+
+function sanitizeTerminalOutput(chunk: string) {
+  return chunk
+    .replace(/\u001B\][^\u0007]*(?:\u0007|\u001B\\)/g, "")
+    .replace(/\u001B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "")
+    .replace(/\r/g, "\n")
+    .replace(/\u0008/g, "")
+    .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, "");
+}
+
 function appendSessionLog(chunk: string) {
-  const nextLogs = `${openClawOnboardSession.logs.join("\n")}\n${chunk}`
+  const sanitized = sanitizeTerminalOutput(chunk);
+  const nextLines = sanitized
     .split(/\r?\n/)
-    .map((line) => line.trimEnd())
-    .filter((line) => line.length > 0);
+    .map((line) => normalizeSessionLine(line))
+    .filter((line): line is string => Boolean(line))
+    .filter((line) => shouldKeepSessionLine(line));
+
+  if (nextLines.length === 0) {
+    return;
+  }
+
+  for (const line of nextLines) {
+    const authUrlMatch = line.match(/^Open:\s*(https:\/\/\S+)$/i);
+    if (authUrlMatch) {
+      openClawOnboardSession.authUrl = authUrlMatch[1];
+    }
+    if (/^Paste the authorization code \(or full redirect URL\):$/i.test(line)) {
+      openClawOnboardSession.awaitingInput = true;
+      openClawOnboardSession.inputPrompt = line;
+    }
+  }
+
+  if (openClawOnboardSession.logFilePath) {
+    void appendFile(openClawOnboardSession.logFilePath, `${nextLines.join("\n")}\n`, "utf8");
+  }
+
+  const nextLogs: string[] = [...openClawOnboardSession.logs];
+  for (const line of nextLines) {
+    if (nextLogs[nextLogs.length - 1] !== line) {
+      nextLogs.push(line);
+    }
+  }
   openClawOnboardSession.logs = nextLogs.slice(-200);
 }
 
 function appendGatewayRuntimeLog(chunk: string) {
-  const nextLogs = `${openClawGatewayRuntime.logs.join("\n")}\n${chunk}`
+  const nextLogs = `${openClawGatewayRuntime.logs.join("\n")}\n${sanitizeTerminalOutput(chunk)}`
     .split(/\r?\n/)
     .map((line) => line.trimEnd())
     .filter((line) => line.length > 0);
   openClawGatewayRuntime.logs = nextLogs.slice(-200);
+}
+
+function maskCommandArgs(args: string[]) {
+  const masked: string[] = [];
+  const secretFlags = new Set(["--gateway-token", "--token", "--openai-api-key"]);
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    masked.push(arg);
+    if (secretFlags.has(arg) && index + 1 < args.length) {
+      masked.push("***");
+      index += 1;
+    }
+  }
+
+  return masked.join(" ");
+}
+
+function shellQuote(value: string) {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 async function waitForGatewayReachable(gatewayBaseUrl: string | null, timeoutMs = 6_000) {
@@ -320,6 +443,40 @@ function startOpenClawGatewayRuntime(args: { gatewayPort: string; gatewayToken: 
   });
 
   return child;
+}
+
+async function stopOpenClawGatewayRuntime() {
+  if (openClawGatewayRuntime.child && openClawGatewayRuntime.status === "running") {
+    openClawGatewayRuntime.child.kill("SIGTERM");
+  }
+
+  try {
+    await runExecFile("systemctl", ["--user", "stop", "openclaw-gateway.service"]);
+  } catch {
+    // Ignore: the gateway may not be managed by systemd on this machine.
+  }
+
+  try {
+    const gatewayPort = String((await buildOpenClawStatus()).config.gatewayPort ?? 18789);
+    const { stdout } = await runExecFile("lsof", ["-ti", `tcp:${gatewayPort}`]);
+    const pids = stdout
+      .trim()
+      .split(/\s+/)
+      .map((pid) => Number(pid))
+      .filter((pid) => Number.isInteger(pid) && pid > 0);
+
+    for (const pid of pids) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // Ignore processes that exit between lsof and kill.
+      }
+    }
+  } catch {
+    // Ignore if there is no listener on the gateway port.
+  }
+
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
 }
 
 async function ensureOpenClawGatewayAvailable(status: OpenClawStatus, gatewayToken: string | null) {
@@ -514,16 +671,7 @@ async function buildOpenClawStatus(): Promise<OpenClawStatus> {
       error: openClawGatewayRuntime.error,
       exitCode: openClawGatewayRuntime.exitCode,
     },
-    onboardSession: {
-      status: openClawOnboardSession.status,
-      startedAt: openClawOnboardSession.startedAt,
-      endedAt: openClawOnboardSession.endedAt,
-      authChoice: openClawOnboardSession.authChoice,
-      command: openClawOnboardSession.command,
-      logs: openClawOnboardSession.logs,
-      error: openClawOnboardSession.error,
-      exitCode: openClawOnboardSession.exitCode,
-    },
+    onboardSession: serializeOnboardSession(),
   };
 }
 
@@ -897,12 +1045,8 @@ export default defineConfig({
               "config",
               "set",
               "gateway.auth.token",
-              "--ref-provider",
-              "default",
-              "--ref-source",
-              "env",
-              "--ref-id",
-              "OPENCLAW_GATEWAY_TOKEN",
+              JSON.stringify(token),
+              "--strict-json",
             ]);
             await runExecFile("openclaw", [
               "config",
@@ -915,12 +1059,8 @@ export default defineConfig({
               "config",
               "set",
               "gateway.remote.token",
-              "--ref-provider",
-              "default",
-              "--ref-source",
-              "env",
-              "--ref-id",
-              "OPENCLAW_GATEWAY_TOKEN",
+              JSON.stringify(token),
+              "--strict-json",
             ]);
 
             await updateLocalEnv({
@@ -977,12 +1117,15 @@ export default defineConfig({
             writeJson(res, 405, { ok: false, error: "Method not allowed" });
             return;
           }
-          if (!openClawGatewayRuntime.child || openClawGatewayRuntime.status !== "running") {
-            writeJson(res, 409, { ok: false, error: "OpenClaw gateway is not running." });
-            return;
+          try {
+            await stopOpenClawGatewayRuntime();
+            writeJson(res, 200, { ok: true, status: await buildOpenClawStatus() });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
-          openClawGatewayRuntime.child.kill("SIGTERM");
-          writeJson(res, 200, { ok: true, status: await buildOpenClawStatus() });
         });
 
         server.middlewares.use("/__softbox/openclaw/onboard/start", async (req, res) => {
@@ -1004,65 +1147,102 @@ export default defineConfig({
               String(payload.gatewayBaseUrl ?? process.env.OPENCLAW_GATEWAY_BASE_URL ?? "").trim() ||
               "http://127.0.0.1:18789";
             const gatewayToken =
-              String(payload.gatewayToken ?? process.env.OPENCLAW_GATEWAY_TOKEN ?? "").trim();
+              normalizeEnvValue(payload.gatewayToken as string | undefined) ??
+              normalizeEnvValue(process.env.OPENCLAW_GATEWAY_TOKEN);
             const gatewayPort = parseGatewayPort(gatewayBaseUrl);
-            const args = [
-              "onboard",
-              "--json",
-              "--non-interactive",
-              "--accept-risk",
-              "--mode",
-              "local",
-              "--flow",
-              "manual",
-              "--skip-ui",
-              "--skip-daemon",
-              "--skip-health",
-              "--skip-search",
-              "--skip-skills",
-              "--skip-channels",
-              "--workspace",
-              projectRoot,
-              "--gateway-auth",
-              "token",
-              "--gateway-token",
-              gatewayToken,
-              "--gateway-token-ref-env",
-              "OPENCLAW_GATEWAY_TOKEN",
-              "--auth-choice",
-              authChoice,
-            ];
+            const useBrowserOAuth = authChoice === "oauth" || authChoice === "openai-codex";
+            let args: string[];
 
-            if (!gatewayToken) {
-              writeJson(res, 400, {
-                ok: false,
-                error: "Save the OpenClaw gateway token before starting auth.",
-              });
-              return;
-            }
-            await ensureOpenClawGatewayAvailable(await buildOpenClawStatus(), gatewayToken);
-            if (gatewayPort) {
-              args.push("--gateway-port", gatewayPort);
-            }
-            if (authChoice === "openai-api-key") {
-              if (!providerSecret) {
-                writeJson(res, 400, { ok: false, error: "OpenAI API key is required for this auth mode." });
+            if (useBrowserOAuth) {
+              args = [
+                "models",
+                "auth",
+                "login",
+                "--provider",
+                "openai-codex",
+                "--method",
+                "oauth",
+                "--set-default",
+              ];
+            } else {
+              if (!gatewayToken) {
+                writeJson(res, 400, {
+                  ok: false,
+                  error: "Save the OpenClaw gateway token before starting auth.",
+                });
                 return;
               }
-              args.push("--openai-api-key", providerSecret);
-            } else if (authChoice === "token") {
-              if (!providerSecret) {
-                writeJson(res, 400, { ok: false, error: "Provider token is required for token auth." });
-                return;
+
+              args = [
+                "onboard",
+                "--json",
+                "--non-interactive",
+                "--accept-risk",
+                "--mode",
+                "local",
+                "--flow",
+                "manual",
+                "--skip-ui",
+                "--skip-daemon",
+                "--skip-health",
+                "--skip-search",
+                "--skip-skills",
+                "--skip-channels",
+                "--workspace",
+                projectRoot,
+                "--gateway-auth",
+                "token",
+                "--gateway-token",
+                gatewayToken,
+                "--gateway-token-ref-env",
+                "OPENCLAW_GATEWAY_TOKEN",
+                "--auth-choice",
+                authChoice,
+              ];
+
+              await ensureOpenClawGatewayAvailable(await buildOpenClawStatus(), gatewayToken);
+              if (gatewayPort) {
+                args.push("--gateway-port", gatewayPort);
               }
-              args.push("--token-provider", tokenProvider, "--token", providerSecret);
+              if (authChoice === "openai-api-key") {
+                if (!providerSecret) {
+                  writeJson(res, 400, {
+                    ok: false,
+                    error: "OpenAI API key is required for this auth mode.",
+                  });
+                  return;
+                }
+                args.push("--openai-api-key", providerSecret);
+              } else if (authChoice === "token") {
+                if (!providerSecret) {
+                  writeJson(res, 400, { ok: false, error: "Provider token is required for token auth." });
+                  return;
+                }
+                args.push("--token-provider", tokenProvider, "--token", providerSecret);
+              }
             }
 
-            const child = spawn("openclaw", args, {
-              cwd: projectRoot,
-              env: process.env,
-              stdio: ["ignore", "pipe", "pipe"],
-            });
+            const logFilePath = resolve(
+              "/tmp",
+              `softbox-openclaw-onboard-${Date.now()}-${randomBytes(6).toString("hex")}.log`,
+            );
+            await writeFile(logFilePath, "", "utf8");
+
+            const child = useBrowserOAuth
+              ? spawn(
+                  "script",
+                  ["-q", "-e", "-f", "-c", `openclaw ${args.map(shellQuote).join(" ")}`, "/dev/null"],
+                  {
+                    cwd: projectRoot,
+                    env: process.env,
+                    stdio: ["pipe", "pipe", "pipe"],
+                  },
+                )
+              : spawn("openclaw", args, {
+                  cwd: projectRoot,
+                  env: process.env,
+                  stdio: ["pipe", "pipe", "pipe"],
+                });
 
             openClawOnboardSession = {
               child,
@@ -1070,8 +1250,12 @@ export default defineConfig({
               startedAt: Date.now(),
               endedAt: null,
               authChoice,
-              command: `openclaw ${args.join(" ")}`,
+              command: `openclaw ${maskCommandArgs(args)}`,
               logs: [],
+              authUrl: null,
+              awaitingInput: false,
+              inputPrompt: null,
+              logFilePath,
               error: null,
               exitCode: null,
             };
@@ -1082,11 +1266,15 @@ export default defineConfig({
               openClawOnboardSession.status = "failed";
               openClawOnboardSession.error = error.message;
               openClawOnboardSession.endedAt = Date.now();
+              openClawOnboardSession.awaitingInput = false;
+              openClawOnboardSession.inputPrompt = null;
               openClawOnboardSession.child = null;
             });
             child.on("exit", (code, signal) => {
               openClawOnboardSession.exitCode = code ?? null;
               openClawOnboardSession.endedAt = Date.now();
+              openClawOnboardSession.awaitingInput = false;
+              openClawOnboardSession.inputPrompt = null;
               openClawOnboardSession.child = null;
               if (signal === "SIGTERM") {
                 openClawOnboardSession.status = "cancelled";
@@ -1104,17 +1292,63 @@ export default defineConfig({
 
             writeJson(res, 200, {
               ok: true,
-              session: {
-                status: openClawOnboardSession.status,
-                startedAt: openClawOnboardSession.startedAt,
-                endedAt: openClawOnboardSession.endedAt,
-                authChoice: openClawOnboardSession.authChoice,
-                command: openClawOnboardSession.command,
-                logs: openClawOnboardSession.logs,
-                error: openClawOnboardSession.error,
-                exitCode: openClawOnboardSession.exitCode,
-              },
+              session: serializeOnboardSession(),
             });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        });
+
+        server.middlewares.use("/__softbox/openclaw/onboard/submit", async (req, res) => {
+          if (req.method !== "POST") {
+            writeJson(res, 405, { ok: false, error: "Method not allowed" });
+            return;
+          }
+          if (!openClawOnboardSession.child || openClawOnboardSession.status !== "running") {
+            writeJson(res, 409, { ok: false, error: "No running OpenClaw onboard session." });
+            return;
+          }
+          if (!openClawOnboardSession.child.stdin || openClawOnboardSession.child.stdin.destroyed) {
+            writeJson(res, 409, { ok: false, error: "The current OpenClaw session cannot accept input." });
+            return;
+          }
+
+          try {
+            const payload = await readJsonBody(req);
+            const value = String(payload.value ?? "").trim();
+            if (!value) {
+              writeJson(res, 400, { ok: false, error: "Paste the authorization code or redirect URL first." });
+              return;
+            }
+
+            await new Promise<void>((resolvePromise, rejectPromise) => {
+              openClawOnboardSession.child?.stdin?.write(`${value}\n`, (error) => {
+                if (error) {
+                  rejectPromise(error);
+                  return;
+                }
+                resolvePromise();
+              });
+            });
+
+            openClawOnboardSession.awaitingInput = false;
+            openClawOnboardSession.inputPrompt = null;
+            openClawOnboardSession.logs = [
+              ...openClawOnboardSession.logs,
+              "[softbox] Submitted OAuth callback input.",
+            ].slice(-200);
+            if (openClawOnboardSession.logFilePath) {
+              await appendFile(
+                openClawOnboardSession.logFilePath,
+                "[softbox] Submitted OAuth callback input.\n",
+                "utf8",
+              );
+            }
+
+            writeJson(res, 200, { ok: true, session: serializeOnboardSession() });
           } catch (error) {
             writeJson(res, 500, {
               ok: false,

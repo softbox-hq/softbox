@@ -27,6 +27,16 @@ type ShellHostSurfaceProps = {
   onSelectApp: (appId: string) => void;
 };
 
+function extractOpenClawAuthUrl(logs: string[]) {
+  for (const line of logs) {
+    const match = line.match(/Open:\s*(https:\/\/\S+)/i);
+    if (match) {
+      return match[1];
+    }
+  }
+  return null;
+}
+
 export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const { content, apps, selectedAppId, canCreateApp = false, onAppCreated, onOpenApps, onSelectApp } =
     props;
@@ -52,10 +62,14 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const [authChoice, setAuthChoice] = useState("oauth");
   const [providerSecret, setProviderSecret] = useState("");
   const [tokenProvider, setTokenProvider] = useState("openai-codex");
+  const [oauthCallbackInput, setOauthCallbackInput] = useState("");
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
   const [serverInfoError, setServerInfoError] = useState<string | null>(null);
 
   const normalizedAppName = appName.trim().toLowerCase();
+  const openClawAuthUrl =
+    openClawStatus?.onboardSession.authUrl ??
+    extractOpenClawAuthUrl(openClawStatus?.onboardSession.logs ?? []);
   const canSubmit =
     normalizedAppName.length > 0 &&
     /^[a-z0-9][a-z0-9-]*$/.test(normalizedAppName) &&
@@ -268,6 +282,34 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
         throw new Error(payload?.error ?? `Request failed with ${response.status}`);
       }
       setProviderSecret("");
+      setOauthCallbackInput("");
+      await loadOpenClawStatus({ silent: true });
+    } catch (error) {
+      setOpenClawError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOpenClawActionPending(null);
+    }
+  }
+
+  async function submitOpenClawOnboardInput() {
+    setOpenClawActionPending("submit-oauth");
+    try {
+      const response = await fetch("/__softbox/openclaw/onboard/submit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          value: oauthCallbackInput,
+        }),
+      });
+      const payload = (await response.json()) as
+        | { ok?: boolean; error?: string; session?: OpenClawStatus["onboardSession"] }
+        | undefined;
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+      setOauthCallbackInput("");
       await loadOpenClawStatus({ silent: true });
     } catch (error) {
       setOpenClawError(error instanceof Error ? error.message : String(error));
@@ -286,6 +328,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
       if (!response.ok || !payload?.ok) {
         throw new Error(payload?.error ?? `Request failed with ${response.status}`);
       }
+      setOauthCallbackInput("");
       await loadOpenClawStatus({ silent: true });
     } catch (error) {
       setOpenClawError(error instanceof Error ? error.message : String(error));
@@ -556,25 +599,22 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                       >
                         {openClawActionPending === "bootstrap" ? "Bootstrapping..." : "Auto setup gateway"}
                       </button>
-                      {openClawStatus?.gatewayRuntime.status === "running" ? (
-                        <button
-                          type="button"
-                          onClick={() => void stopOpenClawGateway()}
-                          disabled={openClawActionPending !== null}
-                          className="inline-flex h-9 items-center justify-center border border-rose-500/30 bg-rose-500/10 px-3.5 text-sm font-medium text-rose-100 transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {openClawActionPending === "stop-gateway" ? "Stopping..." : "Stop gateway"}
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => void startOpenClawGateway()}
-                          disabled={openClawActionPending !== null}
-                          className="inline-flex h-9 items-center justify-center border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:bg-black/20 disabled:text-slate-500"
-                        >
-                          {openClawActionPending === "start-gateway" ? "Starting..." : "Start gateway"}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => void stopOpenClawGateway()}
+                        disabled={openClawActionPending !== null}
+                        className="inline-flex h-9 items-center justify-center border border-rose-500/30 bg-rose-500/10 px-3.5 text-sm font-medium text-rose-100 transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {openClawActionPending === "stop-gateway" ? "Stopping..." : "Stop gateway"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void startOpenClawGateway()}
+                        disabled={openClawActionPending !== null}
+                        className="inline-flex h-9 items-center justify-center border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:bg-black/20 disabled:text-slate-500"
+                      >
+                        {openClawActionPending === "start-gateway" ? "Starting..." : "Start gateway"}
+                      </button>
                     </div>
 
                     <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -786,9 +826,8 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                       </p>
                       <h3 className="mt-2 text-lg font-semibold text-white">Run OpenClaw onboard</h3>
                       <p className="mt-2 text-sm leading-6 text-slate-300">
-                        This runs <code>openclaw onboard</code> locally from Softbox. The UI triggers the
-                        flow, auto-starts the local gateway when needed, and keeps credentials on this
-                        machine.
+                        Softbox runs local OpenClaw auth on this machine. OpenAI OAuth launches the
+                        browser login flow, while API key and token modes still use local CLI auth.
                       </p>
                     </div>
                     {openClawStatus?.onboardSession.status === "running" ? (
@@ -811,9 +850,8 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                         onChange={(event) => setAuthChoice(event.target.value)}
                         className="mt-2 h-11 w-full border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors focus:border-cyan-300/50"
                       >
-                        <option value="oauth">OAuth</option>
+                        <option value="oauth">OpenAI OAuth (browser)</option>
                         <option value="openai-api-key">OpenAI API key</option>
-                        <option value="openai-codex">OpenAI Codex CLI</option>
                         <option value="token">Manual provider token</option>
                       </select>
                     </label>
@@ -833,7 +871,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                           onChange={(event) => setProviderSecret(event.target.value)}
                           placeholder={
                             authChoice === "oauth"
-                              ? "No secret needed unless the provider asks for one"
+                              ? "Opens the browser login flow. No secret needed."
                               : authChoice === "openai-api-key"
                                 ? "Paste the OpenAI API key"
                                 : "Optional"
@@ -867,6 +905,47 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                       <p className="text-xs leading-5 text-slate-500">
                         {openClawStatus?.onboardSession.command ?? "No OpenClaw onboard command has run yet."}
                       </p>
+                      {openClawAuthUrl ? (
+                        <div className="space-y-2">
+                          <a
+                            href={openClawAuthUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex h-9 items-center justify-center bg-cyan-300 px-3.5 text-sm font-medium text-black transition-colors hover:bg-cyan-200"
+                          >
+                            Open OAuth URL
+                          </a>
+                          <p className="text-xs leading-5 text-slate-500">
+                            If OpenClaw falls back to manual paste, finish sign-in in the browser and paste
+                            the authorization code or full redirect URL below.
+                          </p>
+                        </div>
+                      ) : null}
+                      {openClawStatus?.onboardSession.awaitingInput ? (
+                        <div className="space-y-3 border border-white/10 bg-black/20 p-3">
+                          <p className="text-xs leading-5 text-slate-300">
+                            {openClawStatus.onboardSession.inputPrompt ??
+                              "Paste the authorization code or full redirect URL."}
+                          </p>
+                          <textarea
+                            value={oauthCallbackInput}
+                            onChange={(event) => setOauthCallbackInput(event.target.value)}
+                            rows={3}
+                            className="w-full border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50"
+                            placeholder="Paste the authorization code or full redirect URL"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void submitOpenClawOnboardInput()}
+                            disabled={openClawActionPending !== null || oauthCallbackInput.trim().length === 0}
+                            className="inline-flex h-9 items-center justify-center bg-cyan-300 px-3.5 text-sm font-medium text-black transition-colors hover:bg-cyan-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                          >
+                            {openClawActionPending === "submit-oauth"
+                              ? "Submitting..."
+                              : "Submit auth code"}
+                          </button>
+                        </div>
+                      ) : null}
                       {openClawStatus?.onboardSession.error ? (
                         <p className="text-xs leading-5 text-rose-300">{openClawStatus.onboardSession.error}</p>
                       ) : null}

@@ -36,6 +36,10 @@ export type OpenClawOnboardSession = {
   authChoice: string | null;
   command: string | null;
   logs: string[];
+  authUrl: string | null;
+  awaitingInput: boolean;
+  inputPrompt: string | null;
+  logFilePath: string | null;
   error: string | null;
   exitCode: number | null;
 };
