@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { cpus, freemem, hostname, platform, release, totalmem, arch } from "node:os";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
@@ -105,6 +106,46 @@ export default defineConfig({
                 }),
               );
             });
+          });
+        });
+
+        server.middlewares.use("/__softbox/server-info", (_req, res) => {
+          execFile("df", ["-k", "."], { cwd: resolve(import.meta.dirname, "..") }, (error, stdout) => {
+            let diskTotalGb: number | null = null;
+            let diskFreeGb: number | null = null;
+
+            if (!error) {
+              const lines = stdout.trim().split("\n");
+              const parts = lines[lines.length - 1]?.trim().split(/\s+/) ?? [];
+              if (parts.length >= 4) {
+                const totalKb = Number(parts[1]);
+                const freeKb = Number(parts[3]);
+                if (!Number.isNaN(totalKb) && !Number.isNaN(freeKb)) {
+                  diskTotalGb = totalKb / 1024 / 1024;
+                  diskFreeGb = freeKb / 1024 / 1024;
+                }
+              }
+            }
+
+            const cpuList = cpus();
+            const cpuModel = cpuList[0]?.model ?? "Unknown CPU";
+            const payload = {
+              hostname: hostname(),
+              platform: platform(),
+              release: release(),
+              arch: arch(),
+              cpuModel,
+              cpuCores: cpuList.length,
+              totalMemoryGb: totalmem() / 1024 / 1024 / 1024,
+              freeMemoryGb: freemem() / 1024 / 1024 / 1024,
+              diskTotalGb,
+              diskFreeGb,
+              nodeVersion: process.version,
+            };
+
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify(payload));
           });
         });
       },

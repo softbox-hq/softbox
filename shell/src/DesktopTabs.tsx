@@ -1,4 +1,4 @@
-type DesktopTabId = "apps" | "system";
+type DesktopTabId = "apps" | "services" | "server";
 
 type DesktopTabsProps = {
   activeTab: DesktopTabId;
@@ -7,7 +7,8 @@ type DesktopTabsProps = {
 
 const desktopTabs: Array<{ id: DesktopTabId; label: string }> = [
   { id: "apps", label: "Apps" },
-  { id: "system", label: "System" },
+  { id: "services", label: "Services" },
+  { id: "server", label: "Server" },
 ];
 
 export function DesktopTabs(props: DesktopTabsProps) {

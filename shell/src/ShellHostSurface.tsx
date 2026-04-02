@@ -2,7 +2,9 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { DesktopActionCard } from "./DesktopActionCard";
 import { DesktopTabs } from "./DesktopTabs";
+import type { ServerInfo } from "./serverInfo";
 import type { ShellHostEmptyStateContent } from "./shellHostConfig";
+import { systemServices } from "./systemServices";
 
 type ShellDesktopApp = {
   appId: string;
@@ -26,11 +28,13 @@ type ShellHostSurfaceProps = {
 export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const { content, apps, selectedAppId, canCreateApp = false, onAppCreated, onOpenApps, onSelectApp } =
     props;
-  const [activeTab, setActiveTab] = useState<"apps" | "system">("apps");
+  const [activeTab, setActiveTab] = useState<"apps" | "services" | "server">("apps");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [appName, setAppName] = useState("");
   const [createPending, setCreatePending] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
+  const [serverInfoError, setServerInfoError] = useState<string | null>(null);
 
   const normalizedAppName = appName.trim().toLowerCase();
   const canSubmit =
@@ -70,6 +74,17 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
       setCreateError(error instanceof Error ? error.message : String(error));
     } finally {
       setCreatePending(false);
+    }
+  }
+
+  async function loadServerInfo() {
+    try {
+      const response = await fetch("/__softbox/server-info", { cache: "no-store" });
+      const payload = (await response.json()) as ServerInfo;
+      setServerInfo(payload);
+      setServerInfoError(null);
+    } catch (error) {
+      setServerInfoError(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -137,16 +152,96 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                   );
                 })}
               </div>
-            ) : (
-              <div className="mt-8 max-w-xl border border-white/10 bg-black/20 p-5">
-                <p className="text-sm leading-6 text-slate-300">
-                  This desktop shows the apps available in this Softbox instance. Use the
-                  <span className="px-1 text-white">Apps</span>
-                  tab to mount an existing app, or use the plus button to create a new one.
-                </p>
-                <div className="mt-4 text-xs text-slate-500">
-                  Installed apps: {apps.length}
+            ) : activeTab === "services" ? (
+              <div className="mt-8 overflow-hidden border border-white/10 bg-[#0b0f13]/88">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-white/10 text-sm">
+                    <thead className="bg-white/[0.03]">
+                      <tr>
+                        <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium text-slate-400">
+                          Service
+                        </th>
+                        <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium text-slate-400">
+                          Role
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">
+                          Detail
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-white/6">
+                      {systemServices.map((service) => (
+                        <tr key={service.name} className="bg-black/10">
+                          <td className="whitespace-nowrap px-4 py-3 font-medium text-white">
+                            {service.name}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-slate-300">
+                            {service.role}
+                          </td>
+                          <td className="px-4 py-3 text-slate-400">{service.detail}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
+              </div>
+            ) : (
+              <div className="mt-8 space-y-4">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void loadServerInfo()}
+                    className="inline-flex h-9 items-center justify-center border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
+                  >
+                    Refresh server
+                  </button>
+                </div>
+
+                {serverInfoError ? (
+                  <div className="max-w-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+                    {serverInfoError}
+                  </div>
+                ) : null}
+
+                {serverInfo ? (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {[
+                      { label: "Host", value: serverInfo.hostname },
+                      { label: "OS", value: `${serverInfo.platform} ${serverInfo.release}` },
+                      { label: "Architecture", value: serverInfo.arch },
+                      { label: "CPU", value: `${serverInfo.cpuModel} (${serverInfo.cpuCores} cores)` },
+                      {
+                        label: "RAM",
+                        value: `${serverInfo.freeMemoryGb.toFixed(1)} GB free / ${serverInfo.totalMemoryGb.toFixed(1)} GB total`,
+                      },
+                      {
+                        label: "Disk",
+                        value:
+                          serverInfo.diskTotalGb !== null && serverInfo.diskFreeGb !== null
+                            ? `${serverInfo.diskFreeGb.toFixed(1)} GB free / ${serverInfo.diskTotalGb.toFixed(1)} GB total`
+                            : "Unavailable",
+                      },
+                      { label: "Node", value: serverInfo.nodeVersion },
+                    ].map((item) => (
+                      <article key={item.label} className="border border-white/10 bg-black/20 p-4">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          {item.label}
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-slate-200">{item.value}</p>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="max-w-xl border border-white/10 bg-black/20 p-5">
+                    <p className="text-sm leading-6 text-slate-300">
+                      Load the server view to inspect the current Softbox machine.
+                    </p>
+                    <p className="mt-3 text-xs leading-5 text-slate-500">
+                      This includes host name, OS version, CPU, RAM, disk, and Node runtime.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>
