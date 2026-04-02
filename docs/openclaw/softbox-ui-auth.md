@@ -203,28 +203,14 @@ So the current state is:
 - config is correct
 - the gateway runtime is not yet healthy
 
-## Practical Next Step
-
-If the machine does not have working user `systemd`, the next reliable step is to run the gateway in foreground mode:
-
-```bash
-openclaw gateway run --port 18789 --token "$OPENCLAW_GATEWAY_TOKEN"
-```
-
-That is the right next thing to wire into Softbox if the desktop should fully own local gateway lifecycle as well.
-
 ## Summary
 
 What Softbox now does:
 
 - discovers OpenClaw local config from `~/.openclaw`
 - bootstraps gateway config from the UI
+- starts and stops the local OpenClaw gateway from the UI when needed
 - mirrors worker env into `.env.local`
 - runs local auth from the UI
+- auto-starts the local gateway before `openclaw onboard` when local gateway mode is configured
 - exposes pairing approval and agent sync from the UI
-
-What is still not automatic yet:
-
-- starting and stopping the actual local gateway process from the UI
-
-That is the remaining operational gap on machines where the OpenClaw service is not already running.

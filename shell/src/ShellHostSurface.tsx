@@ -755,7 +755,8 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                       </p>
                       <h3 className="mt-2 text-lg font-semibold text-white">Local gateway process</h3>
                       <p className="mt-2 text-sm leading-6 text-slate-300">
-                        Start the local OpenClaw gateway from Softbox when no system service is available.
+                        Softbox can start the local OpenClaw gateway itself, and the auth flow will do
+                        that automatically when local gateway mode is configured.
                       </p>
                     </div>
                     <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${statusTone(openClawStatus?.gatewayRuntime.status === "completed" ? "healthy" : openClawStatus?.gatewayRuntime.status === "running" ? "warning" : openClawStatus?.gatewayRuntime.status === "failed" ? "error" : "unknown")}`}>
@@ -786,7 +787,8 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                       <h3 className="mt-2 text-lg font-semibold text-white">Run OpenClaw onboard</h3>
                       <p className="mt-2 text-sm leading-6 text-slate-300">
                         This runs <code>openclaw onboard</code> locally from Softbox. The UI triggers the
-                        flow, but credentials stay on this machine.
+                        flow, auto-starts the local gateway when needed, and keeps credentials on this
+                        machine.
                       </p>
                     </div>
                     {openClawStatus?.onboardSession.status === "running" ? (
@@ -847,7 +849,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                         disabled={openClawActionPending !== null || openClawStatus?.onboardSession.status === "running"}
                         className="inline-flex h-11 w-full items-center justify-center bg-cyan-300 px-3.5 text-sm font-medium text-black transition-colors hover:bg-cyan-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
                       >
-                        {openClawActionPending === "onboard" ? "Starting..." : "Run auth"}
+                        {openClawActionPending === "onboard" ? "Starting..." : "Run auth flow"}
                       </button>
                     </div>
                   </div>

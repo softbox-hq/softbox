@@ -245,6 +245,121 @@ function appendGatewayRuntimeLog(chunk: string) {
   openClawGatewayRuntime.logs = nextLogs.slice(-200);
 }
 
+async function waitForGatewayReachable(gatewayBaseUrl: string | null, timeoutMs = 6_000) {
+  if (!gatewayBaseUrl) {
+    return false;
+  }
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    try {
+      const response = await fetch(gatewayBaseUrl, { method: "GET" });
+      if (response.status < 500) {
+        return true;
+      }
+    } catch {
+      // Keep polling until the timeout expires.
+    }
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 250));
+  }
+  return false;
+}
+
+function startOpenClawGatewayRuntime(args: { gatewayPort: string; gatewayToken: string }) {
+  if (openClawGatewayRuntime.child && openClawGatewayRuntime.status === "running") {
+    return openClawGatewayRuntime.child;
+  }
+
+  const child = spawn(
+    "openclaw",
+    ["gateway", "run", "--port", args.gatewayPort, "--token", args.gatewayToken],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        OPENCLAW_GATEWAY_TOKEN: args.gatewayToken,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  openClawGatewayRuntime = {
+    child,
+    status: "running",
+    startedAt: Date.now(),
+    endedAt: null,
+    command: `openclaw gateway run --port ${args.gatewayPort} --token ***`,
+    logs: [],
+    error: null,
+    exitCode: null,
+  };
+
+  child.stdout.on("data", (chunk) => appendGatewayRuntimeLog(chunk.toString()));
+  child.stderr.on("data", (chunk) => appendGatewayRuntimeLog(chunk.toString()));
+  child.on("error", (error) => {
+    openClawGatewayRuntime.status = "failed";
+    openClawGatewayRuntime.error = error.message;
+    openClawGatewayRuntime.endedAt = Date.now();
+    openClawGatewayRuntime.child = null;
+  });
+  child.on("exit", (code, signal) => {
+    openClawGatewayRuntime.exitCode = code ?? null;
+    openClawGatewayRuntime.endedAt = Date.now();
+    openClawGatewayRuntime.child = null;
+    if (signal === "SIGTERM") {
+      openClawGatewayRuntime.status = "cancelled";
+      return;
+    }
+    if ((code ?? 1) === 0) {
+      openClawGatewayRuntime.status = "completed";
+      return;
+    }
+    openClawGatewayRuntime.status = "failed";
+    openClawGatewayRuntime.error =
+      openClawGatewayRuntime.logs[openClawGatewayRuntime.logs.length - 1] ??
+      `openclaw gateway run exited with code ${code ?? 1}`;
+  });
+
+  return child;
+}
+
+async function ensureOpenClawGatewayAvailable(status: OpenClawStatus, gatewayToken: string | null) {
+  if (status.gateway.status === "healthy" && status.devices.status !== "error") {
+    return status;
+  }
+  if (status.config.gatewayMode !== "local") {
+    throw new Error("OpenClaw gateway is unreachable. Softbox can only auto-start local gateway mode.");
+  }
+  if (!gatewayToken) {
+    throw new Error("OpenClaw gateway token is missing.");
+  }
+
+  const gatewayPort = String(status.config.gatewayPort ?? 18789);
+  if (!openClawGatewayRuntime.child || openClawGatewayRuntime.status !== "running") {
+    startOpenClawGatewayRuntime({
+      gatewayPort,
+      gatewayToken,
+    });
+  }
+
+  const reachable = await waitForGatewayReachable(status.config.gatewayBaseUrl);
+  if (!reachable) {
+    throw new Error(
+      openClawGatewayRuntime.error ??
+        "OpenClaw gateway did not become reachable after Softbox tried to start it.",
+    );
+  }
+
+  const refreshedStatus = await buildOpenClawStatus();
+  if (refreshedStatus.devices.status === "error") {
+    throw new Error(
+      refreshedStatus.devices.message ||
+        "OpenClaw gateway became reachable over HTTP, but the authenticated CLI path is still failing.",
+    );
+  }
+
+  return refreshedStatus;
+}
+
 async function buildOpenClawStatus(): Promise<OpenClawStatus> {
   const checkedAt = Date.now();
   const envSource = await readEnvFileSource(envLocalPath);
@@ -305,7 +420,7 @@ async function buildOpenClawStatus(): Promise<OpenClawStatus> {
     try {
       const response = await fetch(gatewayBaseUrl, { method: "GET" });
       gateway = {
-        status: response.ok ? "healthy" : "warning",
+        status: response.status < 500 ? "healthy" : "warning",
         message: `Gateway responded with ${response.status}.`,
       };
     } catch (error) {
@@ -838,62 +953,16 @@ export default defineConfig({
             const gatewayToken =
               readEnvValue(await readEnvFileSource(envLocalPath), "OPENCLAW_GATEWAY_TOKEN") ??
               normalizeEnvValue(process.env.OPENCLAW_GATEWAY_TOKEN);
-            const gatewayPort = String(status.config.gatewayPort ?? 18789);
             if (!gatewayToken) {
               writeJson(res, 400, { ok: false, error: "OpenClaw gateway token is missing." });
               return;
             }
-
-            const child = spawn(
-              "openclaw",
-              ["gateway", "run", "--port", gatewayPort, "--token", gatewayToken],
-              {
-                cwd: projectRoot,
-                env: {
-                  ...process.env,
-                  OPENCLAW_GATEWAY_TOKEN: gatewayToken,
-                },
-                stdio: ["ignore", "pipe", "pipe"],
-              },
-            );
-
-            openClawGatewayRuntime = {
-              child,
-              status: "running",
-              startedAt: Date.now(),
-              endedAt: null,
-              command: `openclaw gateway run --port ${gatewayPort} --token ***`,
-              logs: [],
-              error: null,
-              exitCode: null,
-            };
-
-            child.stdout.on("data", (chunk) => appendGatewayRuntimeLog(chunk.toString()));
-            child.stderr.on("data", (chunk) => appendGatewayRuntimeLog(chunk.toString()));
-            child.on("error", (error) => {
-              openClawGatewayRuntime.status = "failed";
-              openClawGatewayRuntime.error = error.message;
-              openClawGatewayRuntime.endedAt = Date.now();
-              openClawGatewayRuntime.child = null;
+            const gatewayPort = String(status.config.gatewayPort ?? 18789);
+            startOpenClawGatewayRuntime({
+              gatewayPort,
+              gatewayToken,
             });
-            child.on("exit", (code, signal) => {
-              openClawGatewayRuntime.exitCode = code ?? null;
-              openClawGatewayRuntime.endedAt = Date.now();
-              openClawGatewayRuntime.child = null;
-              if (signal === "SIGTERM") {
-                openClawGatewayRuntime.status = "cancelled";
-                return;
-              }
-              if ((code ?? 1) === 0) {
-                openClawGatewayRuntime.status = "completed";
-                return;
-              }
-              openClawGatewayRuntime.status = "failed";
-              openClawGatewayRuntime.error =
-                openClawGatewayRuntime.logs[openClawGatewayRuntime.logs.length - 1] ??
-                `openclaw gateway run exited with code ${code ?? 1}`;
-            });
-
+            await waitForGatewayReachable(status.config.gatewayBaseUrl);
             writeJson(res, 200, { ok: true, status: await buildOpenClawStatus() });
           } catch (error) {
             writeJson(res, 500, {
@@ -971,6 +1040,7 @@ export default defineConfig({
               });
               return;
             }
+            await ensureOpenClawGatewayAvailable(await buildOpenClawStatus(), gatewayToken);
             if (gatewayPort) {
               args.push("--gateway-port", gatewayPort);
             }
