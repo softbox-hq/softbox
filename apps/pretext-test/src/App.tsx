@@ -18,7 +18,7 @@ plus fortes que la haine et plus fortes que tout.
 
 Ils traversent le doute, la peur et le silence,
 avec un amour fragile et farouche à la fois;
-chaque mot qu’ils se disent fend l’ombre autour d’eux,
+chaque mot qu’ils prononcent fend l’ombre autour d’eux,
 chaque regard promet un monde à refaire.
 
 Ô cœur obstiné, qu’aucun sort ne décourage,
