@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Jersey+10&display=swap');
+
 :root {
   --text: #5b6472;
   --text-h: #0f172a;
@@ -25,15 +27,15 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #9ca3af;
+    --text: #cbd5e1;
     --text-h: #f8fafc;
-    --bg: #0f172a;
-    --border: #243244;
-    --code-bg: #172033;
+    --bg: #020617;
+    --border: #1f2937;
+    --code-bg: #111827;
     --accent: #a78bfa;
     --social-bg: rgba(167, 139, 250, 0.12);
     --shadow:
-      rgba(0, 0, 0, 0.24) 0 18px 40px -18px, rgba(0, 0, 0, 0.28) 0 8px 16px -12px;
+      rgba(0, 0, 0, 0.34) 0 18px 40px -18px, rgba(0, 0, 0, 0.38) 0 8px 16px -12px;
   }
 }
 

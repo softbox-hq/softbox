@@ -1,89 +1,156 @@
 .app-shell {
   min-height: 100svh;
   display: grid;
-  gap: 24px;
+  gap: 20px;
   align-content: center;
-  padding: 32px;
-  box-sizing: border-box;
+  justify-items: center;
+  padding: 24px;
 }
 
-.hero-card,
-.panel-grid article {
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  background: color-mix(in srgb, var(--bg) 88%, var(--code-bg));
-  box-shadow: var(--shadow);
+.hud,
+.game-shell {
+  width: min(100%, 760px);
 }
 
-.hero-card {
-  padding: 40px;
-  text-align: left;
+.hud {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 16px;
 }
 
 .eyebrow {
-  margin-bottom: 12px;
   color: var(--accent);
   font-size: 14px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
+  margin-bottom: 8px;
 }
 
-h1 {
-  margin: 0;
-  max-width: 12ch;
+.scoreboard {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
 }
 
-.lead {
-  margin-top: 16px;
-  max-width: 58ch;
-  font-size: 1.05rem;
+.score-label {
+  color: var(--text);
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
 }
 
-.tips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 28px;
-}
-
-.tip {
-  padding: 10px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--social-bg);
+.score-value {
+  font-family: 'Jersey 10', var(--mono);
+  font-size: clamp(2.5rem, 6vw, 4.75rem);
+  line-height: 0.9;
   color: var(--text-h);
 }
 
-.panel-grid {
+.game-shell {
+  position: relative;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--bg) 86%, var(--code-bg));
+  box-shadow: var(--shadow);
+}
+
+.board {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(20, 1fr);
+  aspect-ratio: 1;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 18px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    #0f172a;
+  background-size: calc(100% / 20) calc(100% / 20);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.panel-grid article {
-  padding: 24px;
-  text-align: left;
+.cell {
+  position: relative;
 }
 
-.panel-grid h2 {
-  margin-bottom: 10px;
+.cell.snake::before,
+.cell.snake-head::before,
+.cell.food::before {
+  content: '';
+  position: absolute;
+  inset: 10%;
+  border-radius: 30%;
 }
 
-.panel-grid p {
-  max-width: 45ch;
+.cell.snake::before {
+  background: #22c55e;
+  box-shadow: inset 0 0 0 2px rgba(15, 23, 42, 0.16);
+}
+
+.cell.snake-head::before {
+  background: linear-gradient(135deg, #86efac, #16a34a);
+  box-shadow:
+    inset 0 0 0 2px rgba(15, 23, 42, 0.18),
+    0 0 18px rgba(34, 197, 94, 0.3);
+}
+
+.cell.food::before {
+  inset: 16%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #fef08a, #f97316 70%);
+  box-shadow: 0 0 18px rgba(249, 115, 22, 0.45);
+}
+
+.overlay {
+  position: absolute;
+  inset: 18px;
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.overlay p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.overlay button {
+  pointer-events: auto;
+  justify-self: center;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 18px;
+  background: var(--accent);
+  color: white;
+  font: inherit;
+  font-weight: 700;
 }
 
 @media (max-width: 720px) {
   .app-shell {
-    padding: 20px;
+    padding: 16px;
   }
 
-  .hero-card {
-    padding: 24px;
+  .hud {
+    align-items: start;
+    flex-direction: column;
   }
 
-  .panel-grid {
-    grid-template-columns: 1fr;
+  .scoreboard {
+    justify-items: start;
+  }
+
+  .game-shell {
+    padding: 12px;
+  }
+
+  .overlay {
+    inset: 12px;
   }
 }
