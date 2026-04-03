@@ -1,30 +1,33 @@
 import { useEffect, useState } from 'react'
 import { layoutWithLines, prepareWithSegments } from '@chenglou/pretext'
+import romeoAndJulietRaw from '../romeoandjuliet.txt?raw'
 import './App.css'
 
 const FONT = '400 18px "Helvetica Neue", Helvetica, Arial, sans-serif'
 const LINE_HEIGHT = 28
 const MAX_RENDERED_LINES = 220
 
-const PLAY_TEXT = `Deux amants nés sous de funestes étoiles,
-portent au cœur la douceur et la cendre;
-leurs pas s’égarent dans les rues frileuses,
-et pourtant l’aube semble encore les entendre.
+function extractPlayText(text: string): string {
+  const startMarker = '*** START OF THE PROJECT GUTENBERG EBOOK ROMEO AND JULIET ***'
+  const endMarker = '*** END OF THE PROJECT GUTENBERG EBOOK ROMEO AND JULIET ***'
+  const playTitleMarker = 'THE TRAGEDY OF ROMEO AND JULIET'
 
-La ville murmure, les familles s’opposent, et le sort hésite,
-le nom des pères pèse comme un verrou;
-mais dans la nuit, leurs voix se rejoignent,
-plus fortes que la haine et plus fortes que tout.
+  const startIndex = text.indexOf(startMarker)
+  const endIndex = text.indexOf(endMarker)
+  const coreText =
+    startIndex === -1
+      ? text
+      : text.slice(startIndex + startMarker.length, endIndex === -1 ? undefined : endIndex)
 
-Ils traversent le doute, la peur et le silence,
-avec un amour fragile et farouche à la fois;
-chaque mot qu’ils prononcent fend l’ombre autour d’eux,
-chaque regard promet un monde à refaire.
+  const playStartIndex = coreText.indexOf(playTitleMarker)
+  const trimmed = playStartIndex === -1 ? coreText : coreText.slice(playStartIndex)
+  return trimmed.replace(/\s+\n/g, '\n').trim()
+}
 
-Ô cœur obstiné, qu’aucun sort ne décourage,
-avance encore quand le destin se ferme;
-car même au bord de l’abîme et du drame,
-il reste une lumière au milieu de l’hiver.`
+const PLAY_TEXT = extractPlayText(romeoAndJulietRaw).replace(
+  'to Juliet’s Chamber, overlooking the Garden.',
+  'à la chambre de Juliette, donnant sur le jardin.',
+)
 
 function App() {
   const [fontsReady, setFontsReady] = useState(
