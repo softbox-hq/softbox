@@ -1,0 +1,89 @@
+.app-shell {
+  min-height: 100svh;
+  display: grid;
+  gap: 24px;
+  align-content: center;
+  padding: 32px;
+  box-sizing: border-box;
+}
+
+.hero-card,
+.panel-grid article {
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--bg) 88%, var(--code-bg));
+  box-shadow: var(--shadow);
+}
+
+.hero-card {
+  padding: 40px;
+  text-align: left;
+}
+
+.eyebrow {
+  margin-bottom: 12px;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  max-width: 12ch;
+}
+
+.lead {
+  margin-top: 16px;
+  max-width: 58ch;
+  font-size: 1.05rem;
+}
+
+.tips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.tip {
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--social-bg);
+  color: var(--text-h);
+}
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.panel-grid article {
+  padding: 24px;
+  text-align: left;
+}
+
+.panel-grid h2 {
+  margin-bottom: 10px;
+}
+
+.panel-grid p {
+  max-width: 45ch;
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    padding: 20px;
+  }
+
+  .hero-card {
+    padding: 24px;
+  }
+
+  .panel-grid {
+    grid-template-columns: 1fr;
+  }
+}
