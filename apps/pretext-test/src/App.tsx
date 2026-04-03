@@ -24,10 +24,12 @@ function extractPlayText(text: string): string {
   return trimmed.replace(/\s+\n/g, '\n').trim()
 }
 
-const PLAY_TEXT = extractPlayText(romeoAndJulietRaw).replace(
-  'to Juliet’s Chamber, overlooking the Garden.',
-  'à la chambre de Juliette, donnant sur le jardin.',
-)
+const PLAY_TEXT = extractPlayText(romeoAndJulietRaw)
+  .replace(
+    'to Juliet’s Chamber, overlooking the Garden.',
+    'à la chambre de Juliette, donnant sur le jardin.',
+  )
+  .replace('Citizens of Verona; several Men and', 'Citoyens de Vérone; plusieurs hommes et')
 
 function App() {
   const [fontsReady, setFontsReady] = useState(

@@ -1,7 +1,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { appendFile, readFile, readdir, writeFile } from "node:fs/promises";
+import { appendFile, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { cpus, freemem, hostname, platform, release, totalmem, arch } from "node:os";
 import { Socket } from "node:net";
 import { defineConfig } from "vite";
@@ -25,6 +25,10 @@ const openClawConfigPath = resolve("/home/fvrlak/.openclaw/openclaw.json");
 
 type JsonRecord = Record<string, unknown>;
 type UnwrappedAppRecord = {
+  appId: string;
+  relativePath: string;
+};
+type WrappedAppRecord = {
   appId: string;
   relativePath: string;
 };
@@ -244,6 +248,118 @@ async function listUnwrappedApps(projectRootPath: string): Promise<UnwrappedAppR
     .sort((left, right) => left.appId.localeCompare(right.appId));
 
   return apps;
+}
+
+async function listWrappedApps(projectRootPath: string): Promise<WrappedAppRecord[]> {
+  const appsRoot = resolve(projectRootPath, "apps");
+  if (!existsSync(appsRoot)) {
+    return [];
+  }
+
+  const entries = await readdir(appsRoot, { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .map((entry) => {
+      const appId = entry.name;
+      const appRoot = resolve(appsRoot, appId);
+      const hasSoftboxConfig = existsSync(resolve(appRoot, "softbox.config.json"));
+      return {
+        appId,
+        relativePath: `apps/${appId}`,
+        isWrapped: hasSoftboxConfig,
+      };
+    })
+    .filter((entry) => entry.isWrapped)
+    .map((entry) => ({
+      appId: entry.appId,
+      relativePath: entry.relativePath,
+    }))
+    .sort((left, right) => left.appId.localeCompare(right.appId));
+}
+
+async function removeIfExists(path: string) {
+  if (!existsSync(path)) {
+    return false;
+  }
+  await rm(path, { force: true, recursive: true });
+  return true;
+}
+
+async function removeDirIfEmpty(path: string) {
+  if (!existsSync(path)) {
+    return false;
+  }
+  const entries = await readdir(path);
+  if (entries.length > 0) {
+    return false;
+  }
+  await rm(path, { recursive: true, force: true });
+  return true;
+}
+
+async function stripUiScreenshotScript(appRoot: string) {
+  const packageJsonPath = resolve(appRoot, "package.json");
+  if (!existsSync(packageJsonPath)) {
+    return false;
+  }
+  const source = await readFile(packageJsonPath, "utf8");
+  let parsed: JsonRecord;
+  try {
+    parsed = JSON.parse(source) as JsonRecord;
+  } catch {
+    return false;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return false;
+  }
+  const scripts = parsed.scripts as JsonRecord | undefined;
+  if (!scripts || typeof scripts !== "object" || Array.isArray(scripts)) {
+    return false;
+  }
+  if (!Object.prototype.hasOwnProperty.call(scripts, "ui:screenshot")) {
+    return false;
+  }
+  delete scripts["ui:screenshot"];
+  await writeFile(packageJsonPath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+  return true;
+}
+
+async function unwrapInstalledApp(projectRootPath: string, appId: string) {
+  const appRoot = resolve(projectRootPath, "apps", appId);
+  if (!existsSync(appRoot)) {
+    return {
+      unwrapped: false,
+      removed: [] as string[],
+    };
+  }
+
+  const targets = [
+    resolve(appRoot, "softbox.config.json"),
+    resolve(appRoot, ".softbox"),
+    resolve(appRoot, "src", "entry.tsx"),
+    resolve(appRoot, "src", "defaultState.ts"),
+    resolve(appRoot, "src", "adapter", "runtime.tsx"),
+    resolve(appRoot, "src", "adapter", "shellAdapter.tsx"),
+  ];
+  const removed: string[] = [];
+
+  for (const target of targets) {
+    if (await removeIfExists(target)) {
+      removed.push(target);
+    }
+  }
+
+  if (await stripUiScreenshotScript(appRoot)) {
+    removed.push(resolve(appRoot, "package.json"));
+  }
+  if (await removeDirIfEmpty(resolve(appRoot, "src", "adapter"))) {
+    removed.push(resolve(appRoot, "src", "adapter"));
+  }
+
+  return {
+    unwrapped: removed.length > 0,
+    removed,
+  };
 }
 
 function collectScopes(items: unknown[]) {
@@ -719,7 +835,8 @@ export default defineConfig({
       name: "softbox-create-app-api",
       configureServer(server) {
         let createAppInFlight = false;
-        let wrapAndSyncInFlight = false;
+        let appInstallInFlight = false;
+        let appUninstallInFlight = false;
         async function checkRedis(redisUrl: string | undefined) {
           if (!redisUrl) {
             return { status: "warning", message: "REDIS_URL is not configured." } as const;
@@ -903,15 +1020,15 @@ export default defineConfig({
           }
         });
 
-        server.middlewares.use("/__softbox/apps/wrap-and-sync", async (req, res) => {
+        async function handleInstallApp(req: any, res: any) {
           if (req.method !== "POST") {
             writeJson(res, 405, { ok: false, error: "Method not allowed" });
             return;
           }
-          if (wrapAndSyncInFlight) {
+          if (appInstallInFlight || appUninstallInFlight) {
             writeJson(res, 409, {
               ok: false,
-              error: "Another wrap and sync operation is already running.",
+              error: "Another app install/uninstall operation is already running.",
             });
             return;
           }
@@ -939,7 +1056,7 @@ export default defineConfig({
               return;
             }
 
-            wrapAndSyncInFlight = true;
+            appInstallInFlight = true;
             const wrap = await runExecFile(
               "pnpm",
               ["wrap-app", "--", "--path", selectedApp.relativePath],
@@ -988,7 +1105,7 @@ export default defineConfig({
             writeJson(res, 200, {
               ok: true,
               appId,
-              wrapped: true,
+              installed: true,
               output: wrap.stdout.trim(),
               seedOutput,
               syncOutput,
@@ -1000,7 +1117,89 @@ export default defineConfig({
               error: error instanceof Error ? error.message : String(error),
             });
           } finally {
-            wrapAndSyncInFlight = false;
+            appInstallInFlight = false;
+          }
+        }
+
+        server.middlewares.use("/__softbox/apps/install", handleInstallApp);
+        server.middlewares.use("/__softbox/apps/wrap-and-sync", handleInstallApp);
+
+        server.middlewares.use("/__softbox/apps/uninstall", async (req, res) => {
+          if (req.method !== "POST") {
+            writeJson(res, 405, { ok: false, error: "Method not allowed" });
+            return;
+          }
+          if (appInstallInFlight || appUninstallInFlight) {
+            writeJson(res, 409, {
+              ok: false,
+              error: "Another app install/uninstall operation is already running.",
+            });
+            return;
+          }
+
+          try {
+            const payload = await readJsonBody(req);
+            const appId = String(payload.appId ?? "").trim().toLowerCase();
+            if (!/^[a-z0-9][a-z0-9-]*$/.test(appId)) {
+              writeJson(res, 400, {
+                ok: false,
+                error: "App id must use lowercase letters, numbers, and hyphens only.",
+              });
+              return;
+            }
+
+            appUninstallInFlight = true;
+
+            let deleteOutput = "";
+            try {
+              const result = await runExecFile(
+                "pnpm",
+                ["exec", "convex", "run", "apps:deleteApp", JSON.stringify({ appId })],
+                { cwd: projectRoot },
+              );
+              deleteOutput = result.stdout.trim();
+            } catch (error) {
+              writeJson(res, 500, {
+                ok: false,
+                error: `Failed to delete '${appId}' from Convex: ${error instanceof Error ? error.message : String(error)}`,
+              });
+              return;
+            }
+
+            const wrappedApps = await listWrappedApps(projectRoot);
+            const wasWrapped = wrappedApps.some((app) => app.appId === appId);
+            const unwrapResult = await unwrapInstalledApp(projectRoot, appId);
+
+            let syncOutput = "";
+            try {
+              const sync = await runExecFile(
+                "pnpm",
+                ["worker:openclaw-sync-agents", "--", "--apply"],
+                { cwd: projectRoot },
+              );
+              syncOutput = sync.stdout.trim();
+            } catch {
+              // Keep uninstall successful even when sync cannot run.
+            }
+
+            const status = await buildOpenClawStatus();
+            writeJson(res, 200, {
+              ok: true,
+              appId,
+              uninstalled: true,
+              wasWrapped,
+              unwrapped: unwrapResult.unwrapped,
+              deleteOutput,
+              syncOutput,
+              status,
+            });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          } finally {
+            appUninstallInFlight = false;
           }
         });
 

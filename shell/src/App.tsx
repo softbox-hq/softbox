@@ -389,28 +389,6 @@ type ThoughtBubble = {
   message: string;
 };
 
-const inspectPreferredTags = new Set([
-  "a",
-  "article",
-  "aside",
-  "button",
-  "footer",
-  "form",
-  "h1",
-  "h2",
-  "h3",
-  "header",
-  "input",
-  "label",
-  "li",
-  "main",
-  "nav",
-  "section",
-  "select",
-  "summary",
-  "textarea",
-]);
-
 function clampRect(rect: DOMRect): InspectRect {
   return {
     x: Math.max(0, rect.x),
@@ -467,16 +445,17 @@ function getElementLabel(element: HTMLElement) {
 
 function isInspectableCandidate(element: HTMLElement) {
   const tagName = element.tagName.toLowerCase();
-  if (element.dataset.softboxId || element.dataset.testid || element.id) {
-    return true;
+  if (
+    tagName === "html" ||
+    tagName === "body" ||
+    tagName === "script" ||
+    tagName === "style" ||
+    tagName === "meta" ||
+    tagName === "link"
+  ) {
+    return false;
   }
-  if (element.hasAttribute("role") || element.hasAttribute("aria-label")) {
-    return true;
-  }
-  if (inspectPreferredTags.has(tagName)) {
-    return true;
-  }
-  return typeof element.onclick === "function";
+  return true;
 }
 
 function getSelectorSegment(element: HTMLElement, boundary: HTMLElement) {
@@ -681,6 +660,9 @@ function buildSelector(element: HTMLElement, boundary: HTMLElement) {
 }
 
 function pickInspectableElement(start: HTMLElement, boundary: HTMLElement) {
+  if (start !== boundary && boundary.contains(start) && isInspectableCandidate(start)) {
+    return start;
+  }
   let current: HTMLElement | null = start;
   while (current && current !== boundary) {
     if (isInspectableCandidate(current)) {
@@ -688,7 +670,7 @@ function pickInspectableElement(start: HTMLElement, boundary: HTMLElement) {
     }
     current = current.parentElement;
   }
-  return start !== boundary ? start : null;
+  return current === boundary && isInspectableCandidate(boundary) ? boundary : null;
 }
 
 function snapshotInspectTarget(
@@ -912,7 +894,6 @@ export function App() {
     appId ? { appId } : "skip",
   ) as any[]) ?? [];
   const setSelectedAppMutation = useMutation(convexApi.setSelectedApp as any);
-  const deleteAppMutation = useMutation(convexApi.deleteApp as any);
   const createBoxMutation = useMutation(convexApi.createBox as any);
   const deleteBoxMutation = useMutation(convexApi.deleteBox as any);
   const updateBoxPolicyMutation = useMutation(convexApi.updateBoxPolicy as any);
@@ -1082,6 +1063,36 @@ export function App() {
           ? "bg-amber-500/12 text-amber-100 ring-1 ring-amber-500/25"
           : "bg-white/8 text-slate-200 ring-1 ring-white/10";
   const versionActionPending = Boolean(switchingVersionId) || Boolean(deletingVersionId);
+
+  async function uninstallApp(app: { appId: string; name?: string | null }) {
+    const label = app.name ?? app.appId;
+    const confirmed = window.confirm(
+      `Uninstall app '${label}'? This deletes its Softbox data from Convex and unwraps local Softbox adapter files.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+    setDeletingAppId(app.appId);
+    try {
+      const response = await fetch("/__softbox/apps/uninstall", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ appId: app.appId }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { ok?: boolean; error?: string }
+        | null;
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDeletingAppId(null);
+    }
+  }
   const openPipelinePanel = () => {
     setPipelineOpen(true);
     setExpandedRunId(latestPipelineRuns[0]?._id ?? null);
@@ -2821,22 +2832,11 @@ export function App() {
                                     type="button"
                                     disabled={appActionPending}
                                     onClick={async () => {
-                                      const confirmed = window.confirm(
-                                        `Delete app '${app.name}'? This removes its versions, jobs, and mounted history. Stored artifacts are purged in the background.`,
-                                      );
-                                      if (!confirmed) {
-                                        return;
-                                      }
-                                      setDeletingAppId(app.appId);
-                                      try {
-                                        await deleteAppMutation({ appId: app.appId });
-                                      } finally {
-                                        setDeletingAppId(null);
-                                      }
+                                      await uninstallApp(app);
                                     }}
                                     className="inline-flex h-9 items-center rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 text-xs font-medium text-rose-200 transition-colors hover:bg-rose-500/20 disabled:cursor-wait disabled:opacity-50"
                                   >
-                                    {isDeleting ? "Deleting..." : "Delete"}
+                                    {isDeleting ? "Uninstalling..." : "Uninstall"}
                                   </button>
                                 </div>
                               ) : (
@@ -2864,22 +2864,11 @@ export function App() {
                                     type="button"
                                     disabled={appActionPending}
                                     onClick={async () => {
-                                      const confirmed = window.confirm(
-                                        `Delete app '${app.name}'? This removes its versions, jobs, and mounted history. Stored artifacts are purged in the background.`,
-                                      );
-                                      if (!confirmed) {
-                                        return;
-                                      }
-                                      setDeletingAppId(app.appId);
-                                      try {
-                                        await deleteAppMutation({ appId: app.appId });
-                                      } finally {
-                                        setDeletingAppId(null);
-                                      }
+                                      await uninstallApp(app);
                                     }}
                                     className="inline-flex h-9 items-center rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 text-xs font-medium text-rose-200 transition-colors hover:bg-rose-500/20 disabled:cursor-wait disabled:opacity-50"
                                   >
-                                    {isDeleting ? "Deleting..." : "Delete"}
+                                    {isDeleting ? "Uninstalling..." : "Uninstall"}
                                   </button>
                                 </div>
                               )}
@@ -2891,7 +2880,7 @@ export function App() {
                   </div>
                 ) : (
                   <div className="rounded-2xl border border-white/8 bg-[#141419] px-4 py-6 text-sm text-gray-400">
-                    No apps found yet. Seed an app first.
+                    No apps found yet. Install an app first.
                   </div>
                 )}
               </div>

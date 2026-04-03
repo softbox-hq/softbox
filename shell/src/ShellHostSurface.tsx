@@ -74,6 +74,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const [unwrappedPending, setUnwrappedPending] = useState(false);
   const [unwrappedError, setUnwrappedError] = useState<string | null>(null);
   const [wrapPendingAppId, setWrapPendingAppId] = useState<string | null>(null);
+  const [uninstallPendingAppId, setUninstallPendingAppId] = useState<string | null>(null);
   const [wrapSuccessMessage, setWrapSuccessMessage] = useState<string | null>(null);
 
   const normalizedAppName = appName.trim().toLowerCase();
@@ -154,12 +155,12 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
     }
   }
 
-  async function wrapAndSyncApp(appId: string) {
+  async function installApp(appId: string) {
     setWrapPendingAppId(appId);
     setWrapSuccessMessage(null);
     setUnwrappedError(null);
     try {
-      const response = await fetch("/__softbox/apps/wrap-and-sync", {
+      const response = await fetch("/__softbox/apps/install", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -180,13 +181,54 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
       if (payload.status) {
         setOpenClawStatus(payload.status);
       }
-      setWrapSuccessMessage(`Wrapped '${appId}', seeded it, and synced agents.`);
+      setWrapSuccessMessage(`Installed '${appId}' (wrap + seed + agent sync).`);
       await loadUnwrappedApps({ silent: true });
       onAppCreated?.();
     } catch (error) {
       setUnwrappedError(error instanceof Error ? error.message : String(error));
     } finally {
       setWrapPendingAppId(null);
+    }
+  }
+
+  async function uninstallApp(appId: string) {
+    const confirmed = window.confirm(
+      `Uninstall '${appId}'?\n\nThis will delete its Softbox data from Convex and unwrap local Softbox adapter files.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+    setUninstallPendingAppId(appId);
+    setWrapSuccessMessage(null);
+    setUnwrappedError(null);
+    try {
+      const response = await fetch("/__softbox/apps/uninstall", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ appId }),
+      });
+      const payload = (await response.json()) as
+        | {
+            ok?: boolean;
+            error?: string;
+            status?: OpenClawStatus;
+          }
+        | undefined;
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+      if (payload.status) {
+        setOpenClawStatus(payload.status);
+      }
+      setWrapSuccessMessage(`Uninstalled '${appId}' (deleted from Convex and unwrapped locally).`);
+      await loadUnwrappedApps({ silent: true });
+      onAppCreated?.();
+    } catch (error) {
+      setUnwrappedError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setUninstallPendingAppId(null);
     }
   }
 
@@ -563,11 +605,11 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                     <div className="flex items-center justify-between gap-4">
                       <div>
                         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-200/70">
-                          Unwrapped apps
+                          Not Installed
                         </p>
                         <p className="mt-2 text-sm leading-6 text-amber-50/90">
-                          These app folders exist under <code>/apps</code> but are not wrapped for the
-                          Softbox runtime yet.
+                          These app folders exist under <code>/apps</code> but are not installed in
+                          Softbox yet.
                         </p>
                       </div>
                     </div>
@@ -581,13 +623,13 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                           <p className="mt-1 text-xs text-amber-100/70">{app.relativePath}</p>
                           <button
                             type="button"
-                            onClick={() => void wrapAndSyncApp(app.appId)}
-                            disabled={wrapPendingAppId !== null}
+                            onClick={() => void installApp(app.appId)}
+                            disabled={wrapPendingAppId !== null || uninstallPendingAppId !== null}
                             className="mt-3 inline-flex h-9 items-center justify-center border border-amber-300/30 bg-amber-300/15 px-3.5 text-sm font-medium text-amber-100 transition-colors hover:bg-amber-300/25 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {wrapPendingAppId === app.appId
-                              ? "Wrapping + syncing..."
-                              : "Wrap + Sync agents"}
+                              ? "Installing..."
+                              : "Install app"}
                           </button>
                         </article>
                       ))}
@@ -620,7 +662,19 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                             : "from-fuchsia-300/30 via-rose-300/12 to-transparent"
                         }
                         onClick={() => onSelectApp(app.appId)}
-                        actions={[]}
+                        actions={[
+                          {
+                            label:
+                              uninstallPendingAppId === app.appId ? "Uninstalling..." : "Uninstall",
+                            tone: "secondary",
+                            onClick: () => {
+                              if (uninstallPendingAppId || wrapPendingAppId) {
+                                return;
+                              }
+                              void uninstallApp(app.appId);
+                            },
+                          },
+                        ]}
                       />
                     );
                   })}

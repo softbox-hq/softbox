@@ -18,7 +18,7 @@ function App() {
         <div>
           <h1>Get started</h1>
           <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
+            I’m running on <code>openai-codex/gpt-5.4</code>
           </p>
         </div>
         <button
