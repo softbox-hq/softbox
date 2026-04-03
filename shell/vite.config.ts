@@ -1,7 +1,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { appendFile, readFile, writeFile } from "node:fs/promises";
+import { appendFile, readFile, readdir, writeFile } from "node:fs/promises";
 import { cpus, freemem, hostname, platform, release, totalmem, arch } from "node:os";
 import { Socket } from "node:net";
 import { defineConfig } from "vite";
@@ -24,6 +24,10 @@ const envLocalPath = resolve(projectRoot, ".env.local");
 const openClawConfigPath = resolve("/home/fvrlak/.openclaw/openclaw.json");
 
 type JsonRecord = Record<string, unknown>;
+type UnwrappedAppRecord = {
+  appId: string;
+  relativePath: string;
+};
 
 type MutableOnboardSession = OpenClawOnboardSession & {
   child: ChildProcess | null;
@@ -209,6 +213,37 @@ async function runExecFile(command: string, args: string[], options?: { cwd?: st
       resolvePromise({ stdout, stderr });
     });
   });
+}
+
+async function listUnwrappedApps(projectRootPath: string): Promise<UnwrappedAppRecord[]> {
+  const appsRoot = resolve(projectRootPath, "apps");
+  if (!existsSync(appsRoot)) {
+    return [];
+  }
+
+  const entries = await readdir(appsRoot, { withFileTypes: true });
+  const apps = entries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .map((entry) => {
+      const appId = entry.name;
+      const appRoot = resolve(appsRoot, appId);
+      const hasSoftboxConfig = existsSync(resolve(appRoot, "softbox.config.json"));
+      const hasPackageJson = existsSync(resolve(appRoot, "package.json"));
+      const hasSourceDir = existsSync(resolve(appRoot, "src"));
+      return {
+        appId,
+        relativePath: `apps/${appId}`,
+        isCandidate: !hasSoftboxConfig && (hasPackageJson || hasSourceDir),
+      };
+    })
+    .filter((entry) => entry.isCandidate)
+    .map((entry) => ({
+      appId: entry.appId,
+      relativePath: entry.relativePath,
+    }))
+    .sort((left, right) => left.appId.localeCompare(right.appId));
+
+  return apps;
 }
 
 function collectScopes(items: unknown[]) {
@@ -684,6 +719,7 @@ export default defineConfig({
       name: "softbox-create-app-api",
       configureServer(server) {
         let createAppInFlight = false;
+        let wrapAndSyncInFlight = false;
         async function checkRedis(redisUrl: string | undefined) {
           if (!redisUrl) {
             return { status: "warning", message: "REDIS_URL is not configured." } as const;
@@ -849,6 +885,123 @@ export default defineConfig({
               );
             });
           });
+        });
+
+        server.middlewares.use("/__softbox/apps/unwrapped", async (req, res) => {
+          if (req.method !== "GET") {
+            writeJson(res, 405, { ok: false, error: "Method not allowed" });
+            return;
+          }
+          try {
+            const apps = await listUnwrappedApps(projectRoot);
+            writeJson(res, 200, { ok: true, apps });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        });
+
+        server.middlewares.use("/__softbox/apps/wrap-and-sync", async (req, res) => {
+          if (req.method !== "POST") {
+            writeJson(res, 405, { ok: false, error: "Method not allowed" });
+            return;
+          }
+          if (wrapAndSyncInFlight) {
+            writeJson(res, 409, {
+              ok: false,
+              error: "Another wrap and sync operation is already running.",
+            });
+            return;
+          }
+
+          try {
+            const payload = await readJsonBody(req);
+            const appId = String(payload.appId ?? "").trim().toLowerCase();
+            if (!/^[a-z0-9][a-z0-9-]*$/.test(appId)) {
+              writeJson(res, 400, {
+                ok: false,
+                error: "App id must use lowercase letters, numbers, and hyphens only.",
+              });
+              return;
+            }
+
+            const unwrappedApps = await listUnwrappedApps(projectRoot);
+            const selectedApp = unwrappedApps.find((app) => app.appId === appId);
+            if (!selectedApp) {
+              writeJson(res, 404, {
+                ok: false,
+                error:
+                  `App '${appId}' was not found as an unwrapped app under /apps. ` +
+                  `Refresh and try again.`,
+              });
+              return;
+            }
+
+            wrapAndSyncInFlight = true;
+            const wrap = await runExecFile(
+              "pnpm",
+              ["wrap-app", "--", "--path", selectedApp.relativePath],
+              {
+                cwd: projectRoot,
+              },
+            );
+
+            let seedOutput = "";
+            try {
+              const seed = await runExecFile(
+                "pnpm",
+                ["seed", "--", "--app", appId],
+                { cwd: projectRoot },
+              );
+              seedOutput = seed.stdout.trim();
+            } catch (error) {
+              writeJson(res, 500, {
+                ok: false,
+                wrapped: true,
+                error: `App '${appId}' was wrapped, but seeding failed: ${error instanceof Error ? error.message : String(error)}`,
+                output: wrap.stdout.trim(),
+              });
+              return;
+            }
+
+            let syncOutput = "";
+            try {
+              const sync = await runExecFile(
+                "pnpm",
+                ["worker:openclaw-sync-agents", "--", "--apply"],
+                { cwd: projectRoot },
+              );
+              syncOutput = sync.stdout.trim();
+            } catch (error) {
+              writeJson(res, 500, {
+                ok: false,
+                wrapped: true,
+                error: `App '${appId}' was wrapped, but syncing agents failed: ${error instanceof Error ? error.message : String(error)}`,
+                output: wrap.stdout.trim(),
+              });
+              return;
+            }
+
+            const status = await buildOpenClawStatus();
+            writeJson(res, 200, {
+              ok: true,
+              appId,
+              wrapped: true,
+              output: wrap.stdout.trim(),
+              seedOutput,
+              syncOutput,
+              status,
+            });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          } finally {
+            wrapAndSyncInFlight = false;
+          }
         });
 
         server.middlewares.use("/__softbox/server-info", (_req, res) => {

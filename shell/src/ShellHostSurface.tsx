@@ -17,6 +17,11 @@ type ShellDesktopApp = {
   templateSourceStatus?: string | null;
 };
 
+type UnwrappedShellApp = {
+  appId: string;
+  relativePath: string;
+};
+
 type ShellHostSurfaceProps = {
   content: ShellHostEmptyStateContent;
   apps: ShellDesktopApp[];
@@ -65,6 +70,11 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const [oauthCallbackInput, setOauthCallbackInput] = useState("");
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
   const [serverInfoError, setServerInfoError] = useState<string | null>(null);
+  const [unwrappedApps, setUnwrappedApps] = useState<UnwrappedShellApp[]>([]);
+  const [unwrappedPending, setUnwrappedPending] = useState(false);
+  const [unwrappedError, setUnwrappedError] = useState<string | null>(null);
+  const [wrapPendingAppId, setWrapPendingAppId] = useState<string | null>(null);
+  const [wrapSuccessMessage, setWrapSuccessMessage] = useState<string | null>(null);
 
   const normalizedAppName = appName.trim().toLowerCase();
   const openClawAuthUrl =
@@ -118,6 +128,65 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
       setServerInfoError(null);
     } catch (error) {
       setServerInfoError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function loadUnwrappedApps(options?: { silent?: boolean }) {
+    if (!options?.silent) {
+      setUnwrappedPending(true);
+    }
+    try {
+      const response = await fetch("/__softbox/apps/unwrapped", { cache: "no-store" });
+      const payload = (await response.json()) as
+        | { ok?: boolean; error?: string; apps?: UnwrappedShellApp[] }
+        | undefined;
+      if (!response.ok || !payload?.ok || !Array.isArray(payload.apps)) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+      setUnwrappedApps(payload.apps);
+      setUnwrappedError(null);
+    } catch (error) {
+      setUnwrappedError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (!options?.silent) {
+        setUnwrappedPending(false);
+      }
+    }
+  }
+
+  async function wrapAndSyncApp(appId: string) {
+    setWrapPendingAppId(appId);
+    setWrapSuccessMessage(null);
+    setUnwrappedError(null);
+    try {
+      const response = await fetch("/__softbox/apps/wrap-and-sync", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ appId }),
+      });
+      const payload = (await response.json()) as
+        | {
+            ok?: boolean;
+            error?: string;
+            wrapped?: boolean;
+            status?: OpenClawStatus;
+          }
+        | undefined;
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+      if (payload.status) {
+        setOpenClawStatus(payload.status);
+      }
+      setWrapSuccessMessage(`Wrapped '${appId}', seeded it, and synced agents.`);
+      await loadUnwrappedApps({ silent: true });
+      onAppCreated?.();
+    } catch (error) {
+      setUnwrappedError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setWrapPendingAppId(null);
     }
   }
 
@@ -380,6 +449,13 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   }
 
   useEffect(() => {
+    if (activeTab !== "apps") {
+      return;
+    }
+    void loadUnwrappedApps();
+  }, [activeTab]);
+
+  useEffect(() => {
     if (activeTab !== "services" || openClawStatus) {
       return;
     }
@@ -459,31 +535,96 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
             </div>
 
             {activeTab === "apps" ? (
-              <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {apps.map((app) => {
-                  const isSelected = selectedAppId === app.appId;
-                  const versionLabel =
-                    typeof app.activeVersion?.versionNumber === "number"
-                      ? `v${app.activeVersion.versionNumber}`
-                      : "No versions yet";
-                  const sourceStatus = app.templateSourceStatus ?? "unknown";
-                  return (
-                    <DesktopActionCard
-                      key={app.appId}
-                      eyebrow={isSelected ? "Mounted app" : "App"}
-                      title={app.name || app.appId}
-                      description={`Open ${app.appId} on the Softbox desktop and continue editing from its mounted runtime.`}
-                      detail={`Template source: ${sourceStatus} · Active version: ${versionLabel}`}
-                      accentClassName={
-                        isSelected
-                          ? "from-cyan-300/40 via-sky-300/15 to-transparent"
-                          : "from-fuchsia-300/30 via-rose-300/12 to-transparent"
-                      }
-                      onClick={() => onSelectApp(app.appId)}
-                      actions={[]}
-                    />
-                  );
-                })}
+              <div className="mt-8 space-y-5">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void loadUnwrappedApps()}
+                    className="inline-flex h-9 items-center justify-center border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
+                  >
+                    {unwrappedPending ? "Checking..." : "Refresh unwrapped apps"}
+                  </button>
+                </div>
+
+                {unwrappedError ? (
+                  <div className="max-w-3xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+                    {unwrappedError}
+                  </div>
+                ) : null}
+
+                {wrapSuccessMessage ? (
+                  <div className="max-w-3xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+                    {wrapSuccessMessage}
+                  </div>
+                ) : null}
+
+                {unwrappedApps.length > 0 ? (
+                  <section className="border border-amber-400/20 bg-amber-500/[0.06] p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-200/70">
+                          Unwrapped apps
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-amber-50/90">
+                          These app folders exist under <code>/apps</code> but are not wrapped for the
+                          Softbox runtime yet.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      {unwrappedApps.map((app) => (
+                        <article
+                          key={app.appId}
+                          className="border border-amber-200/20 bg-black/20 p-4 text-sm"
+                        >
+                          <p className="font-semibold text-amber-50">{app.appId}</p>
+                          <p className="mt-1 text-xs text-amber-100/70">{app.relativePath}</p>
+                          <button
+                            type="button"
+                            onClick={() => void wrapAndSyncApp(app.appId)}
+                            disabled={wrapPendingAppId !== null}
+                            className="mt-3 inline-flex h-9 items-center justify-center border border-amber-300/30 bg-amber-300/15 px-3.5 text-sm font-medium text-amber-100 transition-colors hover:bg-amber-300/25 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {wrapPendingAppId === app.appId
+                              ? "Wrapping + syncing..."
+                              : "Wrap + Sync agents"}
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ) : (
+                  <div className="max-w-3xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
+                    No unwrapped app folders detected under <code>/apps</code>.
+                  </div>
+                )}
+
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {apps.map((app) => {
+                    const isSelected = selectedAppId === app.appId;
+                    const versionLabel =
+                      typeof app.activeVersion?.versionNumber === "number"
+                        ? `v${app.activeVersion.versionNumber}`
+                        : "No versions yet";
+                    const sourceStatus = app.templateSourceStatus ?? "unknown";
+                    return (
+                      <DesktopActionCard
+                        key={app.appId}
+                        eyebrow={isSelected ? "Mounted app" : "App"}
+                        title={app.name || app.appId}
+                        description={`Open ${app.appId} on the Softbox desktop and continue editing from its mounted runtime.`}
+                        detail={`Template source: ${sourceStatus} · Active version: ${versionLabel}`}
+                        accentClassName={
+                          isSelected
+                            ? "from-cyan-300/40 via-sky-300/15 to-transparent"
+                            : "from-fuchsia-300/30 via-rose-300/12 to-transparent"
+                        }
+                        onClick={() => onSelectApp(app.appId)}
+                        actions={[]}
+                      />
+                    );
+                  })}
+                </div>
               </div>
             ) : activeTab === "services" ? (
               <div className="mt-8 space-y-4">
