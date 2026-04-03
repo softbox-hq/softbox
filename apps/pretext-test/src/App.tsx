@@ -1,30 +1,20 @@
 import { useEffect, useState } from 'react'
 import { layoutWithLines, prepareWithSegments } from '@chenglou/pretext'
-import romeoAndJulietRaw from '../romeoandjuliet.txt?raw'
 import './App.css'
 
 const FONT = '400 18px "Helvetica Neue", Helvetica, Arial, sans-serif'
 const LINE_HEIGHT = 28
 const MAX_RENDERED_LINES = 220
 
-function extractPlayText(text: string): string {
-  const startMarker = '*** START OF THE PROJECT GUTENBERG EBOOK ROMEO AND JULIET ***'
-  const endMarker = '*** END OF THE PROJECT GUTENBERG EBOOK ROMEO AND JULIET ***'
-  const playTitleMarker = 'THE TRAGEDY OF ROMEO AND JULIET'
+const PLAY_TEXT = `Deux amants nés sous de funestes étoiles,
+Dont les malheurs scelleront le destin,
+Traversent la nuit, la peur et les détours,
+Et cherchent encore un peu de matin.
 
-  const startIndex = text.indexOf(startMarker)
-  const endIndex = text.indexOf(endMarker)
-  const coreText =
-    startIndex === -1
-      ? text
-      : text.slice(startIndex + startMarker.length, endIndex === -1 ? undefined : endIndex)
-
-  const playStartIndex = coreText.indexOf(playTitleMarker)
-  const trimmed = playStartIndex === -1 ? coreText : coreText.slice(playStartIndex)
-  return trimmed.replace(/\s+\n/g, '\n').trim()
-}
-
-const PLAY_TEXT = extractPlayText(romeoAndJulietRaw)
+Leur amour est tendre, leur monde est cruel,
+Les familles grondent, le sort se fait lourd;
+Mais sous le silence et les ombres du ciel,
+Leur cœur persiste et défie le jour.`
 
 function App() {
   const [fontsReady, setFontsReady] = useState(
@@ -62,7 +52,7 @@ function App() {
             <div className="line-row">
               <span className="line-number">...</span>
               <span className="line-text">
-                Showing first {MAX_RENDERED_LINES} lines of {result.lineCount}.
+                Affichage des {MAX_RENDERED_LINES} premières lignes sur {result.lineCount}.
               </span>
             </div>
           )}
