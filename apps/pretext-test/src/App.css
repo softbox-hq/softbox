@@ -4,7 +4,7 @@
 
 .demo-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(320px, 1fr);
+  grid-template-columns: minmax(320px, 1fr);
   gap: 24px;
   align-items: start;
 }
@@ -16,50 +16,6 @@
   background: rgba(255, 255, 255, 0.72);
   box-shadow: var(--shadow);
   text-align: left;
-}
-
-.controls input {
-  width: 100%;
-  margin: 12px 0 24px;
-}
-
-.slider-label {
-  display: block;
-  color: var(--text-h);
-}
-
-.stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin: 0 0 24px;
-}
-
-.stats div {
-  padding: 14px;
-  border-radius: 14px;
-  background: var(--code-bg);
-}
-
-.stats dt {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.stats dd {
-  margin: 6px 0 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--text-h);
-}
-
-.snippet {
-  overflow-x: auto;
-  padding: 16px;
-  border-radius: 14px;
-  background: var(--code-bg);
-  color: var(--text-h);
 }
 
 .preview-meta {

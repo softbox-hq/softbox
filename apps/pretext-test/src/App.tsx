@@ -5,8 +5,6 @@ import './App.css'
 
 const FONT = '400 18px "Helvetica Neue", Helvetica, Arial, sans-serif'
 const LINE_HEIGHT = 28
-const MIN_WIDTH = 220
-const MAX_WIDTH = 640
 const MAX_RENDERED_LINES = 220
 
 function extractPlayText(text: string): string {
@@ -29,7 +27,6 @@ function extractPlayText(text: string): string {
 const PLAY_TEXT = extractPlayText(romeoAndJulietRaw)
 
 function App() {
-  const [maxWidth, setMaxWidth] = useState(360)
   const [fontsReady, setFontsReady] = useState(
     typeof document === 'undefined' || !('fonts' in document),
   )
@@ -48,60 +45,19 @@ function App() {
   }, [])
 
   const prepared = prepareWithSegments(PLAY_TEXT, FONT)
-  const result = layoutWithLines(prepared, maxWidth, LINE_HEIGHT)
+  const result = layoutWithLines(prepared, 360, LINE_HEIGHT)
   const visibleLines = result.lines.slice(0, MAX_RENDERED_LINES)
 
   return (
     <main className="demo-shell">
       <section className="demo-grid">
-        <div className="panel controls">
-          <h2>Controls</h2>
-          <label className="slider-label" htmlFor="width">
-            Max width: <strong>{maxWidth}px</strong>
-          </label>
-          <input
-            id="width"
-            type="range"
-            min={MIN_WIDTH}
-            max={MAX_WIDTH}
-            value={maxWidth}
-            onChange={(event) => setMaxWidth(Number(event.target.value))}
-          />
-
-          <dl className="stats">
-            <div>
-              <dt>Lines</dt>
-              <dd>{result.lineCount}</dd>
-            </div>
-            <div>
-              <dt>Chars</dt>
-              <dd>{PLAY_TEXT.length}</dd>
-            </div>
-            <div>
-              <dt>Height</dt>
-              <dd>{Math.round(result.height)}px</dd>
-            </div>
-            <div>
-              <dt>Line height</dt>
-              <dd>{LINE_HEIGHT}px</dd>
-            </div>
-          </dl>
-
-          <pre className="snippet">
-{`import { prepareWithSegments, layoutWithLines } from '@chenglou/pretext'
-
-const prepared = prepareWithSegments(text, '${FONT}')
-const result = layoutWithLines(prepared, ${maxWidth}, ${LINE_HEIGHT})`}
-          </pre>
-        </div>
-
         <div className="panel preview">
           <div className="preview-meta">
             <h2>Layout result</h2>
             <span>{fontsReady ? 'Fonts ready' : 'Waiting for fonts'}</span>
           </div>
 
-          <div className="paragraph-frame" style={{ width: `${maxWidth}px` }}>
+          <div className="paragraph-frame" style={{ width: '360px' }}>
             {visibleLines.map((line, index) => (
               <div className="line-row" key={`${index}-${line.text}`}>
                 <span className="line-number">{index + 1}</span>
