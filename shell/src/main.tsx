@@ -3,11 +3,44 @@ import { createRoot } from "react-dom/client";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { App } from "./App";
 import { getViteEnv } from "./env";
+import { OnboardingPage } from "./OnboardingPage";
 
 const convexUrl = getViteEnv("VITE_CONVEX_URL");
-const root = createRoot(document.getElementById("root")!);
+const onboardingDone = getViteEnv("VITE_ONBOARDING_DONE").toLowerCase() === "true";
+const onboardingRoute = "/onboarding";
 
-if (!convexUrl) {
+function normalizeRoute(pathname: string): string {
+  if (!pathname) {
+    return "/";
+  }
+  return pathname.length > 1 ? pathname.replace(/\/+$/u, "") : pathname;
+}
+
+function replaceRouteIfNeeded(nextPath: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const currentPath = normalizeRoute(window.location.pathname);
+  const targetPath = normalizeRoute(nextPath);
+  if (currentPath === targetPath) {
+    return;
+  }
+
+  window.history.replaceState(window.history.state, "", `${targetPath}${window.location.search}${window.location.hash}`);
+}
+
+const root = createRoot(document.getElementById("root")!);
+const currentPath = typeof window === "undefined" ? "/" : normalizeRoute(window.location.pathname);
+
+if (!onboardingDone) {
+  replaceRouteIfNeeded(onboardingRoute);
+  root.render(
+    <StrictMode>
+      <OnboardingPage />
+    </StrictMode>,
+  );
+} else if (!convexUrl) {
   root.render(
     <StrictMode>
       <div
@@ -42,6 +75,10 @@ if (!convexUrl) {
     </StrictMode>,
   );
 } else {
+  if (currentPath === onboardingRoute) {
+    replaceRouteIfNeeded("/");
+  }
+
   const client = new ConvexReactClient(convexUrl);
 
   root.render(

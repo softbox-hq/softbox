@@ -909,6 +909,23 @@ export default defineConfig({
           res.end(JSON.stringify(payload));
         }
 
+        server.middlewares.use("/__softbox/onboarding/complete", async (req, res) => {
+          if (req.method !== "POST") {
+            writeJson(res, 405, { ok: false, error: "Method not allowed" });
+            return;
+          }
+
+          try {
+            await updateLocalEnv({ VITE_ONBOARDING_DONE: "true" });
+            writeJson(res, 200, { ok: true, onboardingDone: true });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        });
+
         server.middlewares.use("/__softbox/create-app", (req, res) => {
           if (req.method !== "POST") {
             res.statusCode = 405;
