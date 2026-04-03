@@ -1,7 +1,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { appendFile, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { cpus, freemem, hostname, platform, release, totalmem, arch } from "node:os";
 import { Socket } from "node:net";
 import { defineConfig } from "vite";
@@ -22,6 +22,7 @@ loadEnv({ path: resolve(import.meta.dirname, "../.env"), quiet: true });
 const projectRoot = resolve(import.meta.dirname, "..");
 const envLocalPath = resolve(projectRoot, ".env.local");
 const openClawConfigPath = resolve("/home/fvrlak/.openclaw/openclaw.json");
+const onboardingStateRoot = resolve(projectRoot, ".softbox", "onboarding");
 
 type JsonRecord = Record<string, unknown>;
 type UnwrappedAppRecord = {
@@ -207,16 +208,144 @@ function resolveSecretRefValue(value: unknown, envSource: string) {
   return readEnvValue(envSource, record.id) ?? normalizeEnvValue(process.env[record.id]);
 }
 
-async function runExecFile(command: string, args: string[], options?: { cwd?: string }) {
+async function runExecFile(
+  command: string,
+  args: string[],
+  options?: { cwd?: string; timeoutMs?: number; env?: NodeJS.ProcessEnv },
+) {
   return await new Promise<{ stdout: string; stderr: string }>((resolvePromise, rejectPromise) => {
-    execFile(command, args, { cwd: options?.cwd ?? projectRoot, env: process.env }, (error, stdout, stderr) => {
-      if (error) {
-        rejectPromise(new Error(stderr.trim() || error.message));
-        return;
-      }
-      resolvePromise({ stdout, stderr });
-    });
+    execFile(
+      command,
+      args,
+      {
+        cwd: options?.cwd ?? projectRoot,
+        env: options?.env ?? process.env,
+        timeout: options?.timeoutMs,
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          rejectPromise(new Error(stderr.trim() || error.message));
+          return;
+        }
+        resolvePromise({ stdout, stderr });
+      },
+    );
   });
+}
+
+function isLocalConvexUrl(rawUrl: string | null) {
+  if (!rawUrl) {
+    return false;
+  }
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost" || parsed.hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function isCloudConvexUrl(rawUrl: string | null) {
+  if (!rawUrl) {
+    return false;
+  }
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.hostname.endsWith(".convex.cloud");
+  } catch {
+    return false;
+  }
+}
+
+function inferConvexMode(rawUrl: string | null, localConfigPresent: boolean) {
+  if (localConfigPresent || isLocalConvexUrl(rawUrl)) {
+    return "local" as const;
+  }
+  if (isCloudConvexUrl(rawUrl)) {
+    return "cloud" as const;
+  }
+  if (!rawUrl) {
+    return "missing" as const;
+  }
+  return "unknown" as const;
+}
+
+async function buildConvexOnboardingStatus() {
+  const envSource = await readEnvFileSource(envLocalPath);
+  const viteConvexUrl = readEnvValue(envSource, "VITE_CONVEX_URL");
+  const convexUrl = readEnvValue(envSource, "CONVEX_URL");
+  const configured = Boolean(viteConvexUrl && convexUrl);
+  const envMatches = configured && viteConvexUrl === convexUrl;
+  const localConfigPresent = existsSync(resolve(projectRoot, ".convex", "local", "default", "config.json"));
+  const mode = inferConvexMode(convexUrl, localConfigPresent);
+
+  let validation:
+    | {
+        status: "ok";
+        message: string;
+        deploymentUrl: string | null;
+        functionCount: number | null;
+      }
+    | {
+        status: "error" | "skipped";
+        message: string;
+        deploymentUrl: null;
+        functionCount: null;
+      };
+
+  if (!configured) {
+    validation = {
+      status: "skipped",
+      message: "Convex env vars are missing in .env.local.",
+      deploymentUrl: null,
+      functionCount: null,
+    };
+  } else if (!envMatches) {
+    validation = {
+      status: "skipped",
+      message: "VITE_CONVEX_URL and CONVEX_URL must match before Softbox can use Convex.",
+      deploymentUrl: null,
+      functionCount: null,
+    };
+  } else {
+    try {
+      const { stdout } = await runExecFile(
+        "pnpm",
+        ["exec", "convex", "function-spec"],
+        { timeoutMs: 15000 },
+      );
+      const parsed = JSON.parse(stdout) as { url?: unknown; functions?: unknown };
+      const deploymentUrl = typeof parsed.url === "string" ? parsed.url : convexUrl;
+      const functionCount = Array.isArray(parsed.functions) ? parsed.functions.length : null;
+      validation = {
+        status: "ok",
+        message:
+          functionCount === null
+            ? `Connected to ${deploymentUrl}.`
+            : `Connected to ${deploymentUrl} and found ${functionCount} Convex functions.`,
+        deploymentUrl,
+        functionCount,
+      };
+    } catch (error) {
+      validation = {
+        status: "error",
+        message: error instanceof Error ? error.message : String(error),
+        deploymentUrl: null,
+        functionCount: null,
+      };
+    }
+  }
+
+  return {
+    viteConvexUrl: viteConvexUrl ?? null,
+    convexUrl: convexUrl ?? null,
+    configured,
+    envMatches,
+    localConfigPresent,
+    mode,
+    validation,
+    ready: envMatches && validation.status === "ok",
+  };
 }
 
 async function listUnwrappedApps(projectRootPath: string): Promise<UnwrappedAppRecord[]> {
@@ -892,6 +1021,29 @@ export default defineConfig({
           }
         }
 
+        async function checkCommandInstalled(command: string) {
+          const lookup = runExecFile("sh", ["-c", `command -v ${command}`]);
+          const timeout = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error("lookup timeout")), 2000);
+          });
+
+          try {
+            const { stdout } = await Promise.race([lookup, timeout]);
+            const path = stdout.trim();
+            return {
+              name: command,
+              installed: path.length > 0,
+              path: path.length > 0 ? path : null,
+            };
+          } catch {
+            return {
+              name: command,
+              installed: false,
+              path: null,
+            };
+          }
+        }
+
         async function readJsonBody(req: NodeJS.ReadableStream) {
           const chunks: Buffer[] = [];
           for await (const chunk of req) {
@@ -918,6 +1070,143 @@ export default defineConfig({
           try {
             await updateLocalEnv({ VITE_ONBOARDING_DONE: "true" });
             writeJson(res, 200, { ok: true, onboardingDone: true });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        });
+
+        server.middlewares.use("/__softbox/onboarding/step-1", async (req, res) => {
+          if (req.method !== "POST") {
+            writeJson(res, 405, { ok: false, error: "Method not allowed" });
+            return;
+          }
+
+          try {
+            const payload = await readJsonBody(req);
+            const filePath = resolve(onboardingStateRoot, "step-1.json");
+            await mkdir(onboardingStateRoot, { recursive: true });
+            await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+            writeJson(res, 200, {
+              ok: true,
+              saved: true,
+              path: ".softbox/onboarding/step-1.json",
+            });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        });
+
+        server.middlewares.use("/__softbox/onboarding/convex-status", async (req, res) => {
+          if (req.method !== "GET") {
+            writeJson(res, 405, { ok: false, error: "Method not allowed" });
+            return;
+          }
+
+          try {
+            const status = await buildConvexOnboardingStatus();
+            writeJson(res, 200, { ok: true, status });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        });
+
+        server.middlewares.use("/__softbox/onboarding/convex/create-local", async (req, res) => {
+          if (req.method !== "POST") {
+            writeJson(res, 405, { ok: false, error: "Method not allowed" });
+            return;
+          }
+
+          try {
+            await runExecFile(
+              "pnpm",
+              [
+                "exec",
+                "convex",
+                "dev",
+                "--configure",
+                "new",
+                "--dev-deployment",
+                "local",
+                "--once",
+                "--typecheck",
+                "disable",
+                "--codegen",
+                "disable",
+              ],
+              {
+                timeoutMs: 180000,
+                env: {
+                  ...process.env,
+                  CONVEX_AGENT_MODE: "anonymous",
+                },
+              },
+            );
+
+            const envSource = await readEnvFileSource(envLocalPath);
+            const convexUrl = readEnvValue(envSource, "CONVEX_URL");
+            if (convexUrl) {
+              await updateLocalEnv({ VITE_CONVEX_URL: convexUrl });
+            }
+
+            const status = await buildConvexOnboardingStatus();
+            writeJson(res, 200, {
+              ok: true,
+              message:
+                "Created a new local Convex deployment and mirrored CONVEX_URL into VITE_CONVEX_URL.",
+              status,
+            });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        });
+
+        server.middlewares.use("/__softbox/onboarding/tools-status", async (req, res) => {
+          if (req.method !== "GET") {
+            writeJson(res, 405, { ok: false, error: "Method not allowed" });
+            return;
+          }
+
+          try {
+            const [openclaw, codex, docker, claudeCode, claude] = await Promise.all([
+              checkCommandInstalled("openclaw"),
+              checkCommandInstalled("codex"),
+              checkCommandInstalled("docker"),
+              checkCommandInstalled("claude-code"),
+              checkCommandInstalled("claude"),
+            ]);
+
+            writeJson(res, 200, {
+              ok: true,
+              tools: [
+                openclaw,
+                codex,
+                docker,
+                {
+                  name: "claude code",
+                  installed: claudeCode.installed || claude.installed,
+                  path: claudeCode.path || claude.path,
+                },
+              ],
+              system: {
+                hostname: hostname(),
+                platform: platform(),
+                release: release(),
+                arch: arch(),
+                nodeVersion: process.version,
+              },
+            });
           } catch (error) {
             writeJson(res, 500, {
               ok: false,
