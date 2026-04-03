@@ -11,7 +11,7 @@ portent au cœur la douceur et la cendre;
 leurs pas s’égarent dans les rues frileuses,
 et pourtant l’aube semble encore les entendre.
 
-La ville murmure, les familles s’opposent,
+La ville murmure, les familles s’opposent, et le sort hésite,
 le nom des pères pèse comme un verrou;
 mais dans la nuit, leurs voix se rejoignent,
 plus fortes que la haine et plus fortes que tout.
