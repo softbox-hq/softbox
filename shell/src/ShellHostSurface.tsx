@@ -71,7 +71,6 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
   const [serverInfoError, setServerInfoError] = useState<string | null>(null);
   const [unwrappedApps, setUnwrappedApps] = useState<UnwrappedShellApp[]>([]);
-  const [unwrappedPending, setUnwrappedPending] = useState(false);
   const [unwrappedError, setUnwrappedError] = useState<string | null>(null);
   const [wrapPendingAppId, setWrapPendingAppId] = useState<string | null>(null);
   const [uninstallPendingAppId, setUninstallPendingAppId] = useState<string | null>(null);
@@ -132,10 +131,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
     }
   }
 
-  async function loadUnwrappedApps(options?: { silent?: boolean }) {
-    if (!options?.silent) {
-      setUnwrappedPending(true);
-    }
+  async function loadUnwrappedApps() {
     try {
       const response = await fetch("/__softbox/apps/unwrapped", { cache: "no-store" });
       const payload = (await response.json()) as
@@ -148,10 +144,6 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
       setUnwrappedError(null);
     } catch (error) {
       setUnwrappedError(error instanceof Error ? error.message : String(error));
-    } finally {
-      if (!options?.silent) {
-        setUnwrappedPending(false);
-      }
     }
   }
 
@@ -182,7 +174,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
         setOpenClawStatus(payload.status);
       }
       setWrapSuccessMessage(`Installed '${appId}' (wrap + seed + agent sync).`);
-      await loadUnwrappedApps({ silent: true });
+      await loadUnwrappedApps();
       onAppCreated?.();
     } catch (error) {
       setUnwrappedError(error instanceof Error ? error.message : String(error));
@@ -223,7 +215,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
         setOpenClawStatus(payload.status);
       }
       setWrapSuccessMessage(`Uninstalled '${appId}' (deleted from Convex and unwrapped locally).`);
-      await loadUnwrappedApps({ silent: true });
+      await loadUnwrappedApps();
       onAppCreated?.();
     } catch (error) {
       setUnwrappedError(error instanceof Error ? error.message : String(error));
@@ -578,16 +570,6 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
 
             {activeTab === "apps" ? (
               <div className="mt-8 space-y-5">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void loadUnwrappedApps()}
-                    className="inline-flex h-9 items-center justify-center border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
-                  >
-                    {unwrappedPending ? "Checking..." : "Refresh unwrapped apps"}
-                  </button>
-                </div>
-
                 {unwrappedError ? (
                   <div className="max-w-3xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
                     {unwrappedError}
@@ -635,11 +617,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                       ))}
                     </div>
                   </section>
-                ) : (
-                  <div className="max-w-3xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
-                    No unwrapped app folders detected under <code>/apps</code>.
-                  </div>
-                )}
+                ) : null}
 
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {apps.map((app) => {

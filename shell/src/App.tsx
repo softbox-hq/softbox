@@ -12,7 +12,6 @@ import {
   CircleAlert,
   AppWindow,
   ArrowUpFromLine,
-  ListRestart,
   SquareDashedMousePointer,
   SquareMousePointer,
   Trash2,
@@ -902,7 +901,6 @@ export function App() {
   const requestPipelineRepairMutation = useMutation(convexApi.requestPipelineRepair as any);
   const publishStateMutation = useMutation(convexApi.publishState as any);
   const activateVersionMutation = useMutation(convexApi.activateVersion as any);
-  const resetBoxSessionMutation = useMutation(convexApi.resetBoxSession as any);
   const deleteVersionMutation = useMutation(convexApi.deleteVersion as any);
   const reportRuntimeErrorMutation = useMutation(convexApi.reportRuntimeError as any);
   const recordPipelineStageForVersionMutation = useMutation(
@@ -923,7 +921,8 @@ export function App() {
   const [repairingRunId, setRepairingRunId] = useState<string | null>(null);
   const [deletingVersionId, setDeletingVersionId] = useState<string | null>(null);
   const [repairModalRunId, setRepairModalRunId] = useState<string | null>(null);
-  const [resettingBoxSessionId, setResettingBoxSessionId] = useState<string | null>(null);
+  const [confirmBackToDesktopOpen, setConfirmBackToDesktopOpen] = useState(false);
+  const [returningToDesktop, setReturningToDesktop] = useState(false);
   const [boxActionKey, setBoxActionKey] = useState<string | null>(null);
   const [switchingVersionId, setSwitchingVersionId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -953,10 +952,6 @@ export function App() {
   const selectedBox =
     currentBoxes.find((box: any) => box.boxId === selectedBoxId) ??
     primaryBox;
-  const canResetSelectedBoxSession =
-    Boolean(appId) &&
-    Boolean(selectedBox?.boxId) &&
-    selectedBox?.engine === "openclaw";
   const promptTargetBoxIds = Array.from(
     new Set(
       (selectedTargetBoxIds.length > 0
@@ -1093,6 +1088,18 @@ export function App() {
       setDeletingAppId(null);
     }
   }
+  async function backToDesktop() {
+    setReturningToDesktop(true);
+    try {
+      await setSelectedAppMutation({
+        shellId,
+        appId: null,
+      });
+      setConfirmBackToDesktopOpen(false);
+    } finally {
+      setReturningToDesktop(false);
+    }
+  }
   const openPipelinePanel = () => {
     setPipelineOpen(true);
     setExpandedRunId(latestPipelineRuns[0]?._id ?? null);
@@ -1181,7 +1188,8 @@ export function App() {
     setCompareVersionIds([]);
     setSwitchingVersionId(null);
     setDeletingVersionId(null);
-    setResettingBoxSessionId(null);
+    setConfirmBackToDesktopOpen(false);
+    setReturningToDesktop(false);
     setExpandedRunId(null);
     setDeletingRunId(null);
     setRepairingRunId(null);
@@ -2110,34 +2118,14 @@ export function App() {
 
                   <button
                     type="button"
-                    disabled={!canResetSelectedBoxSession || resettingBoxSessionId === selectedBox?.boxId}
-                    onClick={async () => {
-                      if (!appId || !selectedBox?.boxId) {
-                        return;
-                      }
-                      const confirmed = window.confirm(
-                        `Reset the saved OpenClaw session for box '${formatBoxLabel(selectedBox)}'? The next prompt will start a fresh conversation context.`,
-                      );
-                      if (!confirmed) {
-                        return;
-                      }
-                      setResettingBoxSessionId(selectedBox.boxId);
-                      try {
-                        await resetBoxSessionMutation({
-                          appId,
-                          boxId: selectedBox.boxId,
-                        });
-                      } finally {
-                        setResettingBoxSessionId((current) =>
-                          current === selectedBox.boxId ? null : current,
-                        );
-                      }
-                    }}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Reset Session"
-                    aria-label="Reset Session"
+                    disabled={noMountedApp || returningToDesktop}
+                    onClick={() => setConfirmBackToDesktopOpen(true)}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Back to Desktop"
+                    aria-label="Back to Desktop"
                   >
-                    <ListRestart className="size-3.5" />
+                    <AppWindow className="size-3.5" />
+                    {returningToDesktop ? "Returning..." : "Back to Desktop"}
                   </button>
                 </div>
 
@@ -2249,6 +2237,62 @@ export function App() {
         ) : null}
         </div>
       </section>
+
+      {confirmBackToDesktopOpen ? (
+        <div
+          className="fixed inset-0 z-30 bg-black/65 backdrop-blur-sm"
+          onClick={() => {
+            if (!returningToDesktop) {
+              setConfirmBackToDesktopOpen(false);
+            }
+          }}
+        >
+          <div className="flex min-h-screen items-center justify-center px-4 py-8">
+            <section
+              className="flex w-full max-w-xl flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#0c0c0f]/98 shadow-2xl shadow-black/40"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Back to desktop"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="border-b border-white/10 px-6 py-5 sm:px-8">
+                <p className="text-sm font-semibold text-white">Back to Desktop?</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  This unmounts the currently mounted app from this shell session. Your apps and
+                  versions stay saved.
+                </p>
+              </div>
+
+              <div className="space-y-3 px-6 py-5 sm:px-8">
+                <p className="text-sm leading-6 text-gray-300">
+                  You can mount any app again from the desktop selector at any time.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 border-t border-white/10 px-6 py-4 sm:px-8">
+                <button
+                  type="button"
+                  disabled={returningToDesktop}
+                  onClick={() => setConfirmBackToDesktopOpen(false)}
+                  className="rounded-xl border border-white/10 bg-[#1a1a1f] px-4 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-[#25252b] disabled:cursor-wait disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={returningToDesktop}
+                  onClick={() => {
+                    void backToDesktop();
+                  }}
+                  className="rounded-xl bg-white px-4 py-2 text-xs font-semibold text-black transition-colors hover:bg-gray-200 disabled:cursor-wait disabled:bg-white/30"
+                >
+                  {returningToDesktop ? "Returning..." : "Yes, Back to Desktop"}
+                </button>
+              </div>
+            </section>
+          </div>
+        </div>
+      ) : null}
 
       {pipelineOpen ? (
         <div
