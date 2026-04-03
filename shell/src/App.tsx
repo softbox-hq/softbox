@@ -1684,19 +1684,33 @@ export function App() {
         return;
       }
 
-      const key = event.key.toLowerCase();
-      if (key !== "a" && key !== "d") {
+      const key = event.key;
+      if (key !== "ArrowLeft" && key !== "ArrowRight") {
         return;
       }
 
-      const currentIndex = versions.findIndex((version: any) => version._id === activeVersionId);
+      const selectableVersions = versions
+        .filter((version: any) => version.status !== "failed")
+        .sort((left: any, right: any) => left.versionNumber - right.versionNumber);
+      if (selectableVersions.length === 0) {
+        return;
+      }
+
+      const currentIndex = selectableVersions.findIndex(
+        (version: any) => version._id === activeVersionId,
+      );
       if (currentIndex < 0) {
         return;
       }
 
-      const targetIndex = key === "d" ? currentIndex + 1 : currentIndex - 1;
-      const targetVersion = versions[targetIndex];
-      if (!targetVersion || targetVersion.status === "failed") {
+      let targetVersion: any | null = null;
+      if (key === "ArrowRight") {
+        targetVersion = selectableVersions[currentIndex + 1] ?? null;
+      } else if (key === "ArrowLeft") {
+        targetVersion = selectableVersions[currentIndex - 1] ?? null;
+      }
+
+      if (!targetVersion || targetVersion._id === activeVersionId) {
         return;
       }
 
@@ -1713,18 +1727,18 @@ export function App() {
       });
     },
     [
-    activeVersionId,
-    activateVersionMutation,
-    appId,
-    appsOpen,
-    compareOpen,
-    pipelineOpen,
-    submitting,
-    versionActionPending,
-    versions,
-    versionsOpen,
-    hostRef,
-  ],
+      activeVersionId,
+      activateVersionMutation,
+      appId,
+      appsOpen,
+      compareOpen,
+      pipelineOpen,
+      submitting,
+      versionActionPending,
+      versions,
+      versionsOpen,
+      hostRef,
+    ],
   );
 
   useRuntimeHotkey(
@@ -1749,8 +1763,8 @@ export function App() {
         return;
       }
 
-      const key = event.key.toLowerCase();
-      if (key !== "w" && key !== "s") {
+      const key = event.key;
+      if (key !== "ArrowUp" && key !== "ArrowDown") {
         return;
       }
 
@@ -1759,7 +1773,7 @@ export function App() {
         return;
       }
 
-      const targetIndex = key === "w" ? currentIndex - 1 : currentIndex + 1;
+      const targetIndex = key === "ArrowUp" ? currentIndex - 1 : currentIndex + 1;
       const targetApp = apps[targetIndex];
       if (!targetApp) {
         return;
