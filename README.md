@@ -59,7 +59,7 @@ Install this repository using ./SETUP.md by giving the file to the codex or clau
 - Stable shell host built with React + Vite
 - Worker pipeline that uses Codex SDK to mutate app code
 - Convex as the control plane for jobs, versions, and runtime state
-- Cloudflare R2 for immutable build artifacts
+- Artifact storage via Cloudflare R2 or MinIO for immutable build artifacts
 - Hosted apps that can behave like normal standalone apps, not just narrow plugins
 
 ## Core Idea
@@ -104,7 +104,7 @@ Requirements:
 - Redis
 - Docker (optional, easiest way to run Redis locally)
 - Convex project
-- Cloudflare R2 bucket
+- Artifact storage: Cloudflare R2 or MinIO
 - Codex CLI/auth configured locally
 
 Setup:
@@ -135,8 +135,9 @@ Notes:
 - the shell only needs `VITE_CONVEX_URL`
 - mounted app selection is stored in Convex, not in `.env.local`
 - `pnpm seed` now shows an arrow-key picker for wrapped apps; use `pnpm seed -- --app <app-id>` for one explicit app or `pnpm seed -- --all` to seed every wrapped app
-- `S3_API` should be pasted exactly from the Cloudflare dashboard S3 API field, including the bucket path
-- `PUBLIC_DEVELOPMENT_URL` should match the Cloudflare dashboard Public Development URL field
+- set `ARTIFACT_STORAGE_PROVIDER=r2` to keep the current Cloudflare R2 flow
+- set `ARTIFACT_STORAGE_PROVIDER=minio` to use MinIO instead, then fill `MINIO_S3_API`, `MINIO_PUBLIC_DEVELOPMENT_URL`, `MINIO_ACCESS_KEY_ID`, and `MINIO_SECRET_ACCESS_KEY`
+- `S3_API` / `PUBLIC_DEVELOPMENT_URL` remain the R2 values and are unchanged for existing setups
 - leave `OPENCLAW_AGENT_ID_PREFIX` blank unless you intentionally want a custom prefix; `pnpm setup` and `pnpm start` will generate a checkout-scoped value automatically so multiple local clones do not collide in OpenClaw
 - queueing is handled by BullMQ in the worker process; Redis is the only extra service you need to run locally
 - `pnpm start` starts Convex, the worker, and the shell together

@@ -42,6 +42,14 @@ function readEnv(name: string): string {
   return process.env[name]?.trim() ?? "";
 }
 
+function readArtifactStorageProvider(): "r2" | "minio" | "invalid" {
+  const raw = readEnv("ARTIFACT_STORAGE_PROVIDER").toLowerCase() || "r2";
+  if (raw === "r2" || raw === "minio") {
+    return raw;
+  }
+  return "invalid";
+}
+
 function parseRedisTarget(redisUrl: string): { host: string; port: number } {
   const parsed = new URL(redisUrl);
   if (parsed.protocol !== "redis:" && parsed.protocol !== "rediss:") {
@@ -116,13 +124,25 @@ async function main(): Promise<void> {
   const requiredEnvNames = [
     "VITE_CONVEX_URL",
     "CONVEX_URL",
-    "S3_API",
-    "PUBLIC_DEVELOPMENT_URL",
-    "R2_ACCESS_KEY_ID",
-    "R2_SECRET_ACCESS_KEY",
   ];
 
-  for (const envName of requiredEnvNames) {
+  const artifactStorageProvider = readArtifactStorageProvider();
+  const artifactRequiredEnvNames =
+    artifactStorageProvider === "minio"
+      ? [
+          "MINIO_S3_API",
+          "MINIO_PUBLIC_DEVELOPMENT_URL",
+          "MINIO_ACCESS_KEY_ID",
+          "MINIO_SECRET_ACCESS_KEY",
+        ]
+      : [
+          "S3_API",
+          "PUBLIC_DEVELOPMENT_URL",
+          "R2_ACCESS_KEY_ID",
+          "R2_SECRET_ACCESS_KEY",
+        ];
+
+  for (const envName of [...requiredEnvNames, ...artifactRequiredEnvNames]) {
     pushResult(
       results,
       readEnv(envName) ? "ok" : "fail",
@@ -131,7 +151,18 @@ async function main(): Promise<void> {
     );
   }
 
-  const s3Api = readEnv("S3_API");
+  pushResult(
+    results,
+    artifactStorageProvider === "invalid" ? "fail" : "ok",
+    "ARTIFACT_STORAGE_PROVIDER",
+    artifactStorageProvider === "minio"
+      ? "Using MinIO for artifact storage."
+      : artifactStorageProvider === "r2"
+        ? "Using Cloudflare R2 for artifact storage."
+        : "Invalid provider. Use 'r2' or 'minio'.",
+  );
+
+  const s3Api = artifactStorageProvider === "minio" ? readEnv("MINIO_S3_API") : readEnv("S3_API");
   if (s3Api) {
     let s3ApiDetail = "";
     let s3ApiLevel: CheckLevel = "ok";
@@ -141,13 +172,13 @@ async function main(): Promise<void> {
       s3ApiDetail = `Using bucket '${parsed.bucket}' at endpoint '${parsed.endpoint}'.`;
     } catch (error) {
       s3ApiLevel = "fail";
-      s3ApiDetail = error instanceof Error ? error.message : "Invalid S3_API value.";
+      s3ApiDetail = error instanceof Error ? error.message : "Invalid S3 API value.";
     }
 
     pushResult(
       results,
       s3ApiLevel,
-      "S3_API format",
+      artifactStorageProvider === "minio" ? "MINIO_S3_API format" : "S3_API format",
       s3ApiDetail,
     );
   }

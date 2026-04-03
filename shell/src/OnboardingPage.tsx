@@ -38,6 +38,57 @@ type ConvexStatus = {
   ready: boolean;
 };
 
+type DockerRedisStatus = {
+  composeFilePath: string;
+  docker: {
+    installed: boolean;
+    path: string | null;
+    usable: boolean;
+    message: string;
+  };
+  redis: {
+    composeRunning: boolean;
+    composeMessage: string;
+    reachable: boolean;
+    message: string;
+  };
+  ready: boolean;
+};
+
+type MinioStatus = {
+  composeFilePath: string;
+  docker: {
+    installed: boolean;
+    path: string | null;
+    usable: boolean;
+    message: string;
+  };
+  minio: {
+    composeRunning: boolean;
+    composeMessage: string;
+    healthy: boolean;
+    healthMessage: string;
+    bucketName: string;
+    bucketReady: boolean;
+    bucketMessage: string;
+    consoleUrl: string;
+    publicUrl: string;
+    publicProbeUrl: string;
+    publicProbeReachable: boolean;
+    publicProbeMessage: string;
+  };
+  env: {
+    provider: string | null;
+    s3Api: string | null;
+    publicDevelopmentUrl: string | null;
+    accessKeyId: string | null;
+    secretConfigured: boolean;
+    valuesMatch: boolean;
+    message: string;
+  };
+  ready: boolean;
+};
+
 const onboardingSteps = [
   {
     title: "Step 1",
@@ -49,15 +100,15 @@ const onboardingSteps = [
   },
   {
     title: "Step 3",
-    body: "Duis sagittis ipsum. Praesent mauris. Fusce nec tellus sed augue semper porta.",
+    body: "Softbox uses Redis for BullMQ queue state. This step checks Docker, verifies that Redis is running from this repo's docker-compose.yml, and starts it automatically if needed.",
   },
   {
     title: "Step 4",
-    body: "Mauris massa. Vestibulum lacinia arcu eget nulla. Class aptent taciti sociosqu ad litora.",
+    body: "Softbox needs artifact storage for preview and live builds. This step starts a local MinIO server, creates the bucket, enables public reads for browser assets, and writes the MinIO env vars automatically.",
   },
   {
     title: "Step 5",
-    body: "Curabitur sodales ligula in libero. Sed dignissim lacinia nunc. Curabitur tortor.",
+    body: "Finish onboarding and mark this checkout ready for the full Softbox runtime.",
   },
 ] as const;
 
@@ -79,10 +130,28 @@ export function OnboardingPage() {
   const [convexActionError, setConvexActionError] = useState<string | null>(null);
   const [convexActionMessage, setConvexActionMessage] = useState<string | null>(null);
   const [showCloudConvexHelp, setShowCloudConvexHelp] = useState(false);
+  const [isCheckingDockerRedis, setIsCheckingDockerRedis] = useState(false);
+  const [dockerRedisError, setDockerRedisError] = useState<string | null>(null);
+  const [dockerRedisStatus, setDockerRedisStatus] = useState<DockerRedisStatus | null>(null);
+  const [isEnsuringDockerRedis, setIsEnsuringDockerRedis] = useState(false);
+  const [dockerRedisActionError, setDockerRedisActionError] = useState<string | null>(null);
+  const [dockerRedisActionMessage, setDockerRedisActionMessage] = useState<string | null>(null);
+  const [isCheckingMinio, setIsCheckingMinio] = useState(false);
+  const [minioError, setMinioError] = useState<string | null>(null);
+  const [minioStatus, setMinioStatus] = useState<MinioStatus | null>(null);
+  const [isEnsuringMinio, setIsEnsuringMinio] = useState(false);
+  const [minioActionError, setMinioActionError] = useState<string | null>(null);
+  const [minioActionMessage, setMinioActionMessage] = useState<string | null>(null);
   const hasStartedInitialToolsCheckRef = useRef(false);
   const hasStartedInitialConvexCheckRef = useRef(false);
+  const hasStartedInitialDockerRedisCheckRef = useRef(false);
+  const hasAttemptedAutomaticDockerRedisEnsureRef = useRef(false);
+  const hasStartedInitialMinioCheckRef = useRef(false);
+  const hasAttemptedAutomaticMinioEnsureRef = useRef(false);
   const activeToolsRequestRef = useRef(0);
   const activeConvexRequestRef = useRef(0);
+  const activeDockerRedisRequestRef = useRef(0);
+  const activeMinioRequestRef = useRef(0);
 
   const currentStep = onboardingSteps[stepIndex];
   const isFirstStep = stepIndex === 0;
@@ -192,6 +261,202 @@ export function OnboardingPage() {
     void loadConvexStatus();
   }, [stepIndex]);
 
+  async function loadDockerRedisStatus() {
+    const requestId = activeDockerRedisRequestRef.current + 1;
+    activeDockerRedisRequestRef.current = requestId;
+    setDockerRedisError(null);
+    setIsCheckingDockerRedis(true);
+    const timeoutId = window.setTimeout(() => {
+      if (activeDockerRedisRequestRef.current !== requestId) {
+        return;
+      }
+      setIsCheckingDockerRedis(false);
+      setDockerRedisError("Docker/Redis check timed out. Retry after Docker is available.");
+    }, 15000);
+
+    try {
+      const response = await fetch("/__softbox/onboarding/docker-redis-status", { cache: "no-store" });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        status?: DockerRedisStatus;
+      };
+
+      if (activeDockerRedisRequestRef.current !== requestId) {
+        return null;
+      }
+      if (!response.ok || !payload.ok || !payload.status) {
+        throw new Error(payload.error || "Failed to load Docker/Redis status.");
+      }
+
+      setDockerRedisStatus(payload.status);
+      return payload.status;
+    } catch (error: unknown) {
+      if (activeDockerRedisRequestRef.current !== requestId) {
+        return null;
+      }
+      setDockerRedisError(error instanceof Error ? error.message : String(error));
+      return null;
+    } finally {
+      window.clearTimeout(timeoutId);
+      if (activeDockerRedisRequestRef.current === requestId) {
+        setIsCheckingDockerRedis(false);
+      }
+    }
+  }
+
+  async function ensureDockerRedisRunning() {
+    if (isEnsuringDockerRedis) {
+      return null;
+    }
+
+    setDockerRedisActionError(null);
+    setDockerRedisActionMessage(null);
+    setIsEnsuringDockerRedis(true);
+    try {
+      const response = await fetch("/__softbox/onboarding/docker-redis/ensure", { method: "POST" });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+        status?: DockerRedisStatus;
+      };
+      if (!response.ok || !payload.ok || !payload.status) {
+        throw new Error(payload.error || "Failed to start Redis from docker-compose.yml.");
+      }
+      setDockerRedisStatus(payload.status);
+      setDockerRedisActionMessage(payload.message ?? null);
+      return payload.status;
+    } catch (error) {
+      setDockerRedisActionError(error instanceof Error ? error.message : String(error));
+      return null;
+    } finally {
+      setIsEnsuringDockerRedis(false);
+    }
+  }
+
+  useEffect(() => {
+    if (stepIndex !== 2 || hasStartedInitialDockerRedisCheckRef.current) {
+      return;
+    }
+
+    hasStartedInitialDockerRedisCheckRef.current = true;
+    void (async () => {
+      const status = await loadDockerRedisStatus();
+      if (
+        status &&
+        status.docker.usable &&
+        !status.redis.composeRunning &&
+        !hasAttemptedAutomaticDockerRedisEnsureRef.current
+      ) {
+        hasAttemptedAutomaticDockerRedisEnsureRef.current = true;
+        await ensureDockerRedisRunning();
+      }
+    })();
+  }, [stepIndex]);
+
+  async function loadMinioStatus() {
+    const requestId = activeMinioRequestRef.current + 1;
+    activeMinioRequestRef.current = requestId;
+    setMinioError(null);
+    setIsCheckingMinio(true);
+    const timeoutId = window.setTimeout(() => {
+      if (activeMinioRequestRef.current !== requestId) {
+        return;
+      }
+      setIsCheckingMinio(false);
+      setMinioError("MinIO check timed out. Retry after Docker is available.");
+    }, 20000);
+
+    try {
+      const response = await fetch("/__softbox/onboarding/minio-status", { cache: "no-store" });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        status?: MinioStatus;
+      };
+
+      if (activeMinioRequestRef.current !== requestId) {
+        return null;
+      }
+      if (!response.ok || !payload.ok || !payload.status) {
+        throw new Error(payload.error || "Failed to load MinIO status.");
+      }
+
+      setMinioStatus(payload.status);
+      return payload.status;
+    } catch (error: unknown) {
+      if (activeMinioRequestRef.current !== requestId) {
+        return null;
+      }
+      setMinioError(error instanceof Error ? error.message : String(error));
+      return null;
+    } finally {
+      window.clearTimeout(timeoutId);
+      if (activeMinioRequestRef.current === requestId) {
+        setIsCheckingMinio(false);
+      }
+    }
+  }
+
+  async function ensureMinioReady() {
+    if (isEnsuringMinio) {
+      return null;
+    }
+
+    setMinioActionError(null);
+    setMinioActionMessage(null);
+    setIsEnsuringMinio(true);
+    try {
+      const response = await fetch("/__softbox/onboarding/minio/ensure", { method: "POST" });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+        status?: MinioStatus;
+      };
+      if (!response.ok || !payload.ok || !payload.status) {
+        throw new Error(payload.error || "Failed to set up local MinIO.");
+      }
+      setMinioStatus(payload.status);
+      setMinioActionMessage(payload.message ?? null);
+      return payload.status;
+    } catch (error) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1800));
+      const refreshedStatus = await loadMinioStatus();
+      if (refreshedStatus?.ready) {
+        setMinioActionMessage(
+          "Local MinIO is ready. The dev server restarted after writing `.env.local`, but the setup completed.",
+        );
+        return refreshedStatus;
+      }
+      setMinioActionError(error instanceof Error ? error.message : String(error));
+      return null;
+    } finally {
+      setIsEnsuringMinio(false);
+    }
+  }
+
+  useEffect(() => {
+    if (stepIndex !== 3 || hasStartedInitialMinioCheckRef.current) {
+      return;
+    }
+
+    hasStartedInitialMinioCheckRef.current = true;
+    void (async () => {
+      const status = await loadMinioStatus();
+      if (
+        status &&
+        status.docker.usable &&
+        !status.ready &&
+        !hasAttemptedAutomaticMinioEnsureRef.current
+      ) {
+        hasAttemptedAutomaticMinioEnsureRef.current = true;
+        await ensureMinioReady();
+      }
+    })();
+  }, [stepIndex]);
+
   async function persistStepOne() {
     const snapshot: StepOneSnapshot = {
       step: 1,
@@ -234,6 +499,24 @@ export function OnboardingPage() {
         return;
       }
       setStepIndex(2);
+      return;
+    }
+
+    if (stepIndex === 2) {
+      if (!dockerRedisStatus?.ready) {
+        setStepError("Finish Docker and Redis setup before continuing.");
+        return;
+      }
+      setStepIndex(3);
+      return;
+    }
+
+    if (stepIndex === 3) {
+      if (!minioStatus?.ready) {
+        setStepError("Finish local MinIO setup before continuing.");
+        return;
+      }
+      setStepIndex(4);
       return;
     }
 
@@ -633,6 +916,425 @@ export function OnboardingPage() {
               ) : null}
             </div>
           ) : null}
+          {stepIndex === 2 ? (
+            <div style={{ marginTop: "16px", display: "grid", gap: "10px" }}>
+              {isCheckingDockerRedis ? (
+                <p style={{ margin: 0, color: "#93c5fd" }}>Checking Docker and Redis...</p>
+              ) : null}
+              {dockerRedisError ? (
+                <div>
+                  <p style={{ margin: 0, color: "#fecaca" }}>{dockerRedisError}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDockerRedisError(null);
+                      void loadDockerRedisStatus();
+                    }}
+                    style={{
+                      marginTop: "8px",
+                      border: "1px solid rgba(248, 113, 113, 0.35)",
+                      background: "rgba(127, 29, 29, 0.22)",
+                      color: "#fecaca",
+                      borderRadius: "8px",
+                      padding: "6px 10px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Retry Docker/Redis check
+                  </button>
+                </div>
+              ) : null}
+              {dockerRedisStatus ? (
+                <>
+                  <div
+                    style={{
+                      border: `1px solid ${
+                        dockerRedisStatus.ready ? "rgba(74, 222, 128, 0.35)" : "rgba(250, 204, 21, 0.32)"
+                      }`,
+                      borderRadius: "10px",
+                      padding: "12px",
+                      background: dockerRedisStatus.ready ? "rgba(20, 83, 45, 0.22)" : "rgba(113, 63, 18, 0.22)",
+                    }}
+                  >
+                    <p
+                      style={{ margin: 0, color: dockerRedisStatus.ready ? "#bbf7d0" : "#fde68a", fontWeight: 700 }}
+                    >
+                      {dockerRedisStatus.ready
+                        ? "Redis is running from this repo's docker-compose.yml."
+                        : "Docker/Redis is not ready yet."}
+                    </p>
+                    <p style={{ margin: "6px 0 0", color: "#cbd5e1", lineHeight: 1.6 }}>
+                      {dockerRedisStatus.redis.composeMessage}
+                    </p>
+                  </div>
+
+                  <div
+                    style={{
+                      border: "1px solid rgba(148, 163, 184, 0.22)",
+                      borderRadius: "10px",
+                      padding: "12px",
+                      background: "rgba(2, 6, 23, 0.45)",
+                    }}
+                  >
+                    <p
+                      style={{
+                        margin: 0,
+                        color: "#e2e8f0",
+                        fontWeight: 700,
+                        fontSize: "12px",
+                        letterSpacing: "0.08em",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Docker
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>
+                      Installed: {dockerRedisStatus.docker.installed ? "yes" : "no"}
+                    </p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px" }}>
+                      {dockerRedisStatus.docker.path ?? "No docker executable found on PATH."}
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>
+                      Compose usable here: {dockerRedisStatus.docker.usable ? "yes" : "no"}
+                    </p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", lineHeight: 1.6 }}>
+                      {dockerRedisStatus.docker.message}
+                    </p>
+                  </div>
+
+                  <div
+                    style={{
+                      border: "1px solid rgba(56, 189, 248, 0.22)",
+                      borderRadius: "10px",
+                      padding: "12px",
+                      background: "rgba(8, 47, 73, 0.3)",
+                    }}
+                  >
+                    <p
+                      style={{
+                        margin: 0,
+                        color: "#bae6fd",
+                        fontWeight: 700,
+                        fontSize: "12px",
+                        letterSpacing: "0.08em",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Redis
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>
+                      Compose file
+                    </p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", wordBreak: "break-all" }}>
+                      {dockerRedisStatus.composeFilePath}
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>
+                      Compose service running: {dockerRedisStatus.redis.composeRunning ? "yes" : "no"}
+                    </p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", lineHeight: 1.6 }}>
+                      {dockerRedisStatus.redis.composeMessage}
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>
+                      REDIS_URL reachable: {dockerRedisStatus.redis.reachable ? "yes" : "no"}
+                    </p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", lineHeight: 1.6 }}>
+                      {dockerRedisStatus.redis.message}
+                    </p>
+                  </div>
+
+                  {!dockerRedisStatus.ready ? (
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void ensureDockerRedisRunning();
+                        }}
+                        disabled={isEnsuringDockerRedis || !dockerRedisStatus.docker.usable}
+                        style={{
+                          border: "1px solid rgba(74, 222, 128, 0.4)",
+                          background: "rgba(22, 101, 52, 0.38)",
+                          color: "#ecfdf5",
+                          borderRadius: "8px",
+                          padding: "8px 12px",
+                          cursor:
+                            isEnsuringDockerRedis || !dockerRedisStatus.docker.usable ? "not-allowed" : "pointer",
+                          opacity: isEnsuringDockerRedis || !dockerRedisStatus.docker.usable ? 0.6 : 1,
+                        }}
+                      >
+                        {isEnsuringDockerRedis ? "Starting Redis..." : "Start Redis from docker compose"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDockerRedisError(null);
+                          void loadDockerRedisStatus();
+                        }}
+                        style={{
+                          border: "1px solid rgba(148, 163, 184, 0.28)",
+                          background: "rgba(15, 23, 42, 0.6)",
+                          color: "#e2e8f0",
+                          borderRadius: "8px",
+                          padding: "8px 12px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Check again
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {dockerRedisActionMessage ? (
+                    <p style={{ margin: 0, color: "#bbf7d0" }}>{dockerRedisActionMessage}</p>
+                  ) : null}
+                  {dockerRedisActionError ? (
+                    <p style={{ margin: 0, color: "#fecaca" }}>{dockerRedisActionError}</p>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          ) : null}
+          {stepIndex === 3 ? (
+            <div style={{ marginTop: "16px", display: "grid", gap: "10px" }}>
+              {isCheckingMinio ? (
+                <p style={{ margin: 0, color: "#93c5fd" }}>Checking local MinIO...</p>
+              ) : null}
+              {minioError ? (
+                <div>
+                  <p style={{ margin: 0, color: "#fecaca" }}>{minioError}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMinioError(null);
+                      void loadMinioStatus();
+                    }}
+                    style={{
+                      marginTop: "8px",
+                      border: "1px solid rgba(248, 113, 113, 0.35)",
+                      background: "rgba(127, 29, 29, 0.22)",
+                      color: "#fecaca",
+                      borderRadius: "8px",
+                      padding: "6px 10px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Retry MinIO check
+                  </button>
+                </div>
+              ) : null}
+              {minioStatus ? (
+                <>
+                  <div
+                    style={{
+                      border: `1px solid ${
+                        minioStatus.ready ? "rgba(74, 222, 128, 0.35)" : "rgba(250, 204, 21, 0.32)"
+                      }`,
+                      borderRadius: "10px",
+                      padding: "12px",
+                      background: minioStatus.ready ? "rgba(20, 83, 45, 0.22)" : "rgba(113, 63, 18, 0.22)",
+                    }}
+                  >
+                    <p style={{ margin: 0, color: minioStatus.ready ? "#bbf7d0" : "#fde68a", fontWeight: 700 }}>
+                      {minioStatus.ready ? "Local MinIO is configured for Softbox." : "Local MinIO is not ready yet."}
+                    </p>
+                    <p style={{ margin: "6px 0 0", color: "#cbd5e1", lineHeight: 1.6 }}>
+                      {minioStatus.ready
+                        ? "Softbox can publish build artifacts to the local MinIO bucket after you restart `pnpm start`."
+                        : "Softbox needs Docker, the MinIO container, the local bucket, and the MinIO env vars before the worker can publish artifacts."}
+                    </p>
+                  </div>
+
+                  <div
+                    style={{
+                      border: "1px solid rgba(148, 163, 184, 0.22)",
+                      borderRadius: "10px",
+                      padding: "12px",
+                      background: "rgba(2, 6, 23, 0.45)",
+                    }}
+                  >
+                    <p
+                      style={{
+                        margin: 0,
+                        color: "#e2e8f0",
+                        fontWeight: 700,
+                        fontSize: "12px",
+                        letterSpacing: "0.08em",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Docker
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>
+                      Installed: {minioStatus.docker.installed ? "yes" : "no"}
+                    </p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px" }}>
+                      {minioStatus.docker.path ?? "No docker executable found on PATH."}
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>
+                      Compose usable here: {minioStatus.docker.usable ? "yes" : "no"}
+                    </p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", lineHeight: 1.6 }}>
+                      {minioStatus.docker.message}
+                    </p>
+                  </div>
+
+                  <div
+                    style={{
+                      border: "1px solid rgba(56, 189, 248, 0.22)",
+                      borderRadius: "10px",
+                      padding: "12px",
+                      background: "rgba(8, 47, 73, 0.3)",
+                    }}
+                  >
+                    <p
+                      style={{
+                        margin: 0,
+                        color: "#bae6fd",
+                        fontWeight: 700,
+                        fontSize: "12px",
+                        letterSpacing: "0.08em",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      MinIO
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>Compose file</p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", wordBreak: "break-all" }}>
+                      {minioStatus.composeFilePath}
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>
+                      Compose service running: {minioStatus.minio.composeRunning ? "yes" : "no"}
+                    </p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", lineHeight: 1.6 }}>
+                      {minioStatus.minio.composeMessage}
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>
+                      Health endpoint: {minioStatus.minio.healthy ? "healthy" : "not ready"}
+                    </p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", lineHeight: 1.6 }}>
+                      {minioStatus.minio.healthMessage}
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>
+                      Bucket `{minioStatus.minio.bucketName}` ready: {minioStatus.minio.bucketReady ? "yes" : "no"}
+                    </p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", lineHeight: 1.6 }}>
+                      {minioStatus.minio.bucketMessage}
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>
+                      Public probe reachable: {minioStatus.minio.publicProbeReachable ? "yes" : "no"}
+                    </p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", lineHeight: 1.6 }}>
+                      {minioStatus.minio.publicProbeMessage}
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>Public URL</p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", wordBreak: "break-all" }}>
+                      {minioStatus.minio.publicUrl}
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>Console URL</p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", wordBreak: "break-all" }}>
+                      {minioStatus.minio.consoleUrl}
+                    </p>
+                  </div>
+
+                  <div
+                    style={{
+                      border: "1px solid rgba(148, 163, 184, 0.22)",
+                      borderRadius: "10px",
+                      padding: "12px",
+                      background: "rgba(2, 6, 23, 0.45)",
+                    }}
+                  >
+                    <p
+                      style={{
+                        margin: 0,
+                        color: "#e2e8f0",
+                        fontWeight: 700,
+                        fontSize: "12px",
+                        letterSpacing: "0.08em",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      .env.local
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>
+                      ARTIFACT_STORAGE_PROVIDER
+                    </p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", wordBreak: "break-all" }}>
+                      {minioStatus.env.provider ?? "Missing"}
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>MINIO_S3_API</p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", wordBreak: "break-all" }}>
+                      {minioStatus.env.s3Api ?? "Missing"}
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>
+                      MINIO_PUBLIC_DEVELOPMENT_URL
+                    </p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", wordBreak: "break-all" }}>
+                      {minioStatus.env.publicDevelopmentUrl ?? "Missing"}
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#e2e8f0", fontWeight: 600 }}>
+                      MINIO_ACCESS_KEY_ID
+                    </p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", wordBreak: "break-all" }}>
+                      {minioStatus.env.accessKeyId ?? "Missing"}
+                    </p>
+                    <p style={{ margin: "10px 0 0", color: "#94a3b8", fontSize: "12px", lineHeight: 1.6 }}>
+                      Secret configured: {minioStatus.env.secretConfigured ? "yes" : "no"}
+                    </p>
+                    <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: "12px", lineHeight: 1.6 }}>
+                      {minioStatus.env.message}
+                    </p>
+                  </div>
+
+                  {!minioStatus.ready ? (
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void ensureMinioReady();
+                        }}
+                        disabled={isEnsuringMinio || !minioStatus.docker.usable}
+                        style={{
+                          border: "1px solid rgba(74, 222, 128, 0.4)",
+                          background: "rgba(22, 101, 52, 0.38)",
+                          color: "#ecfdf5",
+                          borderRadius: "8px",
+                          padding: "8px 12px",
+                          cursor: isEnsuringMinio || !minioStatus.docker.usable ? "not-allowed" : "pointer",
+                          opacity: isEnsuringMinio || !minioStatus.docker.usable ? 0.6 : 1,
+                        }}
+                      >
+                        {isEnsuringMinio ? "Setting up local MinIO..." : "Set up local MinIO"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMinioError(null);
+                          void loadMinioStatus();
+                        }}
+                        style={{
+                          border: "1px solid rgba(148, 163, 184, 0.28)",
+                          background: "rgba(15, 23, 42, 0.6)",
+                          color: "#e2e8f0",
+                          borderRadius: "8px",
+                          padding: "8px 12px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Check again
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {minioActionMessage ? (
+                    <p style={{ margin: 0, color: "#bbf7d0" }}>{minioActionMessage}</p>
+                  ) : null}
+                  {minioActionError ? (
+                    <p style={{ margin: 0, color: "#fecaca" }}>{minioActionError}</p>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          ) : null}
         </article>
 
         {completionError ? (
@@ -678,7 +1380,8 @@ export function OnboardingPage() {
             }}
           >
             Onboarding is marked complete and <code>VITE_ONBOARDING_DONE=true</code> was written to{" "}
-            <code>.env.local</code>. Restart <code>pnpm start</code> to load the main shell.
+            <code>.env.local</code>. Softbox will start the rest of the runtime automatically. The dev server may
+            briefly reconnect while the env change is applied.
           </p>
         ) : null}
 
@@ -711,7 +1414,9 @@ export function OnboardingPage() {
                 completed ||
                 isAdvancingStep ||
                 (stepIndex === 0 && (isCheckingTools || !!toolsError || tools.length === 0 || !system)) ||
-                (stepIndex === 1 && (isCheckingConvex || isCreatingLocalConvex || !convexStatus?.ready))
+                (stepIndex === 1 && (isCheckingConvex || isCreatingLocalConvex || !convexStatus?.ready)) ||
+                (stepIndex === 2 && (isCheckingDockerRedis || isEnsuringDockerRedis || !dockerRedisStatus?.ready)) ||
+                (stepIndex === 3 && (isCheckingMinio || isEnsuringMinio || !minioStatus?.ready))
               }
               style={{
                 border: "1px solid rgba(56, 189, 248, 0.4)",
@@ -724,7 +1429,9 @@ export function OnboardingPage() {
                   completed ||
                   isAdvancingStep ||
                   (stepIndex === 0 && (isCheckingTools || !!toolsError || tools.length === 0 || !system)) ||
-                  (stepIndex === 1 && (isCheckingConvex || isCreatingLocalConvex || !convexStatus?.ready))
+                  (stepIndex === 1 && (isCheckingConvex || isCreatingLocalConvex || !convexStatus?.ready)) ||
+                  (stepIndex === 2 && (isCheckingDockerRedis || isEnsuringDockerRedis || !dockerRedisStatus?.ready)) ||
+                  (stepIndex === 3 && (isCheckingMinio || isEnsuringMinio || !minioStatus?.ready))
                     ? "not-allowed"
                     : "pointer",
                 opacity:
@@ -732,7 +1439,9 @@ export function OnboardingPage() {
                   completed ||
                   isAdvancingStep ||
                   (stepIndex === 0 && (isCheckingTools || !!toolsError || tools.length === 0 || !system)) ||
-                  (stepIndex === 1 && (isCheckingConvex || isCreatingLocalConvex || !convexStatus?.ready))
+                  (stepIndex === 1 && (isCheckingConvex || isCreatingLocalConvex || !convexStatus?.ready)) ||
+                  (stepIndex === 2 && (isCheckingDockerRedis || isEnsuringDockerRedis || !dockerRedisStatus?.ready)) ||
+                  (stepIndex === 3 && (isCheckingMinio || isEnsuringMinio || !minioStatus?.ready))
                     ? 0.6
                     : 1,
               }}

@@ -10,6 +10,8 @@ function buildWorkerConfig(overrides?: Partial<WorkerConfig>): WorkerConfig {
     agentModel: "gpt-5.4-mini",
     agentTimeoutMs: 600000,
     redisUrl: "redis://127.0.0.1:6379",
+    artifactStorageProvider: "r2",
+    artifactStorageLabel: "R2",
     r2Endpoint: "https://example.r2.cloudflarestorage.com",
     r2Bucket: "softbox-r2",
     r2AccessKeyId: "key",

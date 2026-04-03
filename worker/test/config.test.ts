@@ -17,6 +17,16 @@ describe("parseS3ApiUrl", () => {
     });
   });
 
+  it("extracts the endpoint and bucket from a MinIO-style URL", () => {
+    expect(
+      parseS3ApiUrl("http://127.0.0.1:9000/softbox-artifacts"),
+    ).toEqual({
+      s3Api: "http://127.0.0.1:9000/softbox-artifacts",
+      endpoint: "http://127.0.0.1:9000",
+      bucket: "softbox-artifacts",
+    });
+  });
+
   it("rejects URLs without exactly one bucket segment", () => {
     expect(() =>
       parseS3ApiUrl("https://example-account.r2.cloudflarestorage.com"),

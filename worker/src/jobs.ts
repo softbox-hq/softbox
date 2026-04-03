@@ -555,7 +555,7 @@ export async function processJobById(
     }
     logJob(
       runningJob._id,
-      `build produced ${buildResult.artifacts.length} artifact(s), uploading to R2`,
+      `build produced ${buildResult.artifacts.length} artifact(s), uploading to ${config.artifactStorageLabel}`,
     );
     await assertAppStillExists();
     activeStage = "upload";
@@ -564,18 +564,18 @@ export async function processJobById(
     const skippedBytes = uploadSummary.skipped.reduce((sum, artifact) => sum + artifact.bytes, 0);
     logJob(
       runningJob._id,
-      `R2 upload summary: uploaded ${uploadSummary.uploaded.length}/${buildResult.artifacts.length} artifact(s) (${formatBytes(uploadedBytes)}), skipped ${uploadSummary.skipped.length} existing artifact(s) (${formatBytes(skippedBytes)})`,
+      `${config.artifactStorageLabel} upload summary: uploaded ${uploadSummary.uploaded.length}/${buildResult.artifacts.length} artifact(s) (${formatBytes(uploadedBytes)}), skipped ${uploadSummary.skipped.length} existing artifact(s) (${formatBytes(skippedBytes)})`,
     );
     for (const artifact of uploadSummary.uploaded) {
       logJob(
         runningJob._id,
-        `R2 uploaded ${artifact.key} (${formatBytes(artifact.bytes)}, ${artifact.contentType})`,
+        `${config.artifactStorageLabel} uploaded ${artifact.key} (${formatBytes(artifact.bytes)}, ${artifact.contentType})`,
       );
     }
     for (const artifact of uploadSummary.skipped) {
       logJob(
         runningJob._id,
-        `R2 skipped ${artifact.key} (${formatBytes(artifact.bytes)}, ${artifact.contentType})`,
+        `${config.artifactStorageLabel} skipped ${artifact.key} (${formatBytes(artifact.bytes)}, ${artifact.contentType})`,
       );
     }
     if (runningJob.pipelineRunId) {

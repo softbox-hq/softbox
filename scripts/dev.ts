@@ -1,6 +1,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { existsSync, readFileSync, unwatchFile, watchFile } from "node:fs";
 import { resolve } from "node:path";
-import { config as loadEnv } from "dotenv";
+import { config as loadEnv, parse as parseDotenv } from "dotenv";
 import { ensureOpenClawAgentIdPrefixInEnvFile } from "../worker/src/openClawRouting";
 
 type ProcessSpec = {
@@ -9,10 +10,15 @@ type ProcessSpec = {
   args: string[];
 };
 
-const processes: ProcessSpec[] = [
+const shellProcess: ProcessSpec = {
+  name: "shell",
+  command: "pnpm",
+  args: ["dev:shell"],
+};
+
+const runtimeProcesses: ProcessSpec[] = [
   { name: "convex", command: "pnpm", args: ["dev:convex"] },
   { name: "worker", command: "pnpm", args: ["dev:worker"] },
-  { name: "shell", command: "pnpm", args: ["dev:shell"] },
 ];
 
 function isOpenClawCommand(command: string): boolean {
@@ -72,6 +78,12 @@ function killChild(child: ChildProcess): void {
   child.kill("SIGTERM");
 }
 
+function readOnboardingDone(envLocalPath: string): boolean {
+  const source = existsSync(envLocalPath) ? readFileSync(envLocalPath, "utf8") : "";
+  const parsed = parseDotenv(source);
+  return (parsed.VITE_ONBOARDING_DONE ?? process.env.VITE_ONBOARDING_DONE ?? "").trim().toLowerCase() === "true";
+}
+
 async function main(): Promise<void> {
   loadEnv({ path: ".env.local", quiet: true });
   loadEnv({ path: ".env", quiet: true });
@@ -91,8 +103,13 @@ async function main(): Promise<void> {
     process.env.CLAUDE_CODE_COMMAND?.trim() ||
     "codex";
   const sharedOpenClawAgentId = process.env.OPENCLAW_AGENT_ID?.trim() || "";
+  const onboardingDone = readOnboardingDone(envLocalPath);
 
-  console.log("[start] starting Convex, worker, and shell");
+  console.log(
+    onboardingDone
+      ? "[start] starting Convex, worker, and shell"
+      : "[start] onboarding mode detected; starting the shell only",
+  );
   console.log("[start] run 'pnpm run doctor' first if startup fails");
   if (openClawRouting.updated && openClawRouting.prefix) {
     console.log(
@@ -100,26 +117,17 @@ async function main(): Promise<void> {
     );
   }
 
-  console.log("[start] preflighting Convex deployment");
-  runBlockingCommand("Convex preflight", "pnpm", ["exec", "convex", "dev", "--once"]);
-
-  if (isOpenClawCommand(agentCommand) && !sharedOpenClawAgentId) {
-    console.log("[start] syncing OpenClaw agents for this checkout");
-    runBlockingCommand("OpenClaw agent sync", "pnpm", [
-      "worker:openclaw-sync-agents",
-      "--",
-      "--apply",
-    ]);
-  }
-
   const children = new Map<string, ChildProcess>();
   let shuttingDown = false;
+  let runtimeStarting = false;
+  let runtimeStarted = false;
 
   function shutdown(exitCode = 0): void {
     if (shuttingDown) {
       return;
     }
     shuttingDown = true;
+    unwatchFile(envLocalPath);
     for (const child of children.values()) {
       killChild(child);
     }
@@ -129,7 +137,11 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown(0));
   process.on("SIGTERM", () => shutdown(0));
 
-  for (const spec of processes) {
+  function startChild(spec: ProcessSpec): void {
+    if (children.has(spec.name)) {
+      return;
+    }
+
     const child = spawn(spec.command, spec.args, {
       cwd: process.cwd(),
       env: process.env,
@@ -165,6 +177,58 @@ async function main(): Promise<void> {
     child.on("error", (error) => {
       console.error(`[start] failed to start ${spec.name}: ${error.message}`);
       shutdown(1);
+    });
+  }
+
+  async function startRuntimeServices() {
+    if (runtimeStarted || runtimeStarting || shuttingDown) {
+      return;
+    }
+
+    runtimeStarting = true;
+    try {
+      console.log("[start] preflighting Convex deployment");
+      runBlockingCommand("Convex preflight", "pnpm", ["exec", "convex", "dev", "--once"]);
+
+      if (isOpenClawCommand(agentCommand) && !sharedOpenClawAgentId) {
+        console.log("[start] syncing OpenClaw agents for this checkout");
+        runBlockingCommand("OpenClaw agent sync", "pnpm", [
+          "worker:openclaw-sync-agents",
+          "--",
+          "--apply",
+        ]);
+      }
+
+      for (const spec of runtimeProcesses) {
+        startChild(spec);
+      }
+      runtimeStarted = true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[start] failed to start runtime services: ${message}`);
+      shutdown(1);
+    } finally {
+      runtimeStarting = false;
+    }
+  }
+
+  startChild(shellProcess);
+
+  if (onboardingDone) {
+    await startRuntimeServices();
+  } else {
+    console.log("[start] onboarding is incomplete; skipping Convex preflight and worker startup");
+    watchFile(envLocalPath, { interval: 500 }, async () => {
+      if (shuttingDown || runtimeStarted || runtimeStarting) {
+        return;
+      }
+
+      if (!readOnboardingDone(envLocalPath)) {
+        return;
+      }
+
+      console.log("[start] onboarding completed; starting Convex and worker");
+      await startRuntimeServices();
     });
   }
 

@@ -13,9 +13,9 @@ function App() {
           <img src={viteLogo} className="vite" alt="Vite logo" />
         </div>
         <div>
-          <h1>Get started</h1>
+          <h1>/home/fvrlak/ventures/softbox/apps/space</h1>
           <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
+            Edit and save to test <code>HMR</code>
           </p>
         </div>
       </section>

@@ -4,6 +4,13 @@ import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { cpus, freemem, hostname, platform, release, totalmem, arch } from "node:os";
 import { Socket } from "node:net";
+import {
+  CreateBucketCommand,
+  HeadBucketCommand,
+  PutBucketPolicyCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
@@ -23,6 +30,17 @@ const projectRoot = resolve(import.meta.dirname, "..");
 const envLocalPath = resolve(projectRoot, ".env.local");
 const openClawConfigPath = resolve("/home/fvrlak/.openclaw/openclaw.json");
 const onboardingStateRoot = resolve(projectRoot, ".softbox", "onboarding");
+const minioOnboardingServiceName = "minio";
+const minioOnboardingBucket = "softbox-artifacts";
+const minioOnboardingEndpoint = "http://127.0.0.1:9000";
+const minioOnboardingConsoleUrl = "http://127.0.0.1:9001";
+const minioOnboardingAccessKeyId = "softbox";
+const minioOnboardingSecretAccessKey = "softboxminio";
+const minioOnboardingProbeKey = "_softbox/health.txt";
+const minioOnboardingS3Api = `${minioOnboardingEndpoint}/${minioOnboardingBucket}`;
+const minioOnboardingPublicUrl = `${minioOnboardingEndpoint}/${minioOnboardingBucket}`;
+const minioOnboardingPublicProbeUrl = `${minioOnboardingPublicUrl}/${minioOnboardingProbeKey}`;
+const minioOnboardingHealthUrl = `${minioOnboardingEndpoint}/minio/health/live`;
 
 type JsonRecord = Record<string, unknown>;
 type UnwrappedAppRecord = {
@@ -224,13 +242,65 @@ async function runExecFile(
       },
       (error, stdout, stderr) => {
         if (error) {
-          rejectPromise(new Error(stderr.trim() || error.message));
+          rejectPromise(new Error(stderr.trim() || stdout.trim() || error.message));
           return;
         }
         resolvePromise({ stdout, stderr });
       },
     );
   });
+}
+
+async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 3000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function createOnboardingMinioClient() {
+  return new S3Client({
+    region: "us-east-1",
+    endpoint: minioOnboardingEndpoint,
+    forcePathStyle: true,
+    credentials: {
+      accessKeyId: minioOnboardingAccessKeyId,
+      secretAccessKey: minioOnboardingSecretAccessKey,
+    },
+  });
+}
+
+function readErrorName(error: unknown) {
+  if (typeof error !== "object" || error === null || !("name" in error)) {
+    return null;
+  }
+  return typeof error.name === "string" ? error.name : null;
+}
+
+function readErrorStatusCode(error: unknown) {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("$metadata" in error) ||
+    typeof error.$metadata !== "object" ||
+    error.$metadata === null ||
+    !("httpStatusCode" in error.$metadata)
+  ) {
+    return null;
+  }
+  return typeof error.$metadata.httpStatusCode === "number" ? error.$metadata.httpStatusCode : null;
+}
+
+function isMissingBucketError(error: unknown) {
+  const name = readErrorName(error);
+  const statusCode = readErrorStatusCode(error);
+  return name === "NotFound" || name === "NoSuchBucket" || statusCode === 404;
 }
 
 function isLocalConvexUrl(rawUrl: string | null) {
@@ -1044,6 +1114,348 @@ export default defineConfig({
           }
         }
 
+        async function buildDockerComposeAvailabilityStatus() {
+          const docker = await checkCommandInstalled("docker");
+
+          let dockerUsable = false;
+          let dockerMessage = docker.installed
+            ? "Docker CLI is installed."
+            : "Docker CLI is not installed on this machine.";
+
+          if (docker.installed) {
+            try {
+              await runExecFile("docker", ["compose", "version"], {
+                cwd: projectRoot,
+                timeoutMs: 5000,
+              });
+              dockerUsable = true;
+              dockerMessage = "Docker Compose is available in this environment.";
+            } catch (error) {
+              dockerMessage = error instanceof Error ? error.message : String(error);
+            }
+          }
+
+          return {
+            installed: docker.installed,
+            path: docker.path,
+            usable: dockerUsable,
+            message: dockerMessage,
+          };
+        }
+
+        async function listRunningComposeServices() {
+          const { stdout } = await runExecFile("docker", ["compose", "ps", "--services", "--status", "running"], {
+            cwd: projectRoot,
+            timeoutMs: 10000,
+          });
+          return new Set(
+            stdout
+              .split(/\r?\n/)
+              .map((line) => line.trim())
+              .filter(Boolean),
+          );
+        }
+
+        async function buildDockerRedisOnboardingStatus() {
+          const composeFilePath = resolve(projectRoot, "docker-compose.yml");
+          const docker = await buildDockerComposeAvailabilityStatus();
+
+          let composeRedisRunning = false;
+          let composeMessage = docker.usable
+            ? `Redis service is not running from ${composeFilePath}.`
+            : "Docker Compose is not available, so Softbox cannot manage Redis from docker-compose.yml.";
+
+          if (docker.usable) {
+            try {
+              composeRedisRunning = (await listRunningComposeServices()).has("redis");
+              composeMessage = composeRedisRunning
+                ? `Redis service is running from ${composeFilePath}.`
+                : `Redis service is not running from ${composeFilePath}.`;
+            } catch (error) {
+              composeMessage = error instanceof Error ? error.message : String(error);
+            }
+          }
+
+          const redis = await checkRedis(process.env.REDIS_URL);
+          const redisReachable = redis.status === "healthy";
+          const redisMessage =
+            redisReachable && !composeRedisRunning
+              ? `${redis.message} Redis is reachable, but not from ${composeFilePath}.`
+              : redis.message;
+
+          return {
+            composeFilePath,
+            docker,
+            redis: {
+              composeRunning: composeRedisRunning,
+              composeMessage,
+              reachable: redisReachable,
+              message: redisMessage,
+            },
+            ready: docker.usable && composeRedisRunning && redisReachable,
+          };
+        }
+
+        async function ensureDockerRedisRunning() {
+          const initialStatus = await buildDockerRedisOnboardingStatus();
+          if (!initialStatus.docker.installed) {
+            throw new Error(initialStatus.docker.message);
+          }
+          if (!initialStatus.docker.usable) {
+            throw new Error(initialStatus.docker.message);
+          }
+
+          await runExecFile("docker", ["compose", "up", "-d", "redis"], {
+            cwd: projectRoot,
+            timeoutMs: 120000,
+          });
+
+          let latestStatus = await buildDockerRedisOnboardingStatus();
+          for (let attempt = 0; attempt < 8; attempt += 1) {
+            if (latestStatus.ready) {
+              break;
+            }
+            await new Promise((resolvePromise) => setTimeout(resolvePromise, 1000));
+            latestStatus = await buildDockerRedisOnboardingStatus();
+          }
+
+          return {
+            status: latestStatus,
+            message: initialStatus.redis.composeRunning
+              ? "Redis was already started from docker-compose.yml."
+              : latestStatus.ready
+                ? "Started Redis from docker-compose.yml."
+                : "Redis start command finished, but Redis is not healthy yet.",
+          };
+        }
+
+        async function buildMinioOnboardingStatus() {
+          const composeFilePath = resolve(projectRoot, "docker-compose.yml");
+          const docker = await buildDockerComposeAvailabilityStatus();
+
+          let composeRunning = false;
+          let composeMessage = docker.usable
+            ? `MinIO service is not running from ${composeFilePath}.`
+            : "Docker Compose is not available, so Softbox cannot manage local MinIO.";
+
+          if (docker.usable) {
+            try {
+              composeRunning = (await listRunningComposeServices()).has(minioOnboardingServiceName);
+              composeMessage = composeRunning
+                ? `MinIO service is running from ${composeFilePath}.`
+                : `MinIO service is not running from ${composeFilePath}.`;
+            } catch (error) {
+              composeMessage = error instanceof Error ? error.message : String(error);
+            }
+          }
+
+          let healthy = false;
+          let healthMessage = composeRunning
+            ? `MinIO health endpoint is not responding at ${minioOnboardingHealthUrl}.`
+            : "MinIO is not running yet, so the health endpoint is unavailable.";
+
+          if (composeRunning) {
+            try {
+              const response = await fetchWithTimeout(minioOnboardingHealthUrl, { method: "GET" });
+              healthy = response.ok;
+              healthMessage = response.ok
+                ? `MinIO health endpoint responded from ${minioOnboardingHealthUrl}.`
+                : `MinIO health endpoint returned ${response.status}.`;
+            } catch (error) {
+              healthMessage = error instanceof Error ? error.message : String(error);
+            }
+          }
+
+          let bucketReady = false;
+          let bucketMessage = healthy
+            ? `Bucket '${minioOnboardingBucket}' is not ready yet.`
+            : "MinIO is not healthy yet, so Softbox cannot verify the bucket.";
+
+          if (healthy) {
+            try {
+              const client = createOnboardingMinioClient();
+              await client.send(
+                new HeadBucketCommand({
+                  Bucket: minioOnboardingBucket,
+                }),
+              );
+              bucketReady = true;
+              bucketMessage = `Bucket '${minioOnboardingBucket}' exists and is reachable.`;
+            } catch (error) {
+              bucketMessage = isMissingBucketError(error)
+                ? `Bucket '${minioOnboardingBucket}' does not exist yet.`
+                : error instanceof Error
+                  ? error.message
+                  : String(error);
+            }
+          }
+
+          let publicProbeReachable = false;
+          let publicProbeMessage = bucketReady
+            ? `Public probe is not reachable at ${minioOnboardingPublicProbeUrl}.`
+            : "The bucket is not ready yet, so Softbox cannot verify the public probe URL.";
+
+          if (bucketReady) {
+            try {
+              const response = await fetchWithTimeout(minioOnboardingPublicProbeUrl, { method: "GET" });
+              publicProbeReachable = response.ok;
+              publicProbeMessage = response.ok
+                ? `Public probe is reachable at ${minioOnboardingPublicProbeUrl}.`
+                : `Public probe returned ${response.status} from ${minioOnboardingPublicProbeUrl}.`;
+            } catch (error) {
+              publicProbeMessage = error instanceof Error ? error.message : String(error);
+            }
+          }
+
+          const envSource = await readEnvFileSource(envLocalPath);
+          const provider = readEnvValue(envSource, "ARTIFACT_STORAGE_PROVIDER");
+          const s3Api = readEnvValue(envSource, "MINIO_S3_API");
+          const publicDevelopmentUrl = readEnvValue(envSource, "MINIO_PUBLIC_DEVELOPMENT_URL");
+          const accessKeyId = readEnvValue(envSource, "MINIO_ACCESS_KEY_ID");
+          const secretConfigured = Boolean(readEnvValue(envSource, "MINIO_SECRET_ACCESS_KEY"));
+          const valuesMatch =
+            provider === "minio" &&
+            s3Api === minioOnboardingS3Api &&
+            publicDevelopmentUrl === minioOnboardingPublicUrl &&
+            accessKeyId === minioOnboardingAccessKeyId &&
+            secretConfigured;
+          const envMessage = valuesMatch
+            ? "Softbox is configured to use the local MinIO bucket."
+            : "Softbox is not pointed at the local MinIO bucket yet.";
+
+          return {
+            composeFilePath,
+            docker,
+            minio: {
+              composeRunning,
+              composeMessage,
+              healthy,
+              healthMessage,
+              bucketName: minioOnboardingBucket,
+              bucketReady,
+              bucketMessage,
+              consoleUrl: minioOnboardingConsoleUrl,
+              publicUrl: minioOnboardingPublicUrl,
+              publicProbeUrl: minioOnboardingPublicProbeUrl,
+              publicProbeReachable,
+              publicProbeMessage,
+            },
+            env: {
+              provider,
+              s3Api,
+              publicDevelopmentUrl,
+              accessKeyId,
+              secretConfigured,
+              valuesMatch,
+              message: envMessage,
+            },
+            ready: docker.usable && composeRunning && healthy && bucketReady && publicProbeReachable && valuesMatch,
+          };
+        }
+
+        async function ensureMinioOnboardingReady() {
+          const initialStatus = await buildMinioOnboardingStatus();
+          if (!initialStatus.docker.installed) {
+            throw new Error(initialStatus.docker.message);
+          }
+          if (!initialStatus.docker.usable) {
+            throw new Error(initialStatus.docker.message);
+          }
+
+          await runExecFile("docker", ["compose", "up", "-d", minioOnboardingServiceName], {
+            cwd: projectRoot,
+            timeoutMs: 120000,
+          });
+
+          let minioHealthy = false;
+          for (let attempt = 0; attempt < 30; attempt += 1) {
+            try {
+              const response = await fetchWithTimeout(minioOnboardingHealthUrl, { method: "GET" });
+              if (response.ok) {
+                minioHealthy = true;
+                break;
+              }
+            } catch {
+              // Keep polling until the timeout expires.
+            }
+            await new Promise((resolvePromise) => setTimeout(resolvePromise, 1000));
+          }
+
+          if (!minioHealthy) {
+            throw new Error(`MinIO did not become healthy at ${minioOnboardingHealthUrl}.`);
+          }
+
+          const client = createOnboardingMinioClient();
+          try {
+            await client.send(
+              new HeadBucketCommand({
+                Bucket: minioOnboardingBucket,
+              }),
+            );
+          } catch (error) {
+            if (!isMissingBucketError(error)) {
+              throw error;
+            }
+            await client.send(
+              new CreateBucketCommand({
+                Bucket: minioOnboardingBucket,
+              }),
+            );
+          }
+
+          await client.send(
+            new PutBucketPolicyCommand({
+              Bucket: minioOnboardingBucket,
+              Policy: JSON.stringify({
+                Version: "2012-10-17",
+                Statement: [
+                  {
+                    Sid: "PublicReadObjects",
+                    Effect: "Allow",
+                    Principal: "*",
+                    Action: ["s3:GetObject"],
+                    Resource: [`arn:aws:s3:::${minioOnboardingBucket}/*`],
+                  },
+                ],
+              }),
+            }),
+          );
+
+          await client.send(
+            new PutObjectCommand({
+              Bucket: minioOnboardingBucket,
+              Key: minioOnboardingProbeKey,
+              Body: "softbox-minio-ready\n",
+              CacheControl: "no-store",
+              ContentType: "text/plain; charset=utf-8",
+            }),
+          );
+
+          await updateLocalEnv({
+            ARTIFACT_STORAGE_PROVIDER: "minio",
+            MINIO_S3_API: minioOnboardingS3Api,
+            MINIO_PUBLIC_DEVELOPMENT_URL: minioOnboardingPublicUrl,
+            MINIO_ACCESS_KEY_ID: minioOnboardingAccessKeyId,
+            MINIO_SECRET_ACCESS_KEY: minioOnboardingSecretAccessKey,
+          });
+
+          let latestStatus = await buildMinioOnboardingStatus();
+          for (let attempt = 0; attempt < 8; attempt += 1) {
+            if (latestStatus.ready) {
+              break;
+            }
+            await new Promise((resolvePromise) => setTimeout(resolvePromise, 1000));
+            latestStatus = await buildMinioOnboardingStatus();
+          }
+
+          return {
+            status: latestStatus,
+            message: latestStatus.ready
+              ? "Started local MinIO, created the bucket, enabled public reads, and wrote the MinIO env vars."
+              : "MinIO setup command finished, but Softbox could not verify the bucket yet.",
+          };
+        }
+
         async function readJsonBody(req: NodeJS.ReadableStream) {
           const chunks: Buffer[] = [];
           for await (const chunk of req) {
@@ -1164,6 +1576,74 @@ export default defineConfig({
                 "Created a new local Convex deployment and mirrored CONVEX_URL into VITE_CONVEX_URL.",
               status,
             });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        });
+
+        server.middlewares.use("/__softbox/onboarding/docker-redis-status", async (req, res) => {
+          if (req.method !== "GET") {
+            writeJson(res, 405, { ok: false, error: "Method not allowed" });
+            return;
+          }
+
+          try {
+            const status = await buildDockerRedisOnboardingStatus();
+            writeJson(res, 200, { ok: true, status });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        });
+
+        server.middlewares.use("/__softbox/onboarding/docker-redis/ensure", async (req, res) => {
+          if (req.method !== "POST") {
+            writeJson(res, 405, { ok: false, error: "Method not allowed" });
+            return;
+          }
+
+          try {
+            const result = await ensureDockerRedisRunning();
+            writeJson(res, 200, { ok: true, ...result });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        });
+
+        server.middlewares.use("/__softbox/onboarding/minio-status", async (req, res) => {
+          if (req.method !== "GET") {
+            writeJson(res, 405, { ok: false, error: "Method not allowed" });
+            return;
+          }
+
+          try {
+            const status = await buildMinioOnboardingStatus();
+            writeJson(res, 200, { ok: true, status });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        });
+
+        server.middlewares.use("/__softbox/onboarding/minio/ensure", async (req, res) => {
+          if (req.method !== "POST") {
+            writeJson(res, 405, { ok: false, error: "Method not allowed" });
+            return;
+          }
+
+          try {
+            const result = await ensureMinioOnboardingReady();
+            writeJson(res, 200, { ok: true, ...result });
           } catch (error) {
             writeJson(res, 500, {
               ok: false,
@@ -1594,20 +2074,30 @@ export default defineConfig({
               if (service.name === "OpenClaw") {
                 return { ...service, checkedAt, ...openClaw };
               }
-              if (service.name === "Cloudflare R2") {
-                const configured = Boolean(
-                  process.env.S3_API &&
-                    process.env.PUBLIC_DEVELOPMENT_URL &&
-                    process.env.R2_ACCESS_KEY_ID &&
-                    process.env.R2_SECRET_ACCESS_KEY,
-                );
+              if (service.name === "Artifact Storage") {
+                const provider = (process.env.ARTIFACT_STORAGE_PROVIDER ?? "r2").trim().toLowerCase();
+                const configured =
+                  provider === "minio"
+                    ? Boolean(
+                        process.env.MINIO_S3_API &&
+                          process.env.MINIO_PUBLIC_DEVELOPMENT_URL &&
+                          process.env.MINIO_ACCESS_KEY_ID &&
+                          process.env.MINIO_SECRET_ACCESS_KEY,
+                      )
+                    : Boolean(
+                        process.env.S3_API &&
+                          process.env.PUBLIC_DEVELOPMENT_URL &&
+                          process.env.R2_ACCESS_KEY_ID &&
+                          process.env.R2_SECRET_ACCESS_KEY,
+                      );
+                const providerLabel = provider === "minio" ? "MinIO" : "R2";
                 return {
                   ...service,
                   checkedAt,
                   status: configured ? "healthy" : "warning",
                   message: configured
-                    ? "R2 environment variables are configured."
-                    : "One or more R2 environment variables are missing.",
+                    ? `${providerLabel} environment variables are configured.`
+                    : `One or more ${providerLabel} environment variables are missing.`,
                 };
               }
               return {

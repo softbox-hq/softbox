@@ -15,7 +15,7 @@ If you are an AI agent helping a human:
 
 This guide keeps the current Softbox architecture:
 - Convex for control plane state
-- Cloudflare R2 for build artifacts
+- Artifact storage via Cloudflare R2 or MinIO for build artifacts
 - Redis for BullMQ queue state
 - OpenClaw for code editing
 
@@ -86,7 +86,22 @@ Important:
 - these are intentionally duplicated because the browser shell reads `VITE_CONVEX_URL` and the worker reads `CONVEX_URL`
 - they should point to the same deployment
 
-## 4. Fill Cloudflare R2 Env Vars
+## 4. Fill Artifact Storage Env Vars
+
+Softbox supports two artifact storage modes:
+
+- `ARTIFACT_STORAGE_PROVIDER=r2`
+- `ARTIFACT_STORAGE_PROVIDER=minio`
+
+If you want the current hosted path, use R2. If you want a local object store option, use MinIO.
+
+### 4A. Cloudflare R2
+
+Set this in `.env.local`:
+
+```env
+ARTIFACT_STORAGE_PROVIDER=r2
+```
 
 Open the Cloudflare dashboard at `https://dash.cloudflare.com/`.
 
@@ -208,6 +223,29 @@ Put them into `.env.local`:
 R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
 ```
+
+### 4B. MinIO
+
+If you want local S3-compatible storage instead of Cloudflare R2, set this in `.env.local`:
+
+```env
+ARTIFACT_STORAGE_PROVIDER=minio
+```
+
+Then fill these env vars:
+
+```env
+MINIO_S3_API=http://127.0.0.1:9000/<bucket>
+MINIO_PUBLIC_DEVELOPMENT_URL=http://127.0.0.1:9000/<bucket>
+MINIO_ACCESS_KEY_ID=
+MINIO_SECRET_ACCESS_KEY=
+```
+
+Notes:
+
+- `MINIO_S3_API` is the S3-compatible API URL including the bucket path
+- `MINIO_PUBLIC_DEVELOPMENT_URL` is the public base URL the browser can fetch built artifacts from
+- the bucket still needs to be readable by the shell browser at runtime
 
 ## 5. Fill OpenClaw Env Vars
 

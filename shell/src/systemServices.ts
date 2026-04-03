@@ -31,7 +31,7 @@ export const systemServices: SystemService[] = [
     detail: "Performs code-editing runs for hosted Softbox apps.",
   },
   {
-    name: "Cloudflare R2",
+    name: "Artifact Storage",
     role: "Artifact storage",
     detail: "Stores immutable build artifacts used for preview and live versions.",
   },

@@ -16,7 +16,7 @@ function parsePositiveNumber(value: string | undefined, fallback: number): numbe
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function normalizeR2Endpoint(endpoint: string): string {
+function normalizeObjectStorageEndpoint(endpoint: string): string {
   const trimmed = endpoint.trim();
   try {
     const parsed = new URL(trimmed);
@@ -44,8 +44,8 @@ export function parseS3ApiUrl(raw: string): ParsedS3ApiConfig {
     parsed = new URL(trimmed);
   } catch {
     throw new Error(
-      `Invalid S3_API '${raw}'. Expected a full URL like ` +
-        "'https://<account>.r2.cloudflarestorage.com/<bucket>'.",
+      `Invalid S3 API URL '${raw}'. Expected a full URL like ` +
+        "'https://<host>/<bucket>' or 'http://127.0.0.1:9000/<bucket>'.",
     );
   }
 
@@ -56,18 +56,69 @@ export function parseS3ApiUrl(raw: string): ParsedS3ApiConfig {
 
   if (pathSegments.length !== 1) {
     throw new Error(
-      `Invalid S3_API '${raw}'. Expected exactly one bucket path segment like ` +
-        "'https://<account>.r2.cloudflarestorage.com/<bucket>'.",
+      `Invalid S3 API URL '${raw}'. Expected exactly one bucket path segment like ` +
+        "'https://<host>/<bucket>'.",
     );
   }
 
   const bucket = pathSegments[0];
-  const endpoint = normalizeR2Endpoint(parsed.toString());
+  const endpoint = normalizeObjectStorageEndpoint(parsed.toString());
 
   return {
     s3Api: `${endpoint}/${bucket}`,
     endpoint,
     bucket,
+  };
+}
+
+export type ArtifactStorageProvider = "r2" | "minio";
+
+type ArtifactStorageConfig = {
+  provider: ArtifactStorageProvider;
+  label: string;
+  s3Api: string;
+  endpoint: string;
+  bucket: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  publicDevelopmentUrl: string;
+};
+
+function readArtifactStorageProvider(): ArtifactStorageProvider {
+  const raw = process.env.ARTIFACT_STORAGE_PROVIDER?.trim().toLowerCase() || "r2";
+  if (raw === "r2" || raw === "minio") {
+    return raw;
+  }
+  throw new Error(
+    `Invalid ARTIFACT_STORAGE_PROVIDER '${raw}'. Expected 'r2' or 'minio'.`,
+  );
+}
+
+function loadArtifactStorageConfig(provider: ArtifactStorageProvider): ArtifactStorageConfig {
+  if (provider === "minio") {
+    const parsedS3Api = parseS3ApiUrl(requireEnv("MINIO_S3_API"));
+    return {
+      provider,
+      label: "MinIO",
+      s3Api: parsedS3Api.s3Api,
+      endpoint: parsedS3Api.endpoint,
+      bucket: parsedS3Api.bucket,
+      accessKeyId: requireEnv("MINIO_ACCESS_KEY_ID"),
+      secretAccessKey: requireEnv("MINIO_SECRET_ACCESS_KEY"),
+      publicDevelopmentUrl: requireEnv("MINIO_PUBLIC_DEVELOPMENT_URL").replace(/\/+$/, ""),
+    };
+  }
+
+  const parsedS3Api = parseS3ApiUrl(requireEnv("S3_API"));
+  return {
+    provider,
+    label: "R2",
+    s3Api: parsedS3Api.s3Api,
+    endpoint: parsedS3Api.endpoint,
+    bucket: parsedS3Api.bucket,
+    accessKeyId: requireEnv("R2_ACCESS_KEY_ID"),
+    secretAccessKey: requireEnv("R2_SECRET_ACCESS_KEY"),
+    publicDevelopmentUrl: requireEnv("PUBLIC_DEVELOPMENT_URL").replace(/\/+$/, ""),
   };
 }
 
@@ -77,6 +128,8 @@ export type WorkerConfig = {
   agentModel?: string;
   agentTimeoutMs: number;
   redisUrl: string;
+  artifactStorageProvider: ArtifactStorageProvider;
+  artifactStorageLabel: string;
   r2Endpoint: string;
   r2Bucket: string;
   r2AccessKeyId: string;
@@ -101,7 +154,8 @@ export type WorkerConfig = {
 
 export function loadWorkerConfig(): WorkerConfig {
   const projectRoot = resolve(process.cwd());
-  const parsedS3Api = parseS3ApiUrl(requireEnv("S3_API"));
+  const artifactStorageProvider = readArtifactStorageProvider();
+  const artifactStorageConfig = loadArtifactStorageConfig(artifactStorageProvider);
   const agentCommand =
     process.env.AGENT_COMMAND ??
     process.env.CLAUDE_CODE_COMMAND ??
@@ -132,12 +186,14 @@ export function loadWorkerConfig(): WorkerConfig {
       undefined,
     agentTimeoutMs,
     redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
-    r2Endpoint: parsedS3Api.endpoint,
-    r2Bucket: parsedS3Api.bucket,
-    r2AccessKeyId: requireEnv("R2_ACCESS_KEY_ID"),
-    r2SecretAccessKey: requireEnv("R2_SECRET_ACCESS_KEY"),
-    publicDevelopmentUrl: requireEnv("PUBLIC_DEVELOPMENT_URL").replace(/\/+$/, ""),
-    s3Api: parsedS3Api.s3Api,
+    artifactStorageProvider,
+    artifactStorageLabel: artifactStorageConfig.label,
+    r2Endpoint: artifactStorageConfig.endpoint,
+    r2Bucket: artifactStorageConfig.bucket,
+    r2AccessKeyId: artifactStorageConfig.accessKeyId,
+    r2SecretAccessKey: artifactStorageConfig.secretAccessKey,
+    publicDevelopmentUrl: artifactStorageConfig.publicDevelopmentUrl,
+    s3Api: artifactStorageConfig.s3Api,
     appId: process.env.APP_ID?.trim() || defaultConfiguredAppId || defaultAppId,
     pollIntervalMs,
     staleJobTimeoutMs,
@@ -145,7 +201,10 @@ export function loadWorkerConfig(): WorkerConfig {
     queueConcurrency: parsePositiveNumber(process.env.BULLMQ_QUEUE_CONCURRENCY, 1),
     queueAttempts: parsePositiveNumber(process.env.BULLMQ_QUEUE_ATTEMPTS, 2),
     queueBackoffMs: parsePositiveNumber(process.env.BULLMQ_QUEUE_BACKOFF_MS, 800),
-    r2UploadConcurrency: parsePositiveNumber(process.env.R2_UPLOAD_CONCURRENCY, 6),
+    r2UploadConcurrency: parsePositiveNumber(
+      process.env.ARTIFACT_UPLOAD_CONCURRENCY ?? process.env.R2_UPLOAD_CONCURRENCY,
+      6,
+    ),
     projectRoot,
     openClawGatewayBaseUrl: openClawEnabled
       ? (process.env.OPENCLAW_GATEWAY_BASE_URL?.trim() || "http://127.0.0.1:18789")
