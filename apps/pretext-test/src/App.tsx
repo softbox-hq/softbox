@@ -52,27 +52,20 @@ function App() {
     <main className="demo-shell">
       <section className="demo-grid">
         <div className="panel preview">
-          <div className="preview-meta">
-            <h2>Layout result</h2>
-            <span>{fontsReady ? 'Fonts ready' : 'Waiting for fonts'}</span>
-          </div>
-
-          <div className="paragraph-frame" style={{ width: '360px' }}>
-            {visibleLines.map((line, index) => (
-              <div className="line-row" key={`${index}-${line.text}`}>
-                <span className="line-number">{index + 1}</span>
-                <span className="line-text">{line.text}</span>
-              </div>
-            ))}
-            {result.lineCount > MAX_RENDERED_LINES && (
-              <div className="line-row">
-                <span className="line-number">...</span>
-                <span className="line-text">
-                  Showing first {MAX_RENDERED_LINES} lines of {result.lineCount}.
-                </span>
-              </div>
-            )}
-          </div>
+          {visibleLines.map((line, index) => (
+            <div className="line-row" key={`${index}-${line.text}`}>
+              <span className="line-number">{index + 1}</span>
+              <span className="line-text">{line.text}</span>
+            </div>
+          ))}
+          {result.lineCount > MAX_RENDERED_LINES && (
+            <div className="line-row">
+              <span className="line-number">...</span>
+              <span className="line-text">
+                Showing first {MAX_RENDERED_LINES} lines of {result.lineCount}.
+              </span>
+            </div>
+          )}
         </div>
       </section>
     </main>

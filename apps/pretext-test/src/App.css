@@ -18,27 +18,12 @@
   text-align: left;
 }
 
-.preview-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: baseline;
-  margin-bottom: 18px;
-}
-
-.preview-meta span {
-  color: var(--accent);
-  font-size: 14px;
-}
-
-.paragraph-frame {
-  max-width: 100%;
-  padding: 22px;
-  border-radius: 18px;
-  background:
-    linear-gradient(180deg, rgba(170, 59, 255, 0.08), rgba(170, 59, 255, 0)),
-    var(--code-bg);
-  box-sizing: border-box;
+.preview {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .line-row {
