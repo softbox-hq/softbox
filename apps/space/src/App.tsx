@@ -1,3 +1,4 @@
+import { OrbitControls, Grid, Stars as DreiStars } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { useRef } from 'react'
 import type { Group, Mesh } from 'three'
@@ -48,23 +49,7 @@ function Planet({
 }
 
 function Stars() {
-  return (
-    <>
-      {Array.from({ length: 150 }, (_, index) => {
-        const seed = index * 12.9898
-        const x = Math.sin(seed) * 20
-        const y = Math.cos(seed * 1.7) * 20
-        const z = Math.sin(seed * 0.7) * 20
-
-        return (
-          <mesh key={index} position={[x, y, z]}>
-            <sphereGeometry args={[0.03, 8, 8]} />
-            <meshBasicMaterial color="#ffffff" />
-          </mesh>
-        )
-      })}
-    </>
-  )
+  return <DreiStars radius={35} depth={50} count={3000} factor={4} fade speed={1} />
 }
 
 function App() {
@@ -76,12 +61,23 @@ function App() {
       </header>
 
       <div className="scene-frame" aria-label="3D solar system visualization">
-        <Canvas camera={{ position: [0, 4, 12], fov: 50 }}>
+        <Canvas camera={{ position: [0, 8, 16], fov: 50 }}>
           <color attach="background" args={["#050814"]} />
-          <fog attach="fog" args={["#050814", 10, 28]} />
+          <fog attach="fog" args={["#050814", 12, 40]} />
           <ambientLight intensity={0.25} />
           <pointLight position={[0, 0, 0]} intensity={120} color="#ffcc88" />
           <directionalLight position={[5, 4, 5]} intensity={0.8} color="#dbeafe" />
+          <Grid
+            infiniteGrid
+            sectionSize={2}
+            sectionColor="#38506f"
+            cellSize={1}
+            cellColor="#223047"
+            position={[0, -1.75, 0]}
+            fadeDistance={45}
+            fadeStrength={1}
+          />
+          <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
           <Stars />
           <Sun />
           <Planet radius={2.4} size={0.18} speed={1.6} color="#9ca3af" />
