@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { DesktopActionCard } from "./DesktopActionCard";
 import { ShellDesktopContextMenu } from "./ShellDesktopContextMenu";
+import paintIcon from "./paint-icon.png";
 import type { OpenClawStatus } from "./openClaw";
 import type { ServiceStatus } from "./serviceStatus";
 import type { ServerInfo } from "./serverInfo";
@@ -20,6 +21,10 @@ type ShellDesktopApp = {
 type UnwrappedShellApp = {
   appId: string;
   relativePath: string;
+};
+
+const desktopAppIconById: Partial<Record<string, string>> = {
+  dashboard: paintIcon,
 };
 
 type ShellHostSurfaceProps = {
@@ -770,28 +775,16 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {apps.map((app) => {
                       const isSelected = selectedAppId === app.appId;
-                      const versionLabel =
-                        typeof app.activeVersion?.versionNumber === "number"
-                          ? `v${app.activeVersion.versionNumber}`
-                          : "No versions yet";
-                      const sourceStatus = app.templateSourceStatus ?? "unknown";
                       return (
                         <DesktopActionCard
                           key={app.appId}
-                          eyebrow={isSelected ? "Mounted app" : "App"}
                           title={app.name || app.appId}
-                          description={`Open ${app.appId} on the Softbox desktop and continue editing from its mounted runtime.`}
-                          detail={`Template source: ${sourceStatus} · Active version: ${versionLabel}`}
-                          accentClassName={
-                            isSelected
-                              ? "from-cyan-300/40 via-sky-300/15 to-transparent"
-                              : "from-fuchsia-300/30 via-rose-300/12 to-transparent"
-                          }
+                          iconSrc={desktopAppIconById[app.appId]}
+                          selected={isSelected}
                           onClick={() => onSelectApp(app.appId)}
                           actions={[
                             {
-                              label:
-                                uninstallPendingAppId === app.appId ? "Uninstalling..." : "Uninstall",
+                              label: uninstallPendingAppId === app.appId ? "Uninstalling..." : "Uninstall",
                               tone: "secondary",
                               onClick: () => {
                                 if (uninstallPendingAppId || wrapPendingAppId) {

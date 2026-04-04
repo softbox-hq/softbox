@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import * as ContextMenu from "@radix-ui/react-context-menu";
 
 type DesktopActionCardAction = {
   label: string;
@@ -9,78 +10,91 @@ type DesktopActionCardAction = {
 };
 
 type DesktopActionCardProps = {
-  eyebrow?: string;
   title: string;
-  description: string;
-  detail: string;
-  accentClassName?: string;
+  iconSrc?: string;
+  selected?: boolean;
   actions?: DesktopActionCardAction[];
   onClick?: () => void;
 };
 
 export function DesktopActionCard(props: DesktopActionCardProps) {
-  const {
-    eyebrow,
-    title,
-    description,
-    detail,
-    accentClassName = "from-cyan-300/30 via-cyan-200/10 to-transparent",
-    actions = [],
-    onClick,
-  } = props;
+  const { title, iconSrc, selected = false, actions = [], onClick } = props;
+  const fallbackLabel = title.slice(0, 2).toUpperCase();
+
+  const trigger = (
+    <button
+      type="button"
+      data-desktop-context-menu-block="true"
+      onClick={onClick}
+      className={`group flex w-[92px] flex-col items-center gap-2 rounded-xl px-2 py-2 text-center outline-none transition-colors ${
+        selected
+          ? "bg-cyan-300/10 ring-1 ring-cyan-200/25"
+          : "hover:bg-white/6 focus-visible:bg-white/6"
+      }`}
+    >
+      <span
+        className={`flex size-[72px] items-center justify-center overflow-hidden rounded-[1.35rem] shadow-[0_16px_30px_rgba(0,0,0,0.28)] transition-transform group-hover:scale-[1.03] ${
+          iconSrc
+            ? "bg-transparent"
+            : "border border-white/10 bg-[linear-gradient(180deg,rgba(148,163,184,0.22),rgba(15,23,42,0.9))]"
+        }`}
+      >
+        {iconSrc ? (
+          <img src={iconSrc} alt="" className="size-full object-contain" draggable={false} />
+        ) : (
+          <span className="text-lg font-semibold tracking-[0.08em] text-slate-100">{fallbackLabel}</span>
+        )}
+      </span>
+      <span
+        className={`max-w-full break-words text-[12px] leading-4 ${
+          selected ? "font-semibold text-cyan-100" : "font-medium text-slate-100"
+        }`}
+      >
+        {title}
+      </span>
+    </button>
+  );
+
+  if (actions.length === 0) {
+    return trigger;
+  }
 
   return (
-    <article
-      data-desktop-context-menu-block={onClick ? "true" : undefined}
-      className={`max-w-[240px] overflow-hidden border border-white/10 bg-[#0a0d11]/80 ${onClick ? "cursor-pointer transition-colors hover:bg-[#0d1218]" : ""}`}
-      onClick={onClick}
-    >
-      <div className={`h-16 bg-gradient-to-br ${accentClassName}`}>
-        <div className="flex h-full items-end border-b border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(0,0,0,0.22))] p-3">
-          <div>
-            {eyebrow ? (
-              <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-white/55">
-                {eyebrow}
-              </p>
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>{trigger}</ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content
+          collisionPadding={12}
+          className="z-[70] min-w-[180px] overflow-hidden rounded-[1rem] border border-cyan-200/12 bg-[#060a0f]/96 p-1.5 text-slate-100 shadow-[0_28px_90px_rgba(0,0,0,0.6)] backdrop-blur-xl"
+        >
+          <div className="rounded-[0.85rem] border border-white/6 bg-[linear-gradient(180deg,rgba(103,232,249,0.06),rgba(255,255,255,0.02)_22%,rgba(255,255,255,0.01))] p-1">
+            {onClick ? (
+              <>
+                <ContextMenu.Item
+                  onSelect={() => onClick()}
+                  className="flex cursor-default select-none items-center gap-3 rounded-[0.8rem] px-3 py-2 text-sm font-medium text-slate-100 outline-none transition-colors data-[highlighted]:bg-cyan-300/12"
+                >
+                  Open
+                </ContextMenu.Item>
+                <ContextMenu.Separator className="mx-2 my-1 h-px bg-white/8" />
+              </>
             ) : null}
-            <h2 className="mt-1 text-sm font-semibold tracking-tight text-white">{title}</h2>
+
+            {actions.map((action) => (
+              <ContextMenu.Item
+                key={action.label}
+                onSelect={() => action.onClick()}
+                className={`flex cursor-default select-none items-center gap-3 rounded-[0.8rem] px-3 py-2 text-sm outline-none transition-colors data-[highlighted]:bg-white/8 ${
+                  action.tone === "secondary" ? "text-rose-200" : "text-slate-100"
+                }`}
+              >
+                {action.icon ? <span className="inline-flex items-center justify-center">{action.icon}</span> : null}
+                <span>{action.label}</span>
+              </ContextMenu.Item>
+            ))}
           </div>
-        </div>
-      </div>
-
-      <div className="space-y-3 p-3">
-        <p className="text-xs leading-4 text-slate-300">{description}</p>
-
-        <div className="border border-white/8 bg-black/20 px-2.5 py-2">
-          <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-            Detail
-          </p>
-          <p className="mt-1 text-[11px] leading-4 text-slate-200">{detail}</p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {actions.map((action) => (
-            <button
-              key={action.label}
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                action.onClick();
-              }}
-              aria-label={action.label}
-              title={action.label}
-              className={
-                action.tone === "secondary"
-                  ? `inline-flex h-10 items-center justify-center border border-white/10 bg-white/5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10 ${action.iconOnly ? "w-10" : "gap-2 px-4"}`
-                  : `inline-flex h-10 items-center justify-center bg-white text-sm font-medium text-black transition-colors hover:bg-slate-200 ${action.iconOnly ? "w-10" : "gap-2 px-4"}`
-              }
-            >
-              {action.icon ? <span className="inline-flex items-center justify-center">{action.icon}</span> : null}
-              {action.iconOnly ? null : action.label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </article>
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 }
