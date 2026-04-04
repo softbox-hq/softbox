@@ -6,6 +6,14 @@ export type AgentResult = {
   notes?: string;
 };
 
+type AppSelectionRecord = {
+  appId: string;
+};
+
+type ShellSelectionRecord = {
+  selectedAppId: string | null;
+} | null | undefined;
+
 export function parseStateJson(value: string | null) {
   if (!value) return null;
   try {
@@ -13,6 +21,17 @@ export function parseStateJson(value: string | null) {
   } catch {
     return null;
   }
+}
+
+export function resolveMountedAppId(
+  apps: AppSelectionRecord[],
+  shellSelection: ShellSelectionRecord,
+) {
+  const selectedAppId = shellSelection?.selectedAppId ?? null;
+  if (!selectedAppId) {
+    return null;
+  }
+  return apps.some((app) => app.appId === selectedAppId) ? selectedAppId : null;
 }
 
 export function getRuntimeStatus(shellState: any): {

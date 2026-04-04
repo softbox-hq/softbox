@@ -699,12 +699,8 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
             }
           }}
         >
-          <div className="shell-desktop-wallpaper pointer-events-auto relative min-h-full w-full overflow-y-auto border-0 px-6 py-6 shadow-none sm:px-8 sm:py-8">
-            <div className="shell-desktop-wordmark" aria-hidden="true">
-              <strong>Softbox</strong>
-              <span>2026.4.4</span>
-            </div>
-            <div className="relative flex min-h-full w-full flex-col">
+          <div className="shell-desktop-wallpaper pointer-events-auto relative min-h-screen w-full overflow-y-auto border-0 px-6 py-6 shadow-none sm:px-8 sm:py-8">
+            <div className="relative z-10 flex min-h-screen w-full flex-col">
               {showAppsSurface ? (
                 <div className="space-y-5">
                   {unwrappedError ? (

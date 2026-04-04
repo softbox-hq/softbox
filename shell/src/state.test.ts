@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getLatestAgentResult, getRuntimeStatus, parseStateJson } from "./state";
+import {
+  getLatestAgentResult,
+  getRuntimeStatus,
+  parseStateJson,
+  resolveMountedAppId,
+} from "./state";
 
 describe("parseStateJson", () => {
   it("parses valid live app state json", () => {
@@ -65,6 +70,38 @@ describe("getRuntimeStatus", () => {
       title: "Runtime Error",
       body: "boom",
     });
+  });
+});
+
+describe("resolveMountedAppId", () => {
+  it("starts with no mounted app when nothing is selected", () => {
+    expect(
+      resolveMountedAppId(
+        [
+          { appId: "dashboard" },
+          { appId: "space" },
+        ],
+        null,
+      ),
+    ).toBeNull();
+  });
+
+  it("mounts the explicitly selected app when it exists", () => {
+    expect(
+      resolveMountedAppId(
+        [
+          { appId: "dashboard" },
+          { appId: "space" },
+        ],
+        { selectedAppId: "space" },
+      ),
+    ).toBe("space");
+  });
+
+  it("leaves the shell unmounted when the stored app no longer exists", () => {
+    expect(
+      resolveMountedAppId([{ appId: "dashboard" }], { selectedAppId: "space" }),
+    ).toBeNull();
   });
 });
 

@@ -1,8 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./server";
 
-const defaultShellId = "main";
-
 const agentResult = v.object({
   summary: v.string(),
   changed_files: v.array(v.string()),
@@ -1924,13 +1922,6 @@ export const seedApp = mutation({
       .first();
 
     if (existingApp) {
-      const shellSelection = await getShellSelectionById(ctx, defaultShellId);
-      if (!shellSelection) {
-        await upsertShellSelection(ctx, {
-          shellId: defaultShellId,
-          selectedAppId: args.appId,
-        });
-      }
       return existingApp._id;
     }
 
@@ -1968,14 +1959,6 @@ export const seedApp = mutation({
         path: file.path,
         content: file.content,
         updatedAt: Date.now(),
-      });
-    }
-
-    const shellSelection = await getShellSelectionById(ctx, defaultShellId);
-    if (!shellSelection) {
-      await upsertShellSelection(ctx, {
-        shellId: defaultShellId,
-        selectedAppId: args.appId,
       });
     }
 

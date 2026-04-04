@@ -61,35 +61,25 @@
     position: relative;
     isolation: isolate;
     overflow: hidden;
+    min-height: 100vh;
     background:
-      linear-gradient(
-        135deg,
-        rgba(255, 248, 191, 0.98) 0%,
-        rgba(255, 222, 183, 0.96) 10%,
-        rgba(249, 173, 178, 0.95) 24%,
-        rgba(246, 126, 127, 0.95) 40%,
-        rgba(236, 139, 102, 0.94) 55%,
-        rgba(114, 67, 71, 0.82) 61%,
-        rgba(11, 15, 19, 0.98) 66%,
-        rgba(2, 6, 10, 1) 100%
-      );
+      linear-gradient(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.38)),
+      url("/desktop.jpg") center center / cover no-repeat;
   }
 
   .shell-desktop-wallpaper::before {
     content: "";
     position: absolute;
     inset: 0;
-    background:
-      repeating-linear-gradient(
-        135deg,
-        rgba(0, 0, 0, 0) 0 74px,
-        rgba(3, 6, 10, 0.98) 74px 79px,
-        rgba(0, 0, 0, 0) 79px 118px
-      ),
-      linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.02) 34%, transparent 58%);
-    opacity: 0.96;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.16),
+      rgba(255, 255, 255, 0.03) 34%,
+      transparent 58%
+    );
+    opacity: 0.58;
     pointer-events: none;
-    z-index: -2;
+    z-index: 0;
   }
 
   .shell-desktop-wallpaper::after {
@@ -103,35 +93,7 @@
     mix-blend-mode: screen;
     opacity: 0.72;
     pointer-events: none;
-    z-index: -1;
-  }
-
-  .shell-desktop-wordmark {
-    position: absolute;
-    right: 2rem;
-    bottom: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 0.15rem;
-    color: rgba(255, 246, 232, 0.92);
-    font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
-    font-weight: 900;
-    letter-spacing: 0.03em;
-    line-height: 0.92;
-    text-transform: uppercase;
-    text-shadow:
-      0 1px 0 rgba(255, 255, 255, 0.1),
-      0 0 24px rgba(0, 0, 0, 0.35);
-    pointer-events: none;
-  }
-
-  .shell-desktop-wordmark strong {
-    font-size: clamp(2.5rem, 5vw, 4.8rem);
-  }
-
-  .shell-desktop-wordmark span {
-    font-size: clamp(1.4rem, 2.4vw, 2.5rem);
+    z-index: 1;
   }
 
   .runtime-layer {

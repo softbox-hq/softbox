@@ -12,7 +12,6 @@ loadEnv({ path: ".env", quiet: true });
 
 const appIdPattern = /^[a-z0-9][a-z0-9-]*$/;
 const defaultViteTemplate = "react-ts";
-const defaultShellId = "main";
 const starterOptions = [
   {
     id: "blank-react-ts",
@@ -403,18 +402,6 @@ async function main() {
       args: ["worker:openclaw-sync-agents", "--", "--apply"],
     });
   }
-
-  await runCommand({
-    step: `select ${appId} as the default shell app`,
-    command: "pnpm",
-    args: [
-      "exec",
-      "convex",
-      "run",
-      "apps:setSelectedApp",
-      JSON.stringify({ shellId: defaultShellId, appId }),
-    ],
-  });
 
   output.write(
     [

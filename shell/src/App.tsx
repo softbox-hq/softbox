@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import { convexApi } from "@shared/convexApi";
 import type { LiveAppState } from "@shared/liveApp";
-import { defaultAppId, defaultShellId } from "@shared/liveApp";
 import {
   SOFTBOX_APP_ROOT_SELECTOR,
   SOFTBOX_RUNTIME_FRAME_SELECTOR,
@@ -28,7 +27,7 @@ import {
 import { getOrCreateShellId } from "./shellId";
 import { ShellHostSurface } from "./ShellHostSurface";
 import { shellHostEmptyStateContent } from "./shellHostConfig";
-import { getRuntimeStatus } from "./state";
+import { getRuntimeStatus, resolveMountedAppId } from "./state";
 import "./styles.css";
 
 type CompareableVersionRecord = {
@@ -852,35 +851,8 @@ function getInspectBadgeStyle(target: { rect: InspectRect } | null): CSSProperti
 export function App() {
   const [shellId] = useState(() => getOrCreateShellId());
   const shellSelection = useQuery(convexApi.getShellSelection as any, { shellId }) as any;
-  const defaultShellSelection = useQuery(
-    convexApi.getShellSelection as any,
-    shellId === defaultShellId ? "skip" : { shellId: defaultShellId },
-  ) as any;
-  const appsQuery = useQuery(convexApi.listApps as any, {}) as any[] | undefined;
-  const apps = appsQuery ?? [];
-  const sessionSelectionUpdatedAt =
-    typeof shellSelection?.updatedAt === "number" ? shellSelection.updatedAt : null;
-  const defaultSelectionUpdatedAt =
-    typeof defaultShellSelection?.updatedAt === "number"
-      ? defaultShellSelection.updatedAt
-      : null;
-  const effectiveShellSelection =
-    sessionSelectionUpdatedAt !== null &&
-    (defaultSelectionUpdatedAt === null || sessionSelectionUpdatedAt >= defaultSelectionUpdatedAt)
-      ? shellSelection
-      : defaultSelectionUpdatedAt !== null
-        ? defaultShellSelection
-        : shellSelection;
-  const shellSelectedAppId = effectiveShellSelection?.selectedAppId ?? null;
-  const hasPersistedSelection = effectiveShellSelection?.updatedAt != null;
-  const selectedAppExists = shellSelectedAppId
-    ? apps.some((app) => app.appId === shellSelectedAppId)
-    : false;
-  const appId = selectedAppExists
-    ? shellSelectedAppId
-    : hasPersistedSelection && shellSelectedAppId === null
-      ? null
-      : apps[0]?.appId ?? defaultAppId;
+  const apps = (useQuery(convexApi.listApps as any, {}) as any[] | undefined) ?? [];
+  const appId = resolveMountedAppId(apps, shellSelection);
   const selectedApp = appId ? apps.find((app) => app.appId === appId) ?? null : null;
   const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
   const [selectedTargetBoxIds, setSelectedTargetBoxIds] = useState<string[]>([]);
@@ -1113,31 +1085,6 @@ export function App() {
     repairModalStage?.detail ?? repairModalRun?.buildError ?? null,
     repairModalStage?.key ?? repairModalRun?.failureStage ?? null,
   );
-
-  useEffect(() => {
-    if (!appsQuery || apps.length === 0 || shellSelection === undefined) {
-      return;
-    }
-    if (shellSelectedAppId && selectedAppExists) {
-      return;
-    }
-    if (hasPersistedSelection && shellSelectedAppId === null) {
-      return;
-    }
-    void setSelectedAppMutation({
-      shellId,
-      appId: apps[0].appId,
-    });
-  }, [
-    apps,
-    appsQuery,
-    selectedAppExists,
-    setSelectedAppMutation,
-    hasPersistedSelection,
-    shellId,
-    shellSelectedAppId,
-    shellSelection,
-  ]);
 
   useEffect(() => {
     if (!latestPipelineRun || latestPipelineRun.status === "completed" || latestPipelineRun.status === "failed") {
