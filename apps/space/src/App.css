@@ -57,16 +57,53 @@
 }
 
 #center {
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: 25px;
-  place-content: center;
-  place-items: center;
-  flex-grow: 1;
+  box-sizing: border-box;
+}
 
-  @media (max-width: 1024px) {
-    padding: 32px 20px 24px;
-    gap: 18px;
+.space-scene {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(58, 84, 180, 0.18), transparent 34%),
+    linear-gradient(180deg, #050814 0%, #090d1f 100%);
+}
+
+.scene-copy {
+  position: absolute;
+  top: 32px;
+  left: 32px;
+  z-index: 1;
+  text-align: left;
+  max-width: 420px;
+  pointer-events: none;
+}
+
+.scene-copy h1 {
+  margin: 0 0 12px;
+  color: #f8fafc;
+}
+
+.scene-copy p {
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.scene-frame {
+  flex: 1;
+  min-height: 100vh;
+}
+
+.scene-frame canvas {
+  display: block;
+}
+
+@media (max-width: 1024px) {
+  .scene-copy {
+    top: 20px;
+    left: 20px;
+    right: 20px;
   }
 }
 
