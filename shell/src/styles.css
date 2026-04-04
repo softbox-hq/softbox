@@ -61,6 +61,7 @@
     position: relative;
     isolation: isolate;
     overflow: hidden;
+    height: 100%;
     min-height: 100vh;
     background: #000 url("/desktop.png") center center / cover no-repeat;
   }
