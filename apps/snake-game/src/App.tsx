@@ -18,7 +18,7 @@ const INITIAL_SNAKE: Point[] = [
   { x: 8, y: 10 },
 ]
 const INITIAL_DIRECTION: Direction = { x: 1, y: 0 }
-const INITIAL_FOOD: Point = { x: 14, y: 10 }
+const APPLE_COUNT = 25
 const TICK_MS = 130
 
 const DIRECTIONS: Record<string, Direction> = {
@@ -30,14 +30,14 @@ const DIRECTIONS: Record<string, Direction> = {
 
 const isSamePoint = (a: Point, b: Point) => a.x === b.x && a.y === b.y
 
-function makeRandomFood(snake: Point[]) {
+function makeRandomApple(occupied: Point[]) {
   for (let i = 0; i < 200; i += 1) {
     const candidate = {
       x: Math.floor(Math.random() * BOARD_SIZE),
       y: Math.floor(Math.random() * BOARD_SIZE),
     }
 
-    if (!snake.some((segment) => isSamePoint(segment, candidate))) {
+    if (!occupied.some((segment) => isSamePoint(segment, candidate))) {
       return candidate
     }
   }
@@ -45,12 +45,22 @@ function makeRandomFood(snake: Point[]) {
   return { x: 0, y: 0 }
 }
 
+function seedApples(snake: Point[]) {
+  const apples: Point[] = []
+
+  while (apples.length < APPLE_COUNT) {
+    const nextApple = makeRandomApple([...snake, ...apples])
+    apples.push(nextApple)
+  }
+
+  return apples
+}
+
 function App() {
   const [snake, setSnake] = useState(INITIAL_SNAKE)
   const [direction, setDirection] = useState(INITIAL_DIRECTION)
   const [nextDirection, setNextDirection] = useState(INITIAL_DIRECTION)
-  const [food, setFood] = useState(INITIAL_FOOD)
-  const [score, setScore] = useState(0)
+  const [apples, setApples] = useState<Point[]>(() => seedApples(INITIAL_SNAKE))
   const [gameOver, setGameOver] = useState(false)
   const directionRef = useRef(direction)
   const nextDirectionRef = useRef(nextDirection)
@@ -115,13 +125,13 @@ function App() {
           return currentDirection
         }
 
-        const ateFood = isSamePoint(nextHead, food)
+        const ateAppleIndex = apples.findIndex((apple) => isSamePoint(apple, nextHead))
         const nextSnake = [nextHead, ...snake]
 
-        if (ateFood) {
-          setScore((currentScore) => currentScore + 1)
-          const nextFood = makeRandomFood(nextSnake)
-          setFood(nextFood)
+        if (ateAppleIndex >= 0) {
+          const nextApples = [...apples]
+          nextApples[ateAppleIndex] = makeRandomApple([...nextSnake, ...nextApples])
+          setApples(nextApples)
         } else {
           nextSnake.pop()
         }
@@ -133,15 +143,17 @@ function App() {
     }, TICK_MS)
 
     return () => window.clearInterval(interval)
-  }, [food, gameOver, snake])
+  }, [apples, gameOver, snake])
 
   const cells = useMemo(() => {
-    const occupied = new Map<string, 'snake' | 'snake-head' | 'food'>()
+    const occupied = new Map<string, 'snake' | 'snake-head' | 'apple'>()
 
     snake.forEach((segment, index) => {
       occupied.set(`${segment.x}:${segment.y}`, index === 0 ? 'snake-head' : 'snake')
     })
-    occupied.set(`${food.x}:${food.y}`, 'food')
+    apples.forEach((apple) => {
+      occupied.set(`${apple.x}:${apple.y}`, 'apple')
+    })
 
     return Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, index) => {
       const x = index % BOARD_SIZE
@@ -156,7 +168,7 @@ function App() {
         />
       )
     })
-  }, [food, snake])
+  }, [apples, snake])
 
   const restart = () => {
     const resetSnake = INITIAL_SNAKE
@@ -167,27 +179,12 @@ function App() {
     setNextDirection(resetDirection)
     directionRef.current = resetDirection
     nextDirectionRef.current = resetDirection
-    setFood(INITIAL_FOOD)
-    setScore(0)
+    setApples(seedApples(resetSnake))
     setGameOver(false)
   }
 
   return (
     <main className="app-shell">
-      <section className="hud" aria-label="Score and controls">
-        <div>
-          <p className="eyebrow">Snake Game</p>
-          <h1>Score chase</h1>
-        </div>
-
-        <div className="scoreboard">
-          <span className="score-label">Score</span>
-          <span className="score-value" aria-live="polite">
-            {score}
-          </span>
-        </div>
-      </section>
-
       <section className="game-shell" aria-label="Snake board">
         <div className="board" role="grid" aria-label="Snake board">
           {cells}
