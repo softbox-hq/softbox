@@ -23,27 +23,6 @@ type DesktopContextMenuItemProps = {
   onSelect: () => void;
 };
 
-const desktopTabs: Array<{ id: DesktopTabId; label: string; detail: string; icon: ReactNode }> = [
-  {
-    id: "apps",
-    label: "Apps",
-    detail: "Installed apps and mounted runtime",
-    icon: <Grid2x2 className="size-4" />,
-  },
-  {
-    id: "services",
-    label: "Services",
-    detail: "Redis, MinIO, OpenClaw, and worker state",
-    icon: <Layers3 className="size-4" />,
-  },
-  {
-    id: "server",
-    label: "Server",
-    detail: "Machine and runtime information",
-    icon: <Server className="size-4" />,
-  },
-];
-
 function DesktopContextMenuItem(props: DesktopContextMenuItemProps) {
   const { icon, label, detail, active = false, onSelect } = props;
 
@@ -72,7 +51,14 @@ export function ShellDesktopContextMenu(props: ShellDesktopContextMenuProps) {
   const { activeTab, canCreateApp = false, mountedAppId, onChangeTab, onCreateApp, onOpenApps, onRefresh, children } =
     props;
 
-  const activeTabLabel = desktopTabs.find((tab) => tab.id === activeTab)?.label ?? "Desktop";
+  const refreshLabel =
+    activeTab === "services" ? "Refresh Services" : activeTab === "server" ? "Refresh Server" : "Refresh Apps";
+  const refreshDetail =
+    activeTab === "services"
+      ? "Reload service and OpenClaw status"
+      : activeTab === "server"
+        ? "Reload machine and runtime information"
+        : "Reload app install and desktop state";
 
   return (
     <ContextMenu.Root>
@@ -114,23 +100,27 @@ export function ShellDesktopContextMenu(props: ShellDesktopContextMenuProps) {
 
               <ContextMenu.Separator className="mx-2 my-1.5 h-px bg-white/8" />
 
-              {desktopTabs.map((tab) => (
-                <DesktopContextMenuItem
-                  key={tab.id}
-                  icon={tab.icon}
-                  label={tab.label}
-                  detail={tab.detail}
-                  active={activeTab === tab.id}
-                  onSelect={() => onChangeTab(tab.id)}
-                />
-              ))}
+              <DesktopContextMenuItem
+                icon={<Layers3 className="size-4" />}
+                label="Services"
+                detail="Open service status and OpenClaw controls"
+                active={activeTab === "services"}
+                onSelect={() => onChangeTab("services")}
+              />
+              <DesktopContextMenuItem
+                icon={<Server className="size-4" />}
+                label="Server"
+                detail="Open machine and runtime information"
+                active={activeTab === "server"}
+                onSelect={() => onChangeTab("server")}
+              />
 
               <ContextMenu.Separator className="mx-2 my-1.5 h-px bg-white/8" />
 
               <DesktopContextMenuItem
                 icon={<RefreshCw className="size-4" />}
-                label={`Refresh ${activeTabLabel}`}
-                detail="Reload the current desktop panel"
+                label={refreshLabel}
+                detail={refreshDetail}
                 onSelect={onRefresh}
               />
             </div>
