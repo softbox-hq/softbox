@@ -174,6 +174,7 @@ export function DesktopIconField(props: { apps: DesktopIconFieldApp[] }) {
     assignedSlots,
   });
   const slotCount = metrics.slotCount;
+  const fieldHeightPx = Math.max(metrics.fieldHeight, fieldSize.height, 448);
   const slots = Array.from({ length: slotCount }, (_, slotIndex) => slotIndex);
   const appsBySlotIndex = new Map<number, DesktopIconFieldApp>();
 
@@ -223,9 +224,7 @@ export function DesktopIconField(props: { apps: DesktopIconFieldApp[] }) {
   return (
     <div
       ref={fieldRef}
-      className={`relative mt-4 min-h-[28rem] w-full rounded-[1.75rem] border border-white/8 bg-black/8 ${
-        draggingAppId ? "shadow-[inset_0_0_0_1px_rgba(103,232,249,0.12)]" : ""
-      }`}
+      className="relative min-h-[28rem] flex-1 w-full"
     >
       <DragDropProvider
         modifiers={[
@@ -237,7 +236,7 @@ export function DesktopIconField(props: { apps: DesktopIconFieldApp[] }) {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="relative min-h-[28rem] w-full" style={{ height: `${metrics.fieldHeight}px` }}>
+        <div className="relative min-h-full w-full" style={{ height: `${fieldHeightPx}px` }}>
           {slots.map((slotIndex) => (
             <DesktopDropSlot key={slotIndex} slotIndex={slotIndex} columns={metrics.columns}>
               {appsBySlotIndex.get(slotIndex) ? (

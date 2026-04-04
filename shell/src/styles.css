@@ -62,38 +62,15 @@
     isolation: isolate;
     overflow: hidden;
     min-height: 100vh;
-    background:
-      linear-gradient(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.38)),
-      url("/desktop.jpg") center center / cover no-repeat;
+    background: #000 url("/desktop.png") center center / cover no-repeat;
   }
 
   .shell-desktop-wallpaper::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.16),
-      rgba(255, 255, 255, 0.03) 34%,
-      transparent 58%
-    );
-    opacity: 0.58;
-    pointer-events: none;
-    z-index: 0;
+    content: none;
   }
 
   .shell-desktop-wallpaper::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background:
-      linear-gradient(135deg, rgba(148, 250, 255, 0.16), transparent 18%),
-      linear-gradient(135deg, transparent 59%, rgba(255, 164, 224, 0.18) 72%, transparent 78%),
-      radial-gradient(circle at 0% 0%, rgba(255, 255, 255, 0.18), transparent 26%);
-    mix-blend-mode: screen;
-    opacity: 0.72;
-    pointer-events: none;
-    z-index: 1;
+    content: none;
   }
 
   .runtime-layer {

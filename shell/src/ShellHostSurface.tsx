@@ -702,7 +702,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
           <div className="shell-desktop-wallpaper pointer-events-auto relative min-h-screen w-full overflow-y-auto border-0 px-6 py-6 shadow-none sm:px-8 sm:py-8">
             <div className="relative z-10 flex min-h-screen w-full flex-col">
               {showAppsSurface ? (
-                <div className="space-y-5">
+                <div className="flex min-h-full flex-1 flex-col gap-5">
                   {unwrappedError ? (
                     <div className="max-w-3xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
                       {unwrappedError}
