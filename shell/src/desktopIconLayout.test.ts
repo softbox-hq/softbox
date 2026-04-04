@@ -76,9 +76,9 @@ describe("getDesktopGridMetrics", () => {
         assignedSlots: [0, 9],
       }),
     ).toMatchObject({
-      columns: 4,
+      columns: 12,
       rows: 3,
-      slotCount: 12,
+      slotCount: 36,
     });
   });
 });

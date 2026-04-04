@@ -12,6 +12,7 @@ import { DesktopActionCard, type DesktopActionCardAction } from "./DesktopAction
 import {
   desktopIconLayoutStorageKey,
   desktopIconSlotHeightPx,
+  desktopIconSlotWidthPx,
   getDesktopGridMetrics,
   getDesktopSlotId,
   moveDesktopIconToSlot,
@@ -53,9 +54,10 @@ function readStoredDesktopIconLayout() {
 function DesktopDropSlot(props: {
   slotIndex: number;
   columns: number;
+  slotWidth: number;
   children?: ReactNode;
 }) {
-  const { slotIndex, columns, children } = props;
+  const { slotIndex, columns, slotWidth, children } = props;
   const { ref, isDropTarget } = useDroppable({
     id: getDesktopSlotId(slotIndex),
     accept: desktopIconType,
@@ -66,11 +68,11 @@ function DesktopDropSlot(props: {
   return (
     <div
       ref={ref}
-      className="absolute overflow-visible px-2 pt-2"
+      className="absolute overflow-visible px-1 pt-2"
       style={{
-        left: `${(column / columns) * 100}%`,
+        left: `${column * slotWidth}px`,
         top: `${row * desktopIconSlotHeightPx}px`,
-        width: `${100 / columns}%`,
+        width: `${slotWidth}px`,
         height: `${desktopIconSlotHeightPx}px`,
       }}
     >
@@ -175,6 +177,7 @@ export function DesktopIconField(props: { apps: DesktopIconFieldApp[] }) {
   });
   const slotCount = metrics.slotCount;
   const fieldHeightPx = Math.max(metrics.fieldHeight, fieldSize.height, 448);
+  const fieldWidthPx = Math.max(metrics.columns * metrics.slotWidth, fieldSize.width, desktopIconSlotWidthPx);
   const slots = Array.from({ length: slotCount }, (_, slotIndex) => slotIndex);
   const appsBySlotIndex = new Map<number, DesktopIconFieldApp>();
 
@@ -236,9 +239,20 @@ export function DesktopIconField(props: { apps: DesktopIconFieldApp[] }) {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="relative min-h-full w-full" style={{ height: `${fieldHeightPx}px` }}>
+        <div
+          className="relative min-h-full"
+          style={{
+            width: `${fieldWidthPx}px`,
+            height: `${fieldHeightPx}px`,
+          }}
+        >
           {slots.map((slotIndex) => (
-            <DesktopDropSlot key={slotIndex} slotIndex={slotIndex} columns={metrics.columns}>
+            <DesktopDropSlot
+              key={slotIndex}
+              slotIndex={slotIndex}
+              columns={metrics.columns}
+              slotWidth={metrics.slotWidth}
+            >
               {appsBySlotIndex.get(slotIndex) ? (
                 <DesktopDraggableIcon app={appsBySlotIndex.get(slotIndex)!} />
               ) : null}

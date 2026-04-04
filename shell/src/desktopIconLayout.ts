@@ -1,4 +1,5 @@
 export const desktopIconLayoutStorageKey = "softbox:desktop-icon-layout:v1";
+export const desktopIconSlotWidthPx = 112;
 export const desktopIconSlotHeightPx = 132;
 const maxPersistedSlotIndex = 511;
 
@@ -96,18 +97,9 @@ export function moveDesktopIconToSlot(
 
 export function getDesktopColumnCount(width: number) {
   if (width <= 0) {
-    return 4;
+    return 1;
   }
-  if (width >= 1280) {
-    return 4;
-  }
-  if (width >= 1024) {
-    return 3;
-  }
-  if (width >= 640) {
-    return 2;
-  }
-  return 1;
+  return Math.max(1, Math.floor(width / desktopIconSlotWidthPx));
 }
 
 export function getDesktopGridMetrics(args: {
@@ -118,6 +110,7 @@ export function getDesktopGridMetrics(args: {
 }) {
   const { width, height, appCount, assignedSlots } = args;
   const columns = getDesktopColumnCount(width);
+  const slotWidth = width > 0 ? Math.min(desktopIconSlotWidthPx, width) : desktopIconSlotWidthPx;
   const visibleRows = Math.max(3, Math.ceil(Math.max(height, desktopIconSlotHeightPx) / desktopIconSlotHeightPx));
   const appRows = Math.max(1, Math.ceil(appCount / columns));
   const highestAssignedSlotIndex = assignedSlots.length > 0 ? Math.max(...assignedSlots) : -1;
@@ -132,6 +125,7 @@ export function getDesktopGridMetrics(args: {
     rows,
     slotCount: columns * rows,
     fieldHeight: rows * desktopIconSlotHeightPx,
+    slotWidth,
   };
 }
 
