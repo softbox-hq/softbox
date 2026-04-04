@@ -699,11 +699,11 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
             }
           }}
         >
-          <div className="pointer-events-auto relative min-h-full w-full overflow-y-auto border-0 bg-[#0d1014]/72 px-6 py-6 shadow-none backdrop-blur-xl sm:px-8 sm:py-8">
-            <div
-              className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.08),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_22%)]"
-              aria-hidden="true"
-            />
+          <div className="shell-desktop-wallpaper pointer-events-auto relative min-h-full w-full overflow-y-auto border-0 px-6 py-6 shadow-none sm:px-8 sm:py-8">
+            <div className="shell-desktop-wordmark" aria-hidden="true">
+              <strong>Softbox</strong>
+              <span>2026.4.4</span>
+            </div>
             <div className="relative flex min-h-full w-full flex-col">
               {showAppsSurface ? (
                 <div className="space-y-5">
