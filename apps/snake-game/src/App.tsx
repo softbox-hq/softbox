@@ -177,7 +177,7 @@ function App() {
       <section className="hud" aria-label="Score and controls">
         <div>
           <p className="eyebrow">Snake Game</p>
-          <h1>WASD to play</h1>
+          <h1>Score chase</h1>
         </div>
 
         <div className="scoreboard">
@@ -193,13 +193,15 @@ function App() {
           {cells}
         </div>
 
-        <div className="overlay">
-          <p>{gameOver ? 'Game over' : 'Eat the food and stay alive'}</p>
-          <p>Controls: W A S D</p>
-          <button type="button" onClick={restart}>
-            Restart
-          </button>
-        </div>
+        {gameOver ? (
+          <div className="overlay" role="alert" aria-live="polite">
+            <p>Game over</p>
+            <p>Controls: W A S D</p>
+            <button type="button" onClick={restart}>
+              Restart
+            </button>
+          </div>
+        ) : null}
       </section>
     </main>
   )

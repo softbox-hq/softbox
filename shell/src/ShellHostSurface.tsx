@@ -53,6 +53,9 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const [serviceStatuses, setServiceStatuses] = useState<ServiceStatus[] | null>(null);
   const [servicesPending, setServicesPending] = useState(false);
   const [servicesError, setServicesError] = useState<string | null>(null);
+  const [serviceActionPending, setServiceActionPending] = useState<"minio" | null>(null);
+  const [serviceActionError, setServiceActionError] = useState<string | null>(null);
+  const [serviceActionMessage, setServiceActionMessage] = useState<string | null>(null);
   const [openClawStatus, setOpenClawStatus] = useState<OpenClawStatus | null>(null);
   const [openClawPending, setOpenClawPending] = useState(false);
   const [openClawError, setOpenClawError] = useState<string | null>(null);
@@ -235,6 +238,65 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
       setServicesError(error instanceof Error ? error.message : String(error));
     } finally {
       setServicesPending(false);
+    }
+  }
+
+  async function loadMinioReadyStatus() {
+    const response = await fetch("/__softbox/onboarding/minio-status", { cache: "no-store" });
+    const payload = (await response.json()) as
+      | {
+          ok?: boolean;
+          error?: string;
+          status?: {
+            ready?: boolean;
+          };
+        }
+      | undefined;
+    if (!response.ok || !payload?.ok || !payload.status) {
+      throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+    }
+    return payload.status;
+  }
+
+  async function ensureMinioService() {
+    if (serviceActionPending) {
+      return;
+    }
+
+    setServiceActionPending("minio");
+    setServiceActionError(null);
+    setServiceActionMessage(null);
+    try {
+      const response = await fetch("/__softbox/onboarding/minio/ensure", { method: "POST" });
+      const payload = (await response.json()) as
+        | {
+            ok?: boolean;
+            error?: string;
+            message?: string;
+          }
+        | undefined;
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+      setServiceActionMessage(payload.message ?? "Local MinIO is ready.");
+      await loadServiceStatuses();
+    } catch (error) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1800));
+      try {
+        const refreshedStatus = await loadMinioReadyStatus();
+        if (refreshedStatus.ready) {
+          setServiceActionMessage(
+            "Local MinIO is ready. The dev server restarted after writing `.env.local`, but the setup completed.",
+          );
+          await loadServiceStatuses();
+          return;
+        }
+      } catch {
+        // Fall through to the original action error below.
+      }
+      setServiceActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setServiceActionPending(null);
     }
   }
 
@@ -490,6 +552,13 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   }, [activeTab]);
 
   useEffect(() => {
+    if (activeTab !== "services") {
+      return;
+    }
+    void loadServiceStatuses();
+  }, [activeTab]);
+
+  useEffect(() => {
     if (activeTab !== "services" || openClawStatus) {
       return;
     }
@@ -529,6 +598,10 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
       return "bg-rose-500/12 text-rose-200";
     }
     return "bg-white/8 text-slate-300";
+  }
+
+  function isMinioService(service: ServiceStatus) {
+    return service.name === "Artifact Storage" && service.message.toLowerCase().includes("minio");
   }
 
   return (
@@ -676,6 +749,18 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                   </div>
                 ) : null}
 
+                {serviceActionError ? (
+                  <div className="max-w-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+                    {serviceActionError}
+                  </div>
+                ) : null}
+
+                {serviceActionMessage ? (
+                  <div className="max-w-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+                    {serviceActionMessage}
+                  </div>
+                ) : null}
+
                 <div className="overflow-hidden border border-white/10 bg-[#0b0f13]/88">
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-white/10 text-sm">
@@ -695,6 +780,9 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                           </th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">
                             Message
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium text-slate-400">
+                            Action
                           </th>
                         </tr>
                       </thead>
@@ -728,6 +816,20 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                               {formatCheckedAt(service.checkedAt)}
                             </td>
                             <td className="px-4 py-3 text-slate-400">{service.message}</td>
+                            <td className="whitespace-nowrap px-4 py-3">
+                              {isMinioService(service) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void ensureMinioService()}
+                                  disabled={serviceActionPending !== null}
+                                  className="inline-flex h-8 items-center justify-center border border-white/10 bg-white/6 px-3 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:bg-black/20 disabled:text-slate-500"
+                                >
+                                  {serviceActionPending === "minio" ? "Ensuring..." : "Ensure MinIO"}
+                                </button>
+                              ) : (
+                                <span className="text-slate-600">-</span>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>

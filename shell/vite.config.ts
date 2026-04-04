@@ -2040,78 +2040,106 @@ export default defineConfig({
             process.env.OPENCLAW_GATEWAY_BASE_URL,
             "OpenClaw gateway",
           );
+          const provider = (process.env.ARTIFACT_STORAGE_PROVIDER ?? "r2").trim().toLowerCase();
+          const minioStatus = provider === "minio" ? await buildMinioOnboardingStatus() : null;
 
-          execFile("pgrep", ["-f", "worker/src/index.ts"], (workerError, workerStdout) => {
-            const workerHealthy = !workerError && workerStdout.trim().length > 0;
-            const statuses = systemServices.map((service) => {
-              if (service.name === "Convex") {
-                return { ...service, checkedAt, ...convex };
-              }
-              if (service.name === "Redis") {
-                return { ...service, checkedAt, ...redis };
-              }
-              if (service.name === "BullMQ") {
-                return {
-                  ...service,
-                  checkedAt,
-                  status: redis.status === "healthy" ? "healthy" : "warning",
-                  message:
-                    redis.status === "healthy"
-                      ? "Redis is reachable; BullMQ can use the queue backend."
-                      : "BullMQ depends on Redis; queue backend is not healthy.",
-                };
-              }
-              if (service.name === "Worker") {
-                return {
-                  ...service,
-                  checkedAt,
-                  status: workerHealthy ? "healthy" : "error",
-                  message: workerHealthy
-                    ? "Worker process is running."
-                    : "Worker process was not found.",
-                };
-              }
-              if (service.name === "OpenClaw") {
-                return { ...service, checkedAt, ...openClaw };
-              }
-              if (service.name === "Artifact Storage") {
-                const provider = (process.env.ARTIFACT_STORAGE_PROVIDER ?? "r2").trim().toLowerCase();
-                const configured =
-                  provider === "minio"
-                    ? Boolean(
-                        process.env.MINIO_S3_API &&
-                          process.env.MINIO_PUBLIC_DEVELOPMENT_URL &&
-                          process.env.MINIO_ACCESS_KEY_ID &&
-                          process.env.MINIO_SECRET_ACCESS_KEY,
-                      )
-                    : Boolean(
-                        process.env.S3_API &&
-                          process.env.PUBLIC_DEVELOPMENT_URL &&
-                          process.env.R2_ACCESS_KEY_ID &&
-                          process.env.R2_SECRET_ACCESS_KEY,
-                      );
-                const providerLabel = provider === "minio" ? "MinIO" : "R2";
-                return {
-                  ...service,
-                  checkedAt,
-                  status: configured ? "healthy" : "warning",
-                  message: configured
-                    ? `${providerLabel} environment variables are configured.`
-                    : `One or more ${providerLabel} environment variables are missing.`,
-                };
-              }
+          let workerHealthy = false;
+          try {
+            const { stdout } = await runExecFile("pgrep", ["-f", "worker/src/index.ts"]);
+            workerHealthy = stdout.trim().length > 0;
+          } catch {
+            workerHealthy = false;
+          }
+
+          const statuses = systemServices.map((service) => {
+            if (service.name === "Convex") {
+              return { ...service, checkedAt, ...convex };
+            }
+            if (service.name === "Redis") {
+              return { ...service, checkedAt, ...redis };
+            }
+            if (service.name === "BullMQ") {
               return {
                 ...service,
                 checkedAt,
-                status: "unknown" as const,
-                message: "No check implemented.",
+                status: redis.status === "healthy" ? "healthy" : "warning",
+                message:
+                  redis.status === "healthy"
+                    ? "Redis is reachable; BullMQ can use the queue backend."
+                    : "BullMQ depends on Redis; queue backend is not healthy.",
               };
-            });
+            }
+            if (service.name === "Worker") {
+              return {
+                ...service,
+                checkedAt,
+                status: workerHealthy ? "healthy" : "error",
+                message: workerHealthy
+                  ? "Worker process is running."
+                  : "Worker process was not found.",
+              };
+            }
+            if (service.name === "OpenClaw") {
+              return { ...service, checkedAt, ...openClaw };
+            }
+            if (service.name === "Artifact Storage") {
+              if (provider === "minio" && minioStatus) {
+                let status: "healthy" | "warning" | "error" = "error";
+                let message = minioStatus.minio.composeMessage;
 
-            res.statusCode = 200;
-            res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify(statuses));
+                if (minioStatus.ready) {
+                  status = "healthy";
+                  message = "Local MinIO is ready for preview and live artifacts.";
+                } else if (!minioStatus.docker.installed || !minioStatus.docker.usable) {
+                  message = minioStatus.docker.message;
+                } else if (!minioStatus.minio.composeRunning) {
+                  message = minioStatus.minio.composeMessage;
+                } else if (!minioStatus.minio.healthy) {
+                  message = minioStatus.minio.healthMessage;
+                } else if (!minioStatus.minio.bucketReady) {
+                  message = minioStatus.minio.bucketMessage;
+                } else if (!minioStatus.minio.publicProbeReachable) {
+                  status = "warning";
+                  message = minioStatus.minio.publicProbeMessage;
+                } else if (!minioStatus.env.valuesMatch) {
+                  status = "warning";
+                  message = minioStatus.env.message;
+                }
+
+                return {
+                  ...service,
+                  checkedAt,
+                  status,
+                  message,
+                };
+              }
+
+              const configured = Boolean(
+                process.env.S3_API &&
+                  process.env.PUBLIC_DEVELOPMENT_URL &&
+                  process.env.R2_ACCESS_KEY_ID &&
+                  process.env.R2_SECRET_ACCESS_KEY,
+              );
+              return {
+                ...service,
+                checkedAt,
+                status: configured ? "healthy" : "warning",
+                message: configured
+                  ? "R2 environment variables are configured."
+                  : "One or more R2 environment variables are missing.",
+              };
+            }
+            return {
+              ...service,
+              checkedAt,
+              status: "unknown" as const,
+              message: "No check implemented.",
+            };
           });
+
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(statuses));
         });
 
         server.middlewares.use("/__softbox/openclaw/status", async (_req, res) => {

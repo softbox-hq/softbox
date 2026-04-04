@@ -109,9 +109,7 @@ export class R2Uploader {
       },
     );
 
-    for (const worker of workers) {
-      await worker;
-    }
+    await Promise.all(workers);
 
     return { uploaded, skipped };
   }
