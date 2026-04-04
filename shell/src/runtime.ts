@@ -95,8 +95,16 @@ function buildRuntimeFrameDoc() {
       }
 
       #root[data-softbox-app-root="true"] {
-        height: 100%;
-        min-height: 100%;
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: none !important;
+        height: 100% !important;
+        min-height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: 0 !important;
+        border-inline: 0 !important;
+        box-sizing: border-box !important;
       }
     </style>
   </head>
