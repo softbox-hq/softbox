@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { DesktopIconField } from "./DesktopIconField";
 import { ShellDesktopContextMenu } from "./ShellDesktopContextMenu";
+import {
+  defaultDesktopWallpaperPreference,
+  desktopWallpaperOptions,
+  desktopWallpaperStorageKey,
+  getDesktopWallpaper,
+  parseDesktopWallpaperPreference,
+  type DesktopWallpaperPreference,
+} from "./desktopWallpaper";
 import paintIcon from "./paint-icon.png";
 import type { OpenClawStatus } from "./openClaw";
 import type { ServiceStatus } from "./serviceStatus";
@@ -109,6 +117,22 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const [uninstallPendingAppId, setUninstallPendingAppId] = useState<string | null>(null);
   const [wrapSuccessMessage, setWrapSuccessMessage] = useState<string | null>(null);
   const [desktopInfoMessage, setDesktopInfoMessage] = useState<string | null>(null);
+  const [wallpaperPickerOpen, setWallpaperPickerOpen] = useState(false);
+  const [wallpaperPreference, setWallpaperPreference] = useState<DesktopWallpaperPreference>(() => {
+    if (typeof window === "undefined") {
+      return defaultDesktopWallpaperPreference;
+    }
+
+    try {
+      return (
+        parseDesktopWallpaperPreference(
+          window.localStorage.getItem(desktopWallpaperStorageKey),
+        ) ?? defaultDesktopWallpaperPreference
+      );
+    } catch {
+      return defaultDesktopWallpaperPreference;
+    }
+  });
 
   const normalizedAppName = appName.trim().toLowerCase();
   const openClawAuthUrl =
@@ -118,10 +142,26 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
     normalizedAppName.length > 0 &&
     /^[a-z0-9][a-z0-9-]*$/.test(normalizedAppName) &&
     !createPending;
+  const activeWallpaper = getDesktopWallpaper(wallpaperPreference.wallpaperId);
+  const desktopWallpaperStyle = {
+    backgroundColor: activeWallpaper.backgroundColor ?? "#000000",
+    backgroundImage: `url("${activeWallpaper.src}")`,
+    backgroundPosition: "center center",
+    backgroundRepeat: "no-repeat",
+    backgroundSize: wallpaperPreference.fit,
+  } as const;
 
   function openCreateAppModal() {
     setCreateError(null);
     setCreateModalOpen(true);
+  }
+
+  function openWallpaperPicker() {
+    setWallpaperPickerOpen(true);
+  }
+
+  function closeWallpaperPicker() {
+    setWallpaperPickerOpen(false);
   }
 
   async function handleCreateApp() {
@@ -622,6 +662,21 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
     void loadServerInfo();
   }, [activeTab]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        desktopWallpaperStorageKey,
+        JSON.stringify(wallpaperPreference),
+      );
+    } catch {
+      // Ignore storage failures. Wallpaper changes still work for the current session.
+    }
+  }, [wallpaperPreference]);
+
   function formatCheckedAt(timestamp: number) {
     return new Date(timestamp).toLocaleTimeString([], {
       hour: "2-digit",
@@ -687,6 +742,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
         canCreateApp={canCreateApp}
         mountedAppId={selectedAppId}
         onChangeTab={handleDesktopTabChange}
+        onChangeWallpaper={openWallpaperPicker}
         onCreateApp={canCreateApp ? openCreateAppModal : undefined}
         onOpenApps={onOpenApps}
         onRefresh={() => void refreshActiveTab()}
@@ -699,7 +755,10 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
             }
           }}
         >
-          <div className="shell-desktop-wallpaper pointer-events-auto relative h-full w-full overflow-hidden border-0 px-6 py-6 shadow-none sm:px-8 sm:py-8">
+          <div
+            className="shell-desktop-wallpaper pointer-events-auto relative h-full w-full overflow-hidden border-0 px-6 py-6 shadow-none sm:px-8 sm:py-8"
+            style={desktopWallpaperStyle}
+          >
             <div className="relative z-10 flex h-full w-full flex-col">
               {showAppsSurface ? (
                 <div className="flex min-h-0 flex-1 flex-col gap-5">
@@ -1352,6 +1411,161 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
           </div>
         </section>
       </ShellDesktopContextMenu>
+
+      {wallpaperPickerOpen ? (
+        <div className="fixed inset-0 z-30 bg-black/65 backdrop-blur-sm">
+          <div className="flex min-h-screen items-center justify-center px-4 py-6">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Change Wallpaper"
+              className="flex w-full max-w-[min(1120px,96vw)] flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#0c1016]/98 shadow-2xl shadow-black/40"
+            >
+              <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5 sm:px-8">
+                <div>
+                  <p className="text-sm font-semibold text-white">Change Wallpaper</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Pick a desktop wallpaper and choose how it should fit the shell.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setWallpaperPreference(defaultDesktopWallpaperPreference)}
+                    className="rounded-lg bg-cyan-500/12 px-3 py-1.5 text-xs font-medium text-cyan-200 transition-colors hover:bg-cyan-500/20"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeWallpaperPicker}
+                    className="rounded-lg bg-[#1a1a1f] px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:bg-[#25252b]"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-6 px-4 py-4 sm:px-8 sm:py-6 lg:grid-cols-[1.35fr_0.65fr]">
+                <section className="space-y-4">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Built-In Wallpapers
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">
+                      Changes apply immediately and are saved on this machine.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {desktopWallpaperOptions.map((wallpaper) => {
+                      const selected = wallpaper.id === wallpaperPreference.wallpaperId;
+                      return (
+                        <button
+                          key={wallpaper.id}
+                          type="button"
+                          onClick={() =>
+                            setWallpaperPreference((current) => ({
+                              ...current,
+                              wallpaperId: wallpaper.id,
+                            }))
+                          }
+                          className={`overflow-hidden rounded-[1.25rem] border text-left transition-colors ${
+                            selected
+                              ? "border-cyan-300/50 bg-cyan-300/10 shadow-[0_0_0_1px_rgba(103,232,249,0.18)]"
+                              : "border-white/10 bg-black/20 hover:border-white/20 hover:bg-white/6"
+                          }`}
+                        >
+                          <div className="aspect-[16/10] overflow-hidden border-b border-white/8 bg-black">
+                            <img
+                              src={wallpaper.src}
+                              alt=""
+                              className="h-full w-full object-cover"
+                              draggable={false}
+                            />
+                          </div>
+                          <div className="p-4">
+                            <p className="font-semibold text-white">{wallpaper.label}</p>
+                            <p className="mt-2 text-xs leading-5 text-slate-400">
+                              {wallpaper.description}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <aside className="space-y-4">
+                  <div className="rounded-[1.4rem] border border-white/10 bg-black/20 p-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Fit Mode
+                    </p>
+                    <div className="mt-4 grid gap-2">
+                      {([
+                        {
+                          id: "cover",
+                          label: "Cover",
+                          detail: "Fill the desktop and crop if needed.",
+                        },
+                        {
+                          id: "contain",
+                          label: "Contain",
+                          detail: "Show the full image inside the desktop.",
+                        },
+                      ] as const).map((option) => {
+                        const selected = wallpaperPreference.fit === option.id;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() =>
+                              setWallpaperPreference((current) => ({
+                                ...current,
+                                fit: option.id,
+                              }))
+                            }
+                            className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                              selected
+                                ? "border-cyan-300/50 bg-cyan-300/10 text-cyan-100"
+                                : "border-white/10 bg-white/4 text-slate-200 hover:bg-white/8"
+                            }`}
+                          >
+                            <p className="text-sm font-medium">{option.label}</p>
+                            <p className="mt-1 text-xs leading-5 text-slate-400">
+                              {option.detail}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[1.4rem] border border-white/10 bg-black/20 p-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Current Selection
+                    </p>
+                    <p className="mt-3 text-sm font-semibold text-white">{activeWallpaper.label}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">
+                      {activeWallpaper.description}
+                    </p>
+                    <div className="mt-4 aspect-[16/10] overflow-hidden rounded-[1rem] border border-white/10 bg-black">
+                      <img
+                        src={activeWallpaper.src}
+                        alt=""
+                        className={`h-full w-full ${
+                          wallpaperPreference.fit === "contain" ? "object-contain" : "object-cover"
+                        }`}
+                        draggable={false}
+                      />
+                    </div>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {activeTab !== "apps" ? (
         <div className="fixed inset-0 z-30 bg-black/65 backdrop-blur-sm">

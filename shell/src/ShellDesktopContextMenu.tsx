@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { Check, Grid2x2, Layers3, Plus, RefreshCw, Server } from "lucide-react";
+import { Check, Grid2x2, Image as ImageIcon, Layers3, Plus, RefreshCw, Server } from "lucide-react";
 
 type DesktopTabId = "apps" | "services" | "server";
 
@@ -9,6 +9,7 @@ type ShellDesktopContextMenuProps = {
   canCreateApp?: boolean;
   mountedAppId: string | null;
   onChangeTab: (tab: DesktopTabId) => void;
+  onChangeWallpaper: () => void;
   onCreateApp?: () => void;
   onOpenApps: () => void;
   onRefresh: () => void;
@@ -48,8 +49,17 @@ function DesktopContextMenuItem(props: DesktopContextMenuItemProps) {
 }
 
 export function ShellDesktopContextMenu(props: ShellDesktopContextMenuProps) {
-  const { activeTab, canCreateApp = false, mountedAppId, onChangeTab, onCreateApp, onOpenApps, onRefresh, children } =
-    props;
+  const {
+    activeTab,
+    canCreateApp = false,
+    mountedAppId,
+    onChangeTab,
+    onChangeWallpaper,
+    onCreateApp,
+    onOpenApps,
+    onRefresh,
+    children,
+  } = props;
 
   const refreshLabel =
     activeTab === "services" ? "Refresh Services" : activeTab === "server" ? "Refresh Server" : "Refresh Apps";
@@ -97,6 +107,12 @@ export function ShellDesktopContextMenu(props: ShellDesktopContextMenuProps) {
                   onSelect={onCreateApp}
                 />
               ) : null}
+              <DesktopContextMenuItem
+                icon={<ImageIcon className="size-4" />}
+                label="Change Wallpaper"
+                detail="Pick a desktop wallpaper and fit mode"
+                onSelect={onChangeWallpaper}
+              />
 
               <ContextMenu.Separator className="mx-2 my-1.5 h-px bg-white/8" />
 
