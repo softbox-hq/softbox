@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DesktopActionCard } from "./DesktopActionCard";
+import { DesktopIconField } from "./DesktopIconField";
 import { ShellDesktopContextMenu } from "./ShellDesktopContextMenu";
 import paintIcon from "./paint-icon.png";
 import type { OpenClawStatus } from "./openClaw";
@@ -756,44 +756,39 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                     </section>
                   ) : null}
 
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {apps.map((app) => {
-                      const isSelected = selectedAppId === app.appId;
-                      return (
-                        <DesktopActionCard
-                          key={app.appId}
-                          title={app.name || app.appId}
-                          iconSrc={desktopAppIconById[app.appId]}
-                          selected={isSelected}
-                          onClick={() => onSelectApp(app.appId)}
-                          actions={[
-                            {
-                              label: "Rename",
-                              onClick: () => {
-                                showDesktopPlaceholder(`Rename for '${app.appId}' is not implemented yet.`);
-                              },
-                            },
-                            {
-                              label: "Settings",
-                              onClick: () => {
-                                showDesktopPlaceholder(`Settings for '${app.appId}' are not implemented yet.`);
-                              },
-                            },
-                            {
-                              label: uninstallPendingAppId === app.appId ? "Uninstalling..." : "Uninstall",
-                              tone: "secondary",
-                              onClick: () => {
-                                if (uninstallPendingAppId || wrapPendingAppId) {
-                                  return;
-                                }
-                                void uninstallApp(app.appId);
-                              },
-                            },
-                          ]}
-                        />
-                      );
-                    })}
-                  </div>
+                  <DesktopIconField
+                    apps={apps.map((app) => ({
+                      appId: app.appId,
+                      title: app.name || app.appId,
+                      iconSrc: desktopAppIconById[app.appId],
+                      selected: selectedAppId === app.appId,
+                      onOpen: () => onSelectApp(app.appId),
+                      actions: [
+                        {
+                          label: "Rename",
+                          onClick: () => {
+                            showDesktopPlaceholder(`Rename for '${app.appId}' is not implemented yet.`);
+                          },
+                        },
+                        {
+                          label: "Settings",
+                          onClick: () => {
+                            showDesktopPlaceholder(`Settings for '${app.appId}' are not implemented yet.`);
+                          },
+                        },
+                        {
+                          label: uninstallPendingAppId === app.appId ? "Uninstalling..." : "Uninstall",
+                          tone: "secondary" as const,
+                          onClick: () => {
+                            if (uninstallPendingAppId || wrapPendingAppId) {
+                              return;
+                            }
+                            void uninstallApp(app.appId);
+                          },
+                        },
+                      ],
+                    }))}
+                  />
                 </div>
               ) : activeTab === "services" ? (
                 <div className="mt-8 space-y-4">

@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
+import { forwardRef, type ReactNode } from "react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 
-type DesktopActionCardAction = {
+export type DesktopActionCardAction = {
   label: string;
   onClick: () => void;
   tone?: "primary" | "secondary";
@@ -15,14 +15,17 @@ type DesktopActionCardProps = {
   selected?: boolean;
   actions?: DesktopActionCardAction[];
   onClick?: () => void;
+  className?: string;
 };
 
-export function DesktopActionCard(props: DesktopActionCardProps) {
-  const { title, iconSrc, selected = false, actions = [], onClick } = props;
+export const DesktopActionCard = forwardRef<HTMLButtonElement, DesktopActionCardProps>(
+function DesktopActionCard(props, ref) {
+  const { title, iconSrc, selected = false, actions = [], onClick, className = "" } = props;
   const fallbackLabel = title.slice(0, 2).toUpperCase();
 
   const trigger = (
     <button
+      ref={ref}
       type="button"
       data-app-context-menu-trigger="true"
       data-desktop-context-menu-block="true"
@@ -34,7 +37,7 @@ export function DesktopActionCard(props: DesktopActionCardProps) {
         selected
           ? "bg-cyan-300/10 ring-1 ring-cyan-200/25"
           : "hover:bg-white/6 focus-visible:bg-white/6"
-      }`}
+      } ${className}`}
     >
       <span
         className={`pointer-events-none flex size-[72px] items-center justify-center overflow-hidden rounded-[1.35rem] shadow-[0_16px_30px_rgba(0,0,0,0.28)] transition-transform group-hover:scale-[1.03] ${
@@ -103,4 +106,6 @@ export function DesktopActionCard(props: DesktopActionCardProps) {
       </ContextMenu.Portal>
     </ContextMenu.Root>
   );
-}
+});
+
+DesktopActionCard.displayName = "DesktopActionCard";
