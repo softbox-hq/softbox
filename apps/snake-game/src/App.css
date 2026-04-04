@@ -3,8 +3,21 @@
   height: 100svh;
   display: grid;
   place-items: center;
+  gap: 14px;
   padding: 16px;
   overflow: hidden;
+}
+
+.copy-card {
+  width: min(100%, 680px);
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg) 90%, var(--code-bg));
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.45;
 }
 
 .game-shell {

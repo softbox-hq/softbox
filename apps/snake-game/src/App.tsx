@@ -185,6 +185,13 @@ function App() {
 
   return (
     <main className="app-shell">
+      <section className="copy-card" aria-label="Intro text">
+        <p>
+          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod
+          tempor incididunt ut labore et dolore magna aliqua.
+        </p>
+      </section>
+
       <section className="game-shell" aria-label="Snake board">
         <div className="board" role="grid" aria-label="Snake board">
           {cells}

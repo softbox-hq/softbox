@@ -9,6 +9,9 @@
   },
   "include": [
     "./**/*.ts",
+    "./**/*.tsx",
+    "../shell/src/serviceStatus.ts",
+    "../shell/src/systemServices.ts",
     "../worker/src/appAgents.ts",
     "../worker/src/boxes.ts",
     "../worker/src/config.ts",

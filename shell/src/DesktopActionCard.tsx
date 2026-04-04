@@ -31,6 +31,7 @@ export function DesktopActionCard(props: DesktopActionCardProps) {
 
   return (
     <article
+      data-desktop-context-menu-block={onClick ? "true" : undefined}
       className={`max-w-[240px] overflow-hidden border border-white/10 bg-[#0a0d11]/80 ${onClick ? "cursor-pointer transition-colors hover:bg-[#0d1218]" : ""}`}
       onClick={onClick}
     >

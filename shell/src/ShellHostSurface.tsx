@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { DesktopActionCard } from "./DesktopActionCard";
+import { ShellDesktopContextMenu } from "./ShellDesktopContextMenu";
 import { DesktopTabs } from "./DesktopTabs";
 import type { OpenClawStatus } from "./openClaw";
 import type { ServiceStatus } from "./serviceStatus";
@@ -40,6 +41,30 @@ function extractOpenClawAuthUrl(logs: string[]) {
     }
   }
   return null;
+}
+
+function isDesktopContextMenuBlocked(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return Boolean(
+    target.closest(
+      [
+        "button",
+        "input",
+        "textarea",
+        "select",
+        "option",
+        "label",
+        "a",
+        "[role='button']",
+        "[role='dialog']",
+        "[contenteditable='true']",
+        "[data-desktop-context-menu-block='true']",
+      ].join(","),
+    ),
+  );
 }
 
 export function ShellHostSurface(props: ShellHostSurfaceProps) {
@@ -87,6 +112,11 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
     normalizedAppName.length > 0 &&
     /^[a-z0-9][a-z0-9-]*$/.test(normalizedAppName) &&
     !createPending;
+
+  function openCreateAppModal() {
+    setCreateError(null);
+    setCreateModalOpen(true);
+  }
 
   async function handleCreateApp() {
     if (!canSubmit) {
@@ -604,166 +634,200 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
     return service.name === "Artifact Storage" && service.message.toLowerCase().includes("minio");
   }
 
+  async function refreshActiveTab() {
+    if (activeTab === "apps") {
+      await loadUnwrappedApps();
+      return;
+    }
+
+    if (activeTab === "services") {
+      await Promise.all([loadServiceStatuses(), loadOpenClawStatus()]);
+      return;
+    }
+
+    await loadServerInfo();
+  }
+
+  function handleDesktopTabChange(nextTab: "apps" | "services" | "server") {
+    if (nextTab === activeTab) {
+      void refreshActiveTab();
+      return;
+    }
+
+    setActiveTab(nextTab);
+  }
+
   return (
     <>
-      <section className="pointer-events-none absolute inset-0 z-10 flex items-stretch justify-stretch overflow-y-auto">
-        <div className="pointer-events-auto relative min-h-full w-full overflow-y-auto border-0 bg-[#0d1014]/72 px-6 py-6 shadow-none backdrop-blur-xl sm:px-8 sm:py-8">
-          <div
-            className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.08),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_22%)]"
-            aria-hidden="true"
-          />
-          <div className="relative flex min-h-full w-full flex-col">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex flex-col gap-4">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-200/60">
-                  <span
-                    className="text-2xl font-normal tracking-[0.12em] text-cyan-200/80"
-                    style={{ fontFamily: "var(--font-display)" }}
-                  >
-                    {content.eyebrow}
-                  </span>
-                </p>
-                <DesktopTabs activeTab={activeTab} onChange={setActiveTab} />
-              </div>
-              {canCreateApp ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCreateError(null);
-                    setCreateModalOpen(true);
-                  }}
-                  aria-label="Create app"
-                  title="Create app"
-                  className="inline-flex h-10 w-10 items-center justify-center border border-white/10 bg-white/6 text-slate-100 transition-colors hover:bg-white/10"
-                >
-                  <Plus className="size-4" />
-                </button>
-              ) : null}
-            </div>
-
-            {activeTab === "apps" ? (
-              <div className="mt-8 space-y-5">
-                {unwrappedError ? (
-                  <div className="max-w-3xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
-                    {unwrappedError}
-                  </div>
-                ) : null}
-
-                {wrapSuccessMessage ? (
-                  <div className="max-w-3xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
-                    {wrapSuccessMessage}
-                  </div>
-                ) : null}
-
-                {unwrappedApps.length > 0 ? (
-                  <section className="border border-amber-400/20 bg-amber-500/[0.06] p-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-200/70">
-                          Not Installed
-                        </p>
-                        <p className="mt-2 text-sm leading-6 text-amber-50/90">
-                          These app folders exist under <code>/apps</code> but are not installed in
-                          Softbox yet.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                      {unwrappedApps.map((app) => (
-                        <article
-                          key={app.appId}
-                          className="border border-amber-200/20 bg-black/20 p-4 text-sm"
-                        >
-                          <p className="font-semibold text-amber-50">{app.appId}</p>
-                          <p className="mt-1 text-xs text-amber-100/70">{app.relativePath}</p>
-                          <button
-                            type="button"
-                            onClick={() => void installApp(app.appId)}
-                            disabled={wrapPendingAppId !== null || uninstallPendingAppId !== null}
-                            className="mt-3 inline-flex h-9 items-center justify-center border border-amber-300/30 bg-amber-300/15 px-3.5 text-sm font-medium text-amber-100 transition-colors hover:bg-amber-300/25 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {wrapPendingAppId === app.appId
-                              ? "Installing..."
-                              : "Install app"}
-                          </button>
-                        </article>
-                      ))}
-                    </div>
-                  </section>
-                ) : null}
-
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {apps.map((app) => {
-                    const isSelected = selectedAppId === app.appId;
-                    const versionLabel =
-                      typeof app.activeVersion?.versionNumber === "number"
-                        ? `v${app.activeVersion.versionNumber}`
-                        : "No versions yet";
-                    const sourceStatus = app.templateSourceStatus ?? "unknown";
-                    return (
-                      <DesktopActionCard
-                        key={app.appId}
-                        eyebrow={isSelected ? "Mounted app" : "App"}
-                        title={app.name || app.appId}
-                        description={`Open ${app.appId} on the Softbox desktop and continue editing from its mounted runtime.`}
-                        detail={`Template source: ${sourceStatus} · Active version: ${versionLabel}`}
-                        accentClassName={
-                          isSelected
-                            ? "from-cyan-300/40 via-sky-300/15 to-transparent"
-                            : "from-fuchsia-300/30 via-rose-300/12 to-transparent"
-                        }
-                        onClick={() => onSelectApp(app.appId)}
-                        actions={[
-                          {
-                            label:
-                              uninstallPendingAppId === app.appId ? "Uninstalling..." : "Uninstall",
-                            tone: "secondary",
-                            onClick: () => {
-                              if (uninstallPendingAppId || wrapPendingAppId) {
-                                return;
-                              }
-                              void uninstallApp(app.appId);
-                            },
-                          },
-                        ]}
-                      />
-                    );
-                  })}
+      <ShellDesktopContextMenu
+        activeTab={activeTab}
+        canCreateApp={canCreateApp}
+        mountedAppId={selectedAppId}
+        onChangeTab={handleDesktopTabChange}
+        onCreateApp={canCreateApp ? openCreateAppModal : undefined}
+        onOpenApps={onOpenApps}
+        onRefresh={() => void refreshActiveTab()}
+      >
+        <section
+          className="pointer-events-none absolute inset-0 z-10 flex items-stretch justify-stretch overflow-y-auto"
+          onContextMenuCapture={(event) => {
+            if (isDesktopContextMenuBlocked(event.target)) {
+              event.stopPropagation();
+            }
+          }}
+        >
+          <div className="pointer-events-auto relative min-h-full w-full overflow-y-auto border-0 bg-[#0d1014]/72 px-6 py-6 shadow-none backdrop-blur-xl sm:px-8 sm:py-8">
+            <div
+              className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.08),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_22%)]"
+              aria-hidden="true"
+            />
+            <div className="relative flex min-h-full w-full flex-col">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col gap-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-200/60">
+                    <span
+                      className="text-2xl font-normal tracking-[0.12em] text-cyan-200/80"
+                      style={{ fontFamily: "var(--font-display)" }}
+                    >
+                      {content.eyebrow}
+                    </span>
+                  </p>
+                  <DesktopTabs activeTab={activeTab} onChange={handleDesktopTabChange} />
                 </div>
-              </div>
-            ) : activeTab === "services" ? (
-              <div className="mt-8 space-y-4">
-                <div className="flex items-center gap-2">
+                {canCreateApp ? (
                   <button
                     type="button"
-                    onClick={() => void loadServiceStatuses()}
-                    className="inline-flex h-9 items-center justify-center border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
+                    onClick={openCreateAppModal}
+                    aria-label="Create app"
+                    title="Create app"
+                    className="inline-flex h-10 w-10 items-center justify-center border border-white/10 bg-white/6 text-slate-100 transition-colors hover:bg-white/10"
                   >
-                    {servicesPending ? "Checking..." : "Refresh services"}
+                    <Plus className="size-4" />
                   </button>
+                ) : null}
+              </div>
+
+              {activeTab === "apps" ? (
+                <div className="mt-8 space-y-5">
+                  {unwrappedError ? (
+                    <div className="max-w-3xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+                      {unwrappedError}
+                    </div>
+                  ) : null}
+
+                  {wrapSuccessMessage ? (
+                    <div className="max-w-3xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+                      {wrapSuccessMessage}
+                    </div>
+                  ) : null}
+
+                  {unwrappedApps.length > 0 ? (
+                    <section className="border border-amber-400/20 bg-amber-500/[0.06] p-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-200/70">
+                            Not Installed
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-amber-50/90">
+                            These app folders exist under <code>/apps</code> but are not installed in
+                            Softbox yet.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        {unwrappedApps.map((app) => (
+                          <article
+                            key={app.appId}
+                            className="border border-amber-200/20 bg-black/20 p-4 text-sm"
+                          >
+                            <p className="font-semibold text-amber-50">{app.appId}</p>
+                            <p className="mt-1 text-xs text-amber-100/70">{app.relativePath}</p>
+                            <button
+                              type="button"
+                              onClick={() => void installApp(app.appId)}
+                              disabled={wrapPendingAppId !== null || uninstallPendingAppId !== null}
+                              className="mt-3 inline-flex h-9 items-center justify-center border border-amber-300/30 bg-amber-300/15 px-3.5 text-sm font-medium text-amber-100 transition-colors hover:bg-amber-300/25 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {wrapPendingAppId === app.appId ? "Installing..." : "Install app"}
+                            </button>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
+
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {apps.map((app) => {
+                      const isSelected = selectedAppId === app.appId;
+                      const versionLabel =
+                        typeof app.activeVersion?.versionNumber === "number"
+                          ? `v${app.activeVersion.versionNumber}`
+                          : "No versions yet";
+                      const sourceStatus = app.templateSourceStatus ?? "unknown";
+                      return (
+                        <DesktopActionCard
+                          key={app.appId}
+                          eyebrow={isSelected ? "Mounted app" : "App"}
+                          title={app.name || app.appId}
+                          description={`Open ${app.appId} on the Softbox desktop and continue editing from its mounted runtime.`}
+                          detail={`Template source: ${sourceStatus} · Active version: ${versionLabel}`}
+                          accentClassName={
+                            isSelected
+                              ? "from-cyan-300/40 via-sky-300/15 to-transparent"
+                              : "from-fuchsia-300/30 via-rose-300/12 to-transparent"
+                          }
+                          onClick={() => onSelectApp(app.appId)}
+                          actions={[
+                            {
+                              label:
+                                uninstallPendingAppId === app.appId ? "Uninstalling..." : "Uninstall",
+                              tone: "secondary",
+                              onClick: () => {
+                                if (uninstallPendingAppId || wrapPendingAppId) {
+                                  return;
+                                }
+                                void uninstallApp(app.appId);
+                              },
+                            },
+                          ]}
+                        />
+                      );
+                    })}
+                  </div>
                 </div>
-
-                {servicesError ? (
-                  <div className="max-w-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
-                    {servicesError}
+              ) : activeTab === "services" ? (
+                <div className="mt-8 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void loadServiceStatuses()}
+                      className="inline-flex h-9 items-center justify-center border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
+                    >
+                      {servicesPending ? "Checking..." : "Refresh services"}
+                    </button>
                   </div>
-                ) : null}
 
-                {serviceActionError ? (
-                  <div className="max-w-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
-                    {serviceActionError}
-                  </div>
-                ) : null}
+                  {servicesError ? (
+                    <div className="max-w-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+                      {servicesError}
+                    </div>
+                  ) : null}
 
-                {serviceActionMessage ? (
-                  <div className="max-w-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
-                    {serviceActionMessage}
-                  </div>
-                ) : null}
+                  {serviceActionError ? (
+                    <div className="max-w-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+                      {serviceActionError}
+                    </div>
+                  ) : null}
 
-                <div className="overflow-hidden border border-white/10 bg-[#0b0f13]/88">
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-white/10 text-sm">
+                  {serviceActionMessage ? (
+                    <div className="max-w-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+                      {serviceActionMessage}
+                    </div>
+                  ) : null}
+
+                  <div className="overflow-hidden border border-white/10 bg-[#0b0f13]/88">
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-white/10 text-sm">
                       <thead className="bg-white/[0.03]">
                         <tr>
                           <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium text-slate-400">
@@ -833,11 +897,11 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                      </table>
+                    </div>
                   </div>
-                </div>
 
-                <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                  <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
                   <section className="border border-white/10 bg-black/20 p-5">
                     <div className="flex items-start justify-between gap-4">
                       <div>
@@ -1230,68 +1294,69 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                     </div>
                   </div>
                 </section>
-              </div>
-            ) : (
-              <div className="mt-8 space-y-4">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void loadServerInfo()}
-                    className="inline-flex h-9 items-center justify-center border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
-                  >
-                    Refresh server
-                  </button>
                 </div>
+              ) : (
+                <div className="mt-8 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void loadServerInfo()}
+                      className="inline-flex h-9 items-center justify-center border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
+                    >
+                      Refresh server
+                    </button>
+                  </div>
 
-                {serverInfoError ? (
-                  <div className="max-w-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
-                    {serverInfoError}
-                  </div>
-                ) : null}
+                  {serverInfoError ? (
+                    <div className="max-w-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+                      {serverInfoError}
+                    </div>
+                  ) : null}
 
-                {serverInfo ? (
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {[
-                      { label: "Host", value: serverInfo.hostname },
-                      { label: "OS", value: `${serverInfo.platform} ${serverInfo.release}` },
-                      { label: "Architecture", value: serverInfo.arch },
-                      { label: "CPU", value: `${serverInfo.cpuModel} (${serverInfo.cpuCores} cores)` },
-                      {
-                        label: "RAM",
-                        value: `${serverInfo.freeMemoryGb.toFixed(1)} GB free / ${serverInfo.totalMemoryGb.toFixed(1)} GB total`,
-                      },
-                      {
-                        label: "Disk",
-                        value:
-                          serverInfo.diskTotalGb !== null && serverInfo.diskFreeGb !== null
-                            ? `${serverInfo.diskFreeGb.toFixed(1)} GB free / ${serverInfo.diskTotalGb.toFixed(1)} GB total`
-                            : "Unavailable",
-                      },
-                      { label: "Node", value: serverInfo.nodeVersion },
-                    ].map((item) => (
-                      <article key={item.label} className="border border-white/10 bg-black/20 p-4">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                          {item.label}
-                        </p>
-                        <p className="mt-2 text-sm leading-6 text-slate-200">{item.value}</p>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="max-w-xl border border-white/10 bg-black/20 p-5">
-                    <p className="text-sm leading-6 text-slate-300">
-                      Load the server view to inspect the current Softbox machine.
-                    </p>
-                    <p className="mt-3 text-xs leading-5 text-slate-500">
-                      This includes host name, OS version, CPU, RAM, disk, and Node runtime.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
+                  {serverInfo ? (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {[
+                        { label: "Host", value: serverInfo.hostname },
+                        { label: "OS", value: `${serverInfo.platform} ${serverInfo.release}` },
+                        { label: "Architecture", value: serverInfo.arch },
+                        { label: "CPU", value: `${serverInfo.cpuModel} (${serverInfo.cpuCores} cores)` },
+                        {
+                          label: "RAM",
+                          value: `${serverInfo.freeMemoryGb.toFixed(1)} GB free / ${serverInfo.totalMemoryGb.toFixed(1)} GB total`,
+                        },
+                        {
+                          label: "Disk",
+                          value:
+                            serverInfo.diskTotalGb !== null && serverInfo.diskFreeGb !== null
+                              ? `${serverInfo.diskFreeGb.toFixed(1)} GB free / ${serverInfo.diskTotalGb.toFixed(1)} GB total`
+                              : "Unavailable",
+                        },
+                        { label: "Node", value: serverInfo.nodeVersion },
+                      ].map((item) => (
+                        <article key={item.label} className="border border-white/10 bg-black/20 p-4">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            {item.label}
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-slate-200">{item.value}</p>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="max-w-xl border border-white/10 bg-black/20 p-5">
+                      <p className="text-sm leading-6 text-slate-300">
+                        Load the server view to inspect the current Softbox machine.
+                      </p>
+                      <p className="mt-3 text-xs leading-5 text-slate-500">
+                        This includes host name, OS version, CPU, RAM, disk, and Node runtime.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </ShellDesktopContextMenu>
 
       {createModalOpen ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4">
