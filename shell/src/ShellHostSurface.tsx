@@ -612,7 +612,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
             className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.08),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_22%)]"
             aria-hidden="true"
           />
-          <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col">
+          <div className="relative flex min-h-full w-full flex-col">
             <div className="flex items-start justify-between gap-4">
               <div className="flex flex-col gap-4">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-200/60">

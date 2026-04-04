@@ -61,7 +61,7 @@ function App() {
       </header>
 
       <div className="scene-frame" aria-label="3D solar system visualization">
-        <Canvas camera={{ position: [0, 8, 16], fov: 50 }}>
+        <Canvas camera={{ position: [0, 1.5, 4.5], fov: 50 }}>
           <color attach="background" args={["#050814"]} />
           <fog attach="fog" args={["#050814", 12, 40]} />
           <ambientLight intensity={0.25} />
