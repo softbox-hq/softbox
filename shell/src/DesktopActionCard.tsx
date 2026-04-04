@@ -24,8 +24,12 @@ export function DesktopActionCard(props: DesktopActionCardProps) {
   const trigger = (
     <button
       type="button"
+      data-app-context-menu-trigger="true"
       data-desktop-context-menu-block="true"
       onClick={onClick}
+      onContextMenu={(event) => {
+        event.stopPropagation();
+      }}
       className={`group flex w-[92px] flex-col items-center gap-2 rounded-xl px-2 py-2 text-center outline-none transition-colors ${
         selected
           ? "bg-cyan-300/10 ring-1 ring-cyan-200/25"
@@ -33,20 +37,22 @@ export function DesktopActionCard(props: DesktopActionCardProps) {
       }`}
     >
       <span
-        className={`flex size-[72px] items-center justify-center overflow-hidden rounded-[1.35rem] shadow-[0_16px_30px_rgba(0,0,0,0.28)] transition-transform group-hover:scale-[1.03] ${
+        className={`pointer-events-none flex size-[72px] items-center justify-center overflow-hidden rounded-[1.35rem] shadow-[0_16px_30px_rgba(0,0,0,0.28)] transition-transform group-hover:scale-[1.03] ${
           iconSrc
             ? "bg-transparent"
             : "border border-white/10 bg-[linear-gradient(180deg,rgba(148,163,184,0.22),rgba(15,23,42,0.9))]"
         }`}
       >
         {iconSrc ? (
-          <img src={iconSrc} alt="" className="size-full object-contain" draggable={false} />
+          <img src={iconSrc} alt="" className="pointer-events-none size-full object-contain" draggable={false} />
         ) : (
-          <span className="text-lg font-semibold tracking-[0.08em] text-slate-100">{fallbackLabel}</span>
+          <span className="pointer-events-none text-lg font-semibold tracking-[0.08em] text-slate-100">
+            {fallbackLabel}
+          </span>
         )}
       </span>
       <span
-        className={`max-w-full break-words text-[12px] leading-4 ${
+        className={`pointer-events-none max-w-full break-words text-[12px] leading-4 ${
           selected ? "font-semibold text-cyan-100" : "font-medium text-slate-100"
         }`}
       >

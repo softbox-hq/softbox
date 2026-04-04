@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Plus } from "lucide-react";
 import { DesktopActionCard } from "./DesktopActionCard";
 import { ShellDesktopContextMenu } from "./ShellDesktopContextMenu";
 import paintIcon from "./paint-icon.png";
@@ -52,6 +51,10 @@ function isDesktopContextMenuBlocked(target: EventTarget | null) {
     return false;
   }
 
+  if (target.closest("[data-app-context-menu-trigger='true']")) {
+    return false;
+  }
+
   return Boolean(
     target.closest(
       [
@@ -65,15 +68,13 @@ function isDesktopContextMenuBlocked(target: EventTarget | null) {
         "[role='button']",
         "[role='dialog']",
         "[contenteditable='true']",
-        "[data-desktop-context-menu-block='true']",
       ].join(","),
     ),
   );
 }
 
 export function ShellHostSurface(props: ShellHostSurfaceProps) {
-  const { content, apps, selectedAppId, canCreateApp = false, onAppCreated, onOpenApps, onSelectApp } =
-    props;
+  const { apps, selectedAppId, canCreateApp = false, onAppCreated, onOpenApps, onSelectApp } = props;
   const [activeTab, setActiveTab] = useState<"apps" | "services" | "server">("apps");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [appName, setAppName] = useState("");
@@ -107,6 +108,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const [wrapPendingAppId, setWrapPendingAppId] = useState<string | null>(null);
   const [uninstallPendingAppId, setUninstallPendingAppId] = useState<string | null>(null);
   const [wrapSuccessMessage, setWrapSuccessMessage] = useState<string | null>(null);
+  const [desktopInfoMessage, setDesktopInfoMessage] = useState<string | null>(null);
 
   const normalizedAppName = appName.trim().toLowerCase();
   const openClawAuthUrl =
@@ -672,6 +674,10 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
     setActiveTab("apps");
   }
 
+  function showDesktopPlaceholder(message: string) {
+    setDesktopInfoMessage(message);
+  }
+
   const showAppsSurface = true;
 
   return (
@@ -699,43 +705,25 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
               aria-hidden="true"
             />
             <div className="relative flex min-h-full w-full flex-col">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex flex-col gap-4">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-200/60">
-                    <span
-                      className="text-2xl font-normal tracking-[0.12em] text-cyan-200/80"
-                      style={{ fontFamily: "var(--font-display)" }}
-                    >
-                      {content.eyebrow}
-                    </span>
-                  </p>
-                </div>
-                {canCreateApp ? (
-                  <button
-                    type="button"
-                    onClick={openCreateAppModal}
-                    aria-label="Create app"
-                    title="Create app"
-                    className="inline-flex h-10 w-10 items-center justify-center border border-white/10 bg-white/6 text-slate-100 transition-colors hover:bg-white/10"
-                  >
-                    <Plus className="size-4" />
-                  </button>
-                ) : null}
-              </div>
-
               {showAppsSurface ? (
-                <div className="mt-8 space-y-5">
+                <div className="space-y-5">
                   {unwrappedError ? (
                     <div className="max-w-3xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
                       {unwrappedError}
                     </div>
                   ) : null}
 
-                  {wrapSuccessMessage ? (
-                    <div className="max-w-3xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
-                      {wrapSuccessMessage}
-                    </div>
-                  ) : null}
+                {wrapSuccessMessage ? (
+                  <div className="max-w-3xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+                    {wrapSuccessMessage}
+                  </div>
+                ) : null}
+
+                {desktopInfoMessage ? (
+                  <div className="max-w-3xl border border-cyan-400/20 bg-cyan-400/10 p-4 text-sm text-cyan-50">
+                    {desktopInfoMessage}
+                  </div>
+                ) : null}
 
                   {unwrappedApps.length > 0 ? (
                     <section className="border border-amber-400/20 bg-amber-500/[0.06] p-4">
@@ -783,6 +771,18 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                           selected={isSelected}
                           onClick={() => onSelectApp(app.appId)}
                           actions={[
+                            {
+                              label: "Rename",
+                              onClick: () => {
+                                showDesktopPlaceholder(`Rename for '${app.appId}' is not implemented yet.`);
+                              },
+                            },
+                            {
+                              label: "Settings",
+                              onClick: () => {
+                                showDesktopPlaceholder(`Settings for '${app.appId}' are not implemented yet.`);
+                              },
+                            },
                             {
                               label: uninstallPendingAppId === app.appId ? "Uninstalling..." : "Uninstall",
                               tone: "secondary",
