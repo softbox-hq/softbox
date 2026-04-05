@@ -851,8 +851,9 @@ function getInspectBadgeStyle(target: { rect: InspectRect } | null): CSSProperti
 export function App() {
   const [shellId] = useState(() => getOrCreateShellId());
   const shellSelection = useQuery(convexApi.getShellSelection as any, { shellId }) as any;
-  const apps = (useQuery(convexApi.listApps as any, {}) as any[] | undefined) ?? [];
-  const appId = resolveMountedAppId(apps, shellSelection);
+  const appsQuery = useQuery(convexApi.listApps as any, {}) as any[] | undefined;
+  const apps = appsQuery ?? [];
+  const appId = resolveMountedAppId(appsQuery, shellSelection);
   const selectedApp = appId ? apps.find((app) => app.appId === appId) ?? null : null;
   const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
   const [selectedTargetBoxIds, setSelectedTargetBoxIds] = useState<string[]>([]);

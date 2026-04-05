@@ -148,6 +148,20 @@
   gap: 14px;
 }
 
+.gallery-card {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 16px;
+  cursor: zoom-in;
+  text-align: inherit;
+}
+
+.gallery-card:focus-visible {
+  outline: 3px solid rgba(10, 132, 255, 0.45);
+  outline-offset: 3px;
+}
+
 .gallery-item {
   width: 100%;
   aspect-ratio: 170 / 179;
@@ -158,6 +172,28 @@
     0 1px 0 rgba(255, 255, 255, 0.8) inset,
     0 12px 32px rgba(15, 15, 20, 0.12);
   background: #fff;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 15, 20, 0.72);
+  backdrop-filter: blur(18px);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  z-index: 50;
+  cursor: zoom-out;
+}
+
+.lightbox-image {
+  max-width: min(92vw, 960px);
+  max-height: 86vh;
+  width: auto;
+  height: auto;
+  border-radius: 24px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
 }
 
 @media (max-width: 900px) {

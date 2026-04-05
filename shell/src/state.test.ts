@@ -98,6 +98,10 @@ describe("resolveMountedAppId", () => {
     ).toBe("space");
   });
 
+  it("keeps the selected app mounted while the app list is still loading", () => {
+    expect(resolveMountedAppId(undefined, { selectedAppId: "space" })).toBe("space");
+  });
+
   it("leaves the shell unmounted when the stored app no longer exists", () => {
     expect(
       resolveMountedAppId([{ appId: "dashboard" }], { selectedAppId: "space" }),

@@ -24,12 +24,15 @@ export function parseStateJson(value: string | null) {
 }
 
 export function resolveMountedAppId(
-  apps: AppSelectionRecord[],
+  apps: AppSelectionRecord[] | undefined,
   shellSelection: ShellSelectionRecord,
 ) {
   const selectedAppId = shellSelection?.selectedAppId ?? null;
   if (!selectedAppId) {
     return null;
+  }
+  if (apps === undefined) {
+    return selectedAppId;
   }
   return apps.some((app) => app.appId === selectedAppId) ? selectedAppId : null;
 }

@@ -1,7 +1,15 @@
+import { useState } from 'react'
 import dogImage from './assets/dog.png'
+import catImage from './assets/cat.png'
+import openclawBotImage from './assets/openclaw-bot.png'
 import './App.css'
 
 function App() {
+  const [selectedImage, setSelectedImage] = useState<{
+    src: string
+    alt: string
+  } | null>(null)
+
   return (
     <div className="photos-app" aria-label="Apple Photos style gallery">
       <header className="topbar">
@@ -50,16 +58,44 @@ function App() {
           </div>
 
           <div className="gallery-grid">
-            <img
-              src={dogImage}
-              className="gallery-item"
-              width="170"
-              height="179"
-              alt="Dog portrait"
-            />
+            {[
+              { src: dogImage, alt: 'Dog portrait' },
+              { src: catImage, alt: 'Cat portrait' },
+              { src: openclawBotImage, alt: 'OpenClaw bot' },
+            ].map((image) => (
+              <button
+                key={image.alt}
+                type="button"
+                className="gallery-card"
+                onClick={() => setSelectedImage(image)}
+              >
+                <img
+                  src={image.src}
+                  className="gallery-item"
+                  width="170"
+                  height="179"
+                  alt={image.alt}
+                />
+              </button>
+            ))}
           </div>
         </main>
       </div>
+
+      {selectedImage ? (
+        <button
+          type="button"
+          className="lightbox"
+          aria-label="Close enlarged photo"
+          onClick={() => setSelectedImage(null)}
+        >
+          <img
+            src={selectedImage.src}
+            className="lightbox-image"
+            alt={selectedImage.alt}
+          />
+        </button>
+      ) : null}
     </div>
   )
 }

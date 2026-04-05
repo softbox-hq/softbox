@@ -72,6 +72,27 @@ Notes:
 - For wrapper/onboarding work, prefer the repo skill at `skills/softbox-wrap-app/`.
 - Wrapped/seeded apps should have an app-local `AGENTS.md`; `pnpm wrap-app` and `pnpm seed` now create that scaffold automatically if it is missing.
 
+## Generated Images
+
+When you use `image_generate`, do not stop at the managed media result.
+
+Required workflow:
+
+1. Generate the image with `image_generate`.
+2. Read the returned media path from the tool result.
+3. Copy the generated binary into the active app workspace under `src/assets/` unless the user requests another location.
+4. Use a deterministic filename based on the requested asset name.
+5. Update the app code to reference the workspace file, not the OpenClaw managed media path.
+6. In the final response, always report:
+   - the original OpenClaw media path
+   - the final workspace file path
+
+Rules:
+
+- Never leave a generated image only in OpenClaw managed media storage when the user asked for an app asset.
+- Never use SVG, CSS art, canvas art, or inline shapes as a fallback when the user explicitly asked for `image_generate`.
+- If `image_generate` fails or no provider key is available, stop and say that explicitly.
+
 ## Important: `/apps` Is Not Auto-Mounted
 
 Putting a new application folder into `/apps` is **not** enough by itself.
