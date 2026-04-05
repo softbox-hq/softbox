@@ -85,6 +85,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const { apps, selectedAppId, canCreateApp = false, onAppCreated, onOpenApps, onSelectApp } = props;
   const [activeTab, setActiveTab] = useState<"apps" | "services" | "server">("apps");
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [settingsAppId, setSettingsAppId] = useState<string | null>(null);
   const [appName, setAppName] = useState("");
   const [createPending, setCreatePending] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -158,6 +159,14 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
 
   function openWallpaperPicker() {
     setWallpaperPickerOpen(true);
+  }
+
+  function openAppSettings(appId: string) {
+    setSettingsAppId(appId);
+  }
+
+  function closeAppSettings() {
+    setSettingsAppId(null);
   }
 
   function closeWallpaperPicker() {
@@ -734,6 +743,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   }
 
   const showAppsSurface = true;
+  const settingsApp = settingsAppId ? apps.find((app) => app.appId === settingsAppId) ?? null : null;
 
   return (
     <>
@@ -832,7 +842,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                         {
                           label: "Settings",
                           onClick: () => {
-                            showDesktopPlaceholder(`Settings for '${app.appId}' are not implemented yet.`);
+                            openAppSettings(app.appId);
                           },
                         },
                         {
@@ -2195,6 +2205,55 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                 className="inline-flex h-9 items-center justify-center rounded-xl bg-cyan-300 px-3.5 text-sm font-medium text-black transition-colors hover:bg-cyan-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
               >
                 {createPending ? "Creating..." : "Create app"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {settingsApp ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="desktop-app-settings-title"
+            className="w-full max-w-md rounded-[1.5rem] border border-white/10 bg-[#10141a] p-5 shadow-[0_24px_84px_rgba(0,0,0,0.5)]"
+          >
+            <h3 id="desktop-app-settings-title" className="text-lg font-semibold text-white">
+              {settingsApp.name || settingsApp.appId} settings
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              App settings are now opened from the desktop icon context menu.
+            </p>
+
+            <div className="mt-5 grid gap-3">
+              <article className="rounded-[1rem] border border-white/10 bg-black/20 p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">App id</p>
+                <p className="mt-2 text-sm text-white">{settingsApp.appId}</p>
+              </article>
+
+              <article className="rounded-[1rem] border border-white/10 bg-black/20 p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Version</p>
+                <p className="mt-2 text-sm text-white">
+                  {settingsApp.activeVersion?.versionNumber ?? "No active version"}
+                </p>
+              </article>
+
+              <article className="rounded-[1rem] border border-white/10 bg-black/20 p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Template source
+                </p>
+                <p className="mt-2 text-sm text-white">{settingsApp.templateSourceStatus ?? "Unknown"}</p>
+              </article>
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={closeAppSettings}
+                className="inline-flex h-9 items-center justify-center rounded-xl border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
+              >
+                Close
               </button>
             </div>
           </div>
