@@ -13,7 +13,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { config as loadEnv, parse as parseDotenv } from "dotenv";
 import {
   generateOpaqueAppId,
@@ -560,7 +560,7 @@ async function updateWrappedAppMetadataConfig(args: {
   name: string;
   slug: string;
 }) {
-  const wrappedApp = discoverWrappedApps(args.projectRootPath).apps.find((app) => app.appId === args.appId);
+  const wrappedApp = resolveWrappedAppIdentity(args.projectRootPath, args.appId);
   if (!wrappedApp) {
     throw new Error(`Unknown wrapped app '${args.appId}'.`);
   }
@@ -578,6 +578,17 @@ async function updateWrappedAppMetadataConfig(args: {
 
   await writeFile(wrappedApp.configPath, `${JSON.stringify(nextConfig, null, 2)}\n`, "utf8");
   return wrappedApp.relativeRoot;
+}
+
+function resolveWrappedAppIdentity(projectRootPath: string, identity: string) {
+  const wrappedApps = discoverWrappedApps(projectRootPath).apps;
+
+  return (
+    wrappedApps.find((app) => app.appId === identity) ??
+    wrappedApps.find((app) => app.slug === identity) ??
+    wrappedApps.find((app) => basename(app.relativeRoot) === identity) ??
+    null
+  );
 }
 
 function collectScopes(items: unknown[]) {
@@ -1976,9 +1987,10 @@ export default defineConfig({
               return;
             }
 
+            const currentWrappedApp = resolveWrappedAppIdentity(projectRoot, appId);
             const wrappedApps = discoverWrappedApps(projectRoot).apps;
             const conflictingApp = wrappedApps.find(
-              (app) => app.appId !== appId && app.slug === slug,
+              (app) => app.appId !== currentWrappedApp?.appId && app.slug === slug,
             );
             if (conflictingApp) {
               writeJson(res, 409, {
