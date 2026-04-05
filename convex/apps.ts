@@ -1523,6 +1523,8 @@ export const listApps = query({
           appId: app.appId,
           slug: app.slug ?? app.appId,
           name: app.name,
+          description: app.description ?? null,
+          iconAssetPath: app.iconAssetPath ?? null,
           box: primaryBox,
           boxes,
           primaryBox,
@@ -1919,6 +1921,8 @@ export const seedApp = mutation({
     appId: v.string(),
     name: v.string(),
     slug: v.string(),
+    description: v.optional(v.union(v.string(), v.null())),
+    iconAssetPath: v.optional(v.union(v.string(), v.null())),
     files: v.array(
       v.object({
         path: v.string(),
@@ -1939,6 +1943,8 @@ export const seedApp = mutation({
       await ctx.db.patch(existingApp._id, {
         name: args.name,
         slug: args.slug,
+        description: args.description ?? null,
+        iconAssetPath: args.iconAssetPath ?? null,
         updatedAt: Date.now(),
       });
       return existingApp._id;
@@ -1959,6 +1965,8 @@ export const seedApp = mutation({
       appId: args.appId,
       slug: args.slug,
       name: args.name,
+      description: args.description ?? null,
+      iconAssetPath: args.iconAssetPath ?? null,
       codexThreadId: null,
       openClawSessionId: null,
       templateSourceStatus: "unknown",
@@ -2030,6 +2038,8 @@ export const updateAppMetadata = mutation({
     appId: v.string(),
     name: v.string(),
     slug: v.string(),
+    description: v.optional(v.union(v.string(), v.null())),
+    iconAssetPath: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
     const app = await getAppByIdOrThrow(ctx, args.appId);
@@ -2052,11 +2062,20 @@ export const updateAppMetadata = mutation({
       throw new Error(`App slug '${nextSlug}' is already in use.`);
     }
 
-    await ctx.db.patch(app._id, {
+    const patch: Record<string, unknown> = {
       name: nextName,
       slug: nextSlug,
       updatedAt: Date.now(),
-    });
+    };
+
+    if (args.description !== undefined) {
+      patch.description = args.description?.trim() ? args.description.trim() : null;
+    }
+    if (args.iconAssetPath !== undefined) {
+      patch.iconAssetPath = args.iconAssetPath?.trim() ? args.iconAssetPath.trim() : null;
+    }
+
+    await ctx.db.patch(app._id, patch);
 
     return { updated: true };
   },

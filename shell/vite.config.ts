@@ -1,7 +1,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { appendFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { cpus, freemem, hostname, platform, release, totalmem, arch } from "node:os";
 import { Socket } from "node:net";
 import {
@@ -36,7 +36,9 @@ loadEnv({ path: resolve(import.meta.dirname, "../.env"), quiet: true });
 const projectRoot = resolve(import.meta.dirname, "..");
 const envLocalPath = resolve(projectRoot, ".env.local");
 const openClawConfigPath = resolve("/home/fvrlak/.openclaw/openclaw.json");
+const openClawStateDir = resolve(process.env.HOME ?? "/home/fvrlak", ".openclaw");
 const onboardingStateRoot = resolve(projectRoot, ".softbox", "onboarding");
+const generatedAppIconsDir = resolve(projectRoot, "public", "generated-app-icons");
 const minioOnboardingServiceName = "minio";
 const minioOnboardingBucket = "softbox-artifacts";
 const minioOnboardingEndpoint = "http://127.0.0.1:9000";
@@ -257,6 +259,224 @@ function primaryImageGenerationAuthEnvForProvider(
   provider: OpenClawImageGenerationProvider,
 ): string {
   return imageGenerationProviderDefaults[provider].authEnvHints[0];
+}
+
+function deriveAppDescription(name: string, description?: string | null) {
+  const normalizedDescription = description?.trim() ?? "";
+  if (normalizedDescription) {
+    return normalizedDescription;
+  }
+
+  const normalizedName = name.trim().toLowerCase();
+  const cannedDescriptions: Array<[RegExp, string]> = [
+    [/\b(photo|photos|gallery|images?)\b/u, "Photo gallery and image organizer."],
+    [/\b(calendar|schedule|events?)\b/u, "Calendar and event planning app."],
+    [/\b(mail|email|inbox|messages?)\b/u, "Messaging and inbox workspace."],
+    [/\b(tasks?|todo|planner|kanban)\b/u, "Task planning and work tracking app."],
+    [/\b(notes?|docs?|journal|writer)\b/u, "Notes and writing workspace."],
+    [/\b(weather|forecast)\b/u, "Weather forecast and conditions app."],
+    [/\b(music|audio|player)\b/u, "Music playback and listening app."],
+    [/\b(video|movies?)\b/u, "Video browsing and playback app."],
+    [/\b(files?|drive|storage)\b/u, "File browser and storage app."],
+    [/\b(chat|talk|social|community)\b/u, "Conversation and community app."],
+  ];
+
+  for (const [pattern, canned] of cannedDescriptions) {
+    if (pattern.test(normalizedName)) {
+      return canned;
+    }
+  }
+
+  return `${name.trim()} desktop app.`;
+}
+
+function buildDesktopIconPrompt(args: {
+  name: string;
+  description: string;
+}) {
+  return [
+    `Create a polished desktop app icon for an app named "${args.name}".`,
+    `App description: ${args.description}`,
+    "Use a single clear subject that represents the app.",
+    "Square composition, centered subject, crisp edges, high contrast, dark-desktop friendly.",
+    "Minimal but intentional style, soft depth, no text, no letters, no UI screenshot, no phone mockup.",
+    "Prefer one iconic object or symbol over a scene.",
+    "Transparent or very clean subtle background.",
+  ].join(" ");
+}
+
+function resolveOpenClawAgentIdForApp(args: {
+  appId: string;
+  agentId: string | null;
+  agentIdPrefix: string | null;
+}) {
+  if (args.agentId?.trim()) {
+    return args.agentId.trim();
+  }
+  if (args.agentIdPrefix?.trim()) {
+    return `${args.agentIdPrefix.trim()}${args.appId}`;
+  }
+  return null;
+}
+
+function buildOpenClawIconSessionKey(args: {
+  agentId: string;
+  appId: string;
+  sessionKeyPrefix: string;
+}) {
+  const prefix = args.sessionKeyPrefix.trim() || "softbox";
+  return `agent:${args.agentId}:${prefix}:${args.appId}:desktop-icon`;
+}
+
+function collectImageGenerationPaths(value: unknown, paths: Set<string>) {
+  if (!value) {
+    return;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.startsWith("/")) {
+      paths.add(trimmed);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      collectImageGenerationPaths(entry, paths);
+    }
+    return;
+  }
+  if (typeof value !== "object") {
+    return;
+  }
+
+  const record = value as JsonRecord;
+  collectImageGenerationPaths(record.paths, paths);
+  collectImageGenerationPaths(record.media, paths);
+  collectImageGenerationPaths(record.mediaUrls, paths);
+  collectImageGenerationPaths(record.path, paths);
+  collectImageGenerationPaths(record.url, paths);
+}
+
+async function findGeneratedImagePathFromSessionLog(args: {
+  agentId: string;
+  sessionId: string;
+}) {
+  const sessionPath = resolve(openClawStateDir, "agents", args.agentId, "sessions", `${args.sessionId}.jsonl`);
+  const source = await readFile(sessionPath, "utf8");
+  const lines = source.split("\n").map((line) => line.trim()).filter(Boolean).reverse();
+
+  for (const line of lines) {
+    let parsed: JsonRecord | null = null;
+    try {
+      parsed = JSON.parse(line) as JsonRecord;
+    } catch {
+      continue;
+    }
+
+    if (parsed?.type !== "message") {
+      continue;
+    }
+
+    const message = parsed.message as JsonRecord | undefined;
+    if (!message || message.role !== "toolResult" || message.toolName !== "image_generate") {
+      continue;
+    }
+
+    const candidatePaths = new Set<string>();
+    collectImageGenerationPaths(message.details, candidatePaths);
+    collectImageGenerationPaths(message.content, candidatePaths);
+    const existingPath = Array.from(candidatePaths).find((candidate) => existsSync(candidate));
+    if (existingPath) {
+      return existingPath;
+    }
+  }
+
+  throw new Error(`OpenClaw generated an image for session '${args.sessionId}', but no saved media path was found.`);
+}
+
+async function generateDesktopIconAsset(args: {
+  appId: string;
+  name: string;
+  description: string;
+  gatewayBaseUrl: string;
+  gatewayToken: string;
+  agentId: string;
+  sessionKeyPrefix: string;
+  promptOverride?: string | null;
+}) {
+  const prompt =
+    args.promptOverride?.trim() ||
+    buildDesktopIconPrompt({
+      name: args.name,
+      description: args.description,
+    });
+  const runId = `softbox-icon-${args.appId}-${randomBytes(4).toString("hex")}`;
+  const sessionKey = buildOpenClawIconSessionKey({
+    agentId: args.agentId,
+    appId: args.appId,
+    sessionKeyPrefix: args.sessionKeyPrefix,
+  });
+  const payload = await runExecFile(
+    "openclaw",
+    [
+      "gateway",
+      "call",
+      "agent",
+      "--expect-final",
+      "--json",
+      "--url",
+      toWsGatewayUrl(args.gatewayBaseUrl) ?? args.gatewayBaseUrl,
+      "--token",
+      args.gatewayToken,
+      "--timeout",
+      "180000",
+      "--params",
+      JSON.stringify({
+        message: [
+          "Use image_generate.",
+          "Generate exactly one desktop app icon.",
+          "Do not create SVG, CSS art, canvas art, emoji, or text.",
+          `Prompt: ${prompt}`,
+          "Use model openai/gpt-image-1.",
+          "Use size 1024x1024 and filename icon.png.",
+          "After generation, do not modify files. Reply with a short confirmation only.",
+        ].join("\n"),
+        agentId: args.agentId,
+        sessionKey,
+        timeout: 120,
+        idempotencyKey: runId,
+      }),
+    ],
+    { cwd: projectRoot, timeoutMs: 180_000, env: process.env },
+  );
+
+  const parsed = JSON.parse(payload.stdout) as JsonRecord;
+  const result = parsed.result as JsonRecord | undefined;
+  const meta = result?.meta as JsonRecord | undefined;
+  const agentMeta = meta?.agentMeta as JsonRecord | undefined;
+  const sessionId =
+    typeof agentMeta?.sessionId === "string" && agentMeta.sessionId.trim()
+      ? agentMeta.sessionId.trim()
+      : null;
+
+  if (!sessionId) {
+    throw new Error("OpenClaw icon generation did not return a session id.");
+  }
+
+  const sourcePath = await findGeneratedImagePathFromSessionLog({
+    agentId: args.agentId,
+    sessionId,
+  });
+  await mkdir(generatedAppIconsDir, { recursive: true });
+  const destinationFileName = `${args.appId}.png`;
+  const destinationPath = resolve(generatedAppIconsDir, destinationFileName);
+  await cp(sourcePath, destinationPath);
+
+  return {
+    sourcePath,
+    destinationPath,
+    publicPath: `/generated-app-icons/${destinationFileName}`,
+  };
 }
 
 function readConfiguredImageGenerationModel(root: JsonRecord | null): string | null {
@@ -1891,7 +2111,7 @@ export default defineConfig({
           });
 
           req.on("end", () => {
-            let payload: { name?: string; slug?: string } = {};
+            let payload: { name?: string; slug?: string; description?: string } = {};
             try {
               payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
             } catch {
@@ -1916,6 +2136,7 @@ export default defineConfig({
 
             const name = rawName;
             const slug = normalizeAppSlug(payload.slug?.trim() || name);
+            const description = deriveAppDescription(name, payload.description);
             if (!slug || !isValidAppSlug(slug)) {
               res.statusCode = 400;
               res.setHeader("Content-Type", "application/json");
@@ -1958,25 +2179,97 @@ export default defineConfig({
               res.end(JSON.stringify({ ok: false, error: error.message }));
             });
 
-            child.on("exit", (code, signal) => {
+            child.on("exit", async (code, signal) => {
               createAppInFlight = false;
-              if ((code ?? 0) === 0) {
-                res.statusCode = 200;
+              if ((code ?? 0) !== 0) {
+                res.statusCode = 500;
                 res.setHeader("Content-Type", "application/json");
-                res.end(JSON.stringify({ ok: true, appId, slug, name }));
+                res.end(
+                  JSON.stringify({
+                    ok: false,
+                    error:
+                      stderr.trim() ||
+                      `pnpm new-app failed with ${signal ? `signal ${signal}` : `exit code ${code ?? 1}`}`,
+                  }),
+                );
                 return;
               }
 
-              res.statusCode = 500;
-              res.setHeader("Content-Type", "application/json");
-              res.end(
-                JSON.stringify({
-                  ok: false,
-                  error:
-                    stderr.trim() ||
-                    `pnpm new-app failed with ${signal ? `signal ${signal}` : `exit code ${code ?? 1}`}`,
-                }),
-              );
+              try {
+                const status = await buildOpenClawStatus();
+                const agentId = resolveOpenClawAgentIdForApp({
+                  appId,
+                  agentId: status.config.agentId ?? null,
+                  agentIdPrefix: status.config.agentIdPrefix ?? null,
+                });
+                let iconAsset: Awaited<ReturnType<typeof generateDesktopIconAsset>> | null = null;
+                let iconError: string | null = null;
+                if (
+                  status.imageGeneration.status === "healthy" &&
+                  status.config.gatewayBaseUrl &&
+                  status.config.gatewayTokenConfigured &&
+                  agentId
+                ) {
+                  try {
+                    iconAsset = await generateDesktopIconAsset({
+                      appId,
+                      name,
+                      description,
+                      gatewayBaseUrl: status.config.gatewayBaseUrl,
+                      gatewayToken:
+                        readEnvValue(await readEnvFileSource(envLocalPath), "OPENCLAW_GATEWAY_TOKEN") ??
+                        normalizeEnvValue(process.env.OPENCLAW_GATEWAY_TOKEN) ??
+                        "",
+                      agentId,
+                      sessionKeyPrefix: status.config.sessionKeyPrefix ?? "softbox",
+                    });
+                  } catch (error) {
+                    iconError = error instanceof Error ? error.message : String(error);
+                  }
+                }
+
+                await runExecFile(
+                  "pnpm",
+                  [
+                    "exec",
+                    "convex",
+                    "run",
+                    "apps:updateAppMetadata",
+                    JSON.stringify({
+                      appId,
+                      name,
+                      slug,
+                      description,
+                      iconAssetPath: iconAsset?.publicPath ?? null,
+                    }),
+                  ],
+                  { cwd: projectRoot },
+                );
+
+                res.statusCode = 200;
+                res.setHeader("Content-Type", "application/json");
+                res.end(
+                  JSON.stringify({
+                    ok: true,
+                    appId,
+                    slug,
+                    name,
+                    description,
+                    iconAssetPath: iconAsset?.publicPath ?? null,
+                    iconSourcePath: iconAsset?.sourcePath ?? null,
+                    iconError,
+                  }),
+                );
+              } catch (error) {
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                res.end(
+                  JSON.stringify({
+                    ok: false,
+                    error: error instanceof Error ? error.message : String(error),
+                  }),
+                );
+              }
             });
           });
         });
@@ -2115,6 +2408,8 @@ export default defineConfig({
             const appId = String(payload.appId ?? "").trim();
             const name = String(payload.name ?? "").trim();
             const slug = normalizeAppSlug(String(payload.slug ?? "").trim() || name);
+            const description = String(payload.description ?? "").trim();
+            const iconAssetPath = String(payload.iconAssetPath ?? "").trim();
 
             if (!appId) {
               writeJson(res, 400, { ok: false, error: "App id is required." });
@@ -2155,7 +2450,19 @@ export default defineConfig({
             try {
               await runExecFile(
                 "pnpm",
-                ["exec", "convex", "run", "apps:updateAppMetadata", JSON.stringify({ appId, name, slug })],
+                [
+                  "exec",
+                  "convex",
+                  "run",
+                  "apps:updateAppMetadata",
+                  JSON.stringify({
+                    appId,
+                    name,
+                    slug,
+                    description: description || null,
+                    iconAssetPath: iconAssetPath || null,
+                  }),
+                ],
                 { cwd: projectRoot },
               );
             } catch (error) {
@@ -2173,7 +2480,108 @@ export default defineConfig({
               appId,
               name,
               slug,
+              description: description || null,
+              iconAssetPath: iconAssetPath || null,
               relativeRoot,
+            });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        });
+
+        server.middlewares.use("/__softbox/apps/regenerate-icon", async (req, res) => {
+          if (req.method !== "POST") {
+            writeJson(res, 405, { ok: false, error: "Method not allowed" });
+            return;
+          }
+
+          try {
+            const payload = await readJsonBody(req);
+            const appId = String(payload.appId ?? "").trim();
+            const name = String(payload.name ?? "").trim();
+            const slug = normalizeAppSlug(String(payload.slug ?? "").trim() || name);
+            const description = deriveAppDescription(
+              name,
+              typeof payload.description === "string" ? payload.description : null,
+            );
+            const promptOverride = String(payload.prompt ?? "").trim();
+
+            if (!appId) {
+              writeJson(res, 400, { ok: false, error: "App id is required." });
+              return;
+            }
+            if (!name) {
+              writeJson(res, 400, { ok: false, error: "App name is required." });
+              return;
+            }
+            if (!slug || !isValidAppSlug(slug)) {
+              writeJson(res, 400, {
+                ok: false,
+                error: "Slug must use lowercase letters, numbers, and hyphens only.",
+              });
+              return;
+            }
+
+            const status = await buildOpenClawStatus();
+            const agentId = resolveOpenClawAgentIdForApp({
+              appId,
+              agentId: status.config.agentId ?? null,
+              agentIdPrefix: status.config.agentIdPrefix ?? null,
+            });
+            if (
+              status.imageGeneration.status !== "healthy" ||
+              !status.config.gatewayBaseUrl ||
+              !status.config.gatewayTokenConfigured ||
+              !agentId
+            ) {
+              writeJson(res, 409, {
+                ok: false,
+                error:
+                  "OpenClaw image generation is not ready. Check the gateway, provider auth, and app agent routing.",
+              });
+              return;
+            }
+
+            const iconAsset = await generateDesktopIconAsset({
+              appId,
+              name,
+              description,
+              gatewayBaseUrl: status.config.gatewayBaseUrl,
+              gatewayToken:
+                readEnvValue(await readEnvFileSource(envLocalPath), "OPENCLAW_GATEWAY_TOKEN") ??
+                normalizeEnvValue(process.env.OPENCLAW_GATEWAY_TOKEN) ??
+                "",
+              agentId,
+              sessionKeyPrefix: status.config.sessionKeyPrefix ?? "softbox",
+              promptOverride: promptOverride || null,
+            });
+
+            await runExecFile(
+              "pnpm",
+              [
+                "exec",
+                "convex",
+                "run",
+                "apps:updateAppMetadata",
+                JSON.stringify({
+                  appId,
+                  name,
+                  slug,
+                  description,
+                  iconAssetPath: iconAsset.publicPath,
+                }),
+              ],
+              { cwd: projectRoot },
+            );
+
+            writeJson(res, 200, {
+              ok: true,
+              appId,
+              iconAssetPath: iconAsset.publicPath,
+              iconSourcePath: iconAsset.sourcePath,
             });
           } catch (error) {
             writeJson(res, 500, {

@@ -46,6 +46,8 @@ export type AppRecord = {
   appId: string;
   slug?: string;
   name: string;
+  description?: string | null;
+  iconAssetPath?: string | null;
   templateSourceStatus?: "unknown" | "available" | "missing";
   templateSourcePath?: string | null;
   templateSourceMessage?: string | null;
@@ -436,6 +438,8 @@ export class ConvexRuntimeClient {
     appId: string;
     name: string;
     slug: string;
+    description?: string | null;
+    iconAssetPath?: string | null;
     files: SourceFile[];
     manifestUrl: string;
     buildLog: string;

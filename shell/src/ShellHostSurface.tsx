@@ -20,6 +20,9 @@ type ShellDesktopApp = {
   appId: string;
   slug?: string | null;
   name: string;
+  description?: string | null;
+  iconAssetPath?: string | null;
+  updatedAt?: number;
   activeVersion?: {
     versionNumber: number;
   } | null;
@@ -121,10 +124,12 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const [settingsAppId, setSettingsAppId] = useState<string | null>(null);
   const [settingsName, setSettingsName] = useState("");
   const [settingsSlug, setSettingsSlug] = useState("");
+  const [settingsDescription, setSettingsDescription] = useState("");
   const [settingsPending, setSettingsPending] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [appName, setAppName] = useState("");
   const [appSlug, setAppSlug] = useState("");
+  const [appDescription, setAppDescription] = useState("");
   const [createPending, setCreatePending] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [serviceStatuses, setServiceStatuses] = useState<ServiceStatus[] | null>(null);
@@ -205,6 +210,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
     setCreateError(null);
     setAppName("");
     setAppSlug("");
+    setAppDescription("");
     setCreateModalOpen(true);
   }
 
@@ -246,6 +252,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
         body: JSON.stringify({
           name: normalizedAppName,
           slug: normalizedAppSlug || undefined,
+          description: appDescription.trim() || undefined,
         }),
       });
       const payload = (await response.json().catch(() => null)) as
@@ -257,6 +264,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
       setCreateModalOpen(false);
       setAppName("");
       setAppSlug("");
+      setAppDescription("");
       onAppCreated?.();
       onOpenApps();
     } catch (error) {
@@ -858,6 +866,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
     if (!settingsApp) {
       setSettingsName("");
       setSettingsSlug("");
+      setSettingsDescription("");
       setSettingsPending(false);
       setSettingsError(null);
       return;
@@ -865,9 +874,10 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
 
     setSettingsName(settingsApp.name ?? "");
     setSettingsSlug(settingsApp.slug ?? "");
+    setSettingsDescription(settingsApp.description ?? "");
     setSettingsPending(false);
     setSettingsError(null);
-  }, [settingsAppId, settingsApp?.name, settingsApp?.slug]);
+  }, [settingsAppId, settingsApp?.description, settingsApp?.name, settingsApp?.slug]);
 
   async function handleSaveAppSettings() {
     if (!settingsApp) {
@@ -876,6 +886,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
 
     const nextName = settingsName.trim();
     const nextSlug = settingsSlug.trim().toLowerCase();
+    const nextDescription = settingsDescription.trim();
     if (!nextName) {
       setSettingsError("App name is required.");
       return;
@@ -897,6 +908,8 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
           appId: settingsApp.appId,
           name: nextName,
           slug: nextSlug || undefined,
+          description: nextDescription || null,
+          iconAssetPath: settingsApp.iconAssetPath ?? null,
         }),
       });
       const payload = (await response.json().catch(() => null)) as
@@ -906,6 +919,61 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
         throw new Error(payload?.error ?? `Request failed with ${response.status}`);
       }
       closeAppSettings();
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSettingsPending(false);
+    }
+  }
+
+  async function handleRegenerateAppIcon() {
+    if (!settingsApp) {
+      return;
+    }
+
+    const nextName = settingsName.trim();
+    const nextSlug = settingsSlug.trim().toLowerCase();
+    const nextDescription = settingsDescription.trim();
+    if (!nextName) {
+      setSettingsError("App name is required.");
+      return;
+    }
+    if (nextSlug && !createSlugPattern.test(nextSlug)) {
+      setSettingsError("Slug must use lowercase letters, numbers, and hyphens only.");
+      return;
+    }
+
+    const prompt = window.prompt(
+      "Optional icon prompt override. Leave blank to use the app name and description.",
+      "",
+    );
+    if (prompt === null) {
+      return;
+    }
+
+    setSettingsPending(true);
+    setSettingsError(null);
+    try {
+      const response = await fetch("/__softbox/apps/regenerate-icon", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          appId: settingsApp.appId,
+          name: nextName,
+          slug: nextSlug || undefined,
+          description: nextDescription || null,
+          prompt: prompt.trim() || null,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { ok?: boolean; error?: string }
+        | null;
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+      onAppCreated?.();
     } catch (error) {
       setSettingsError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -997,7 +1065,10 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                     apps={apps.map((app) => ({
                       appId: app.appId,
                       title: app.name || app.appId,
-                      iconSrc: desktopAppIconBySlug[app.slug ?? app.appId],
+                      iconSrc:
+                        (app.iconAssetPath
+                          ? `${app.iconAssetPath}?v=${app.updatedAt ?? 0}`
+                          : null) ?? desktopAppIconBySlug[app.slug ?? app.appId],
                       selected: selectedAppId === app.appId,
                       onOpen: () => onSelectApp(app.appId),
                       actions: [
@@ -2451,7 +2522,8 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
           >
             <h3 className="text-lg font-semibold text-white">Create a new app</h3>
             <p className="mt-2 text-sm leading-6 text-slate-300">
-              Enter a display name and optional slug. Softbox will generate the internal app id for you.
+              Enter a display name, optional slug, and an optional description for icon generation.
+              Softbox will generate the internal app id for you.
             </p>
             <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
               Display name
@@ -2482,6 +2554,22 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
             />
             <p className="mt-2 text-xs text-slate-500">
               Optional. Lowercase letters, numbers, and hyphens only. Softbox still creates a separate stable app id.
+            </p>
+            <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Description
+            </label>
+            <textarea
+              value={appDescription}
+              onChange={(event) => {
+                setAppDescription(event.target.value);
+                setCreateError(null);
+              }}
+              rows={3}
+              placeholder="Optional. Leave blank and Softbox will derive one from the app name."
+              className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50"
+            />
+            <p className="mt-2 text-xs text-slate-500">
+              The description helps OpenClaw generate a meaningful desktop icon.
             </p>
             {createError ? <p className="mt-3 text-sm text-rose-300">{createError}</p> : null}
             <div className="mt-5 flex justify-end gap-2">
@@ -2561,6 +2649,23 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                 </p>
               </label>
 
+              <label className="rounded-[1rem] border border-white/10 bg-black/20 p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Description
+                </p>
+                <textarea
+                  value={settingsDescription}
+                  onChange={(event) => {
+                    setSettingsDescription(event.target.value);
+                    setSettingsError(null);
+                  }}
+                  disabled={settingsPending}
+                  rows={3}
+                  placeholder="Used to explain the app and guide future icon regeneration."
+                  className="mt-3 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </label>
+
               <article className="rounded-[1rem] border border-white/10 bg-black/20 p-4">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Version</p>
                 <p className="mt-2 text-sm text-white">
@@ -2578,7 +2683,16 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
 
             {settingsError ? <p className="mt-4 text-sm text-rose-300">{settingsError}</p> : null}
 
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="mt-5 flex justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => void handleRegenerateAppIcon()}
+                disabled={settingsPending}
+                className="inline-flex h-9 items-center justify-center rounded-xl border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:bg-black/20 disabled:text-slate-500"
+              >
+                {settingsPending ? "Working..." : "Regenerate icon"}
+              </button>
+              <div className="flex gap-2">
               <button
                 type="button"
                 onClick={closeAppSettings}
@@ -2595,6 +2709,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
               >
                 {settingsPending ? "Saving..." : "Save"}
               </button>
+              </div>
             </div>
           </div>
         </div>

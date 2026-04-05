@@ -112,6 +112,8 @@ export default defineSchema({
     templateId: v.optional(v.string()),
     slug: v.optional(v.string()),
     name: v.string(),
+    description: v.optional(v.union(v.string(), v.null())),
+    iconAssetPath: v.optional(v.union(v.string(), v.null())),
     codexThreadId: v.optional(v.union(v.string(), v.null())),
     openClawSessionId: v.optional(v.union(v.string(), v.null())),
     templateSourceStatus: v.optional(templateSourceStatus),

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import dogImage from './assets/dog.png'
 import catImage from './assets/cat.png'
 import openclawBotImage from './assets/openclaw-bot.png'
@@ -9,9 +9,23 @@ function App() {
     src: string
     alt: string
   } | null>(null)
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false
+    }
+
+    return window.localStorage.getItem('gallery-theme') === 'dark'
+  })
+
+  useEffect(() => {
+    window.localStorage.setItem('gallery-theme', isDarkMode ? 'dark' : 'light')
+  }, [isDarkMode])
 
   return (
-    <div className="photos-app" aria-label="Apple Photos style gallery">
+    <div
+      className={`photos-app ${isDarkMode ? 'theme-dark' : 'theme-light'}`}
+      aria-label="Apple Photos style gallery"
+    >
       <header className="topbar">
         <div className="traffic-lights" aria-hidden="true">
           <span />
@@ -24,7 +38,15 @@ function App() {
           <span className="app-subtitle">Library</span>
         </div>
 
-        <div className="topbar-actions" aria-hidden="true">
+        <div className="topbar-actions">
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={() => setIsDarkMode((value) => !value)}
+            aria-label={isDarkMode ? 'Switch to light theme' : 'Switch to dark theme'}
+          >
+            {isDarkMode ? '☀︎' : '☾'}
+          </button>
           <button type="button">+</button>
           <button type="button">◦◦◦</button>
         </div>
