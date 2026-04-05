@@ -4,6 +4,7 @@ import type { BoxEngineContext } from "../src/boxEngines";
 import {
   buildRewriteAgentConfig,
   isOpenClawLiveSessionModelSwitchError,
+  isOpenClawUnknownAgentIdError,
   resetOpenClawBoxEngineContextSession,
 } from "../src/jobs";
 
@@ -155,6 +156,26 @@ describe("isOpenClawLiveSessionModelSwitchError", () => {
   it("ignores unrelated gateway failures", () => {
     expect(
       isOpenClawLiveSessionModelSwitchError(
+        new Error("GatewayClientRequestError: pairing required"),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("isOpenClawUnknownAgentIdError", () => {
+  it("detects the OpenClaw unknown-agent gateway error", () => {
+    expect(
+      isOpenClawUnknownAgentIdError(
+        new Error(
+          'GatewayClientRequestError: invalid agent params: unknown agent id "softbox-demo-app_123"',
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("ignores unrelated gateway failures", () => {
+    expect(
+      isOpenClawUnknownAgentIdError(
         new Error("GatewayClientRequestError: pairing required"),
       ),
     ).toBe(false);

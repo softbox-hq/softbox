@@ -1,6 +1,6 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, watch, type FSWatcher } from "node:fs";
 import { appendFile, cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { cpus, freemem, hostname, platform, release, totalmem, arch } from "node:os";
 import { Socket } from "node:net";
@@ -106,6 +106,10 @@ let openClawGatewayRuntime: MutableGatewayRuntime = {
   ...idleGatewayRuntime(),
   child: null,
 };
+
+let openClawAgentRegistryWatcher: FSWatcher | null = null;
+let openClawAgentRegistryRestartTimer: NodeJS.Timeout | null = null;
+let openClawAgentRegistryRestartReason: string | null = null;
 
 const imageGenerationProviderDefaults = {
   openai: {
@@ -1087,6 +1091,10 @@ function appendGatewayRuntimeLog(chunk: string) {
   openClawGatewayRuntime.logs = nextLogs.slice(-200);
 }
 
+function appendGatewayRuntimeMessage(message: string) {
+  appendGatewayRuntimeLog(`[softbox] ${message}\n`);
+}
+
 function maskCommandArgs(args: string[]) {
   const masked: string[] = [];
   const secretFlags = new Set(["--gateway-token", "--token", "--openai-api-key"]);
@@ -1124,6 +1132,106 @@ async function waitForGatewayReachable(gatewayBaseUrl: string | null, timeoutMs 
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 250));
   }
   return false;
+}
+
+async function restartOpenClawGatewayRuntimeIfRunning(reason?: string): Promise<boolean> {
+  if (!openClawGatewayRuntime.child || openClawGatewayRuntime.status !== "running") {
+    return false;
+  }
+
+  const statusBeforeRestart = await buildOpenClawStatus();
+  const gatewayToken =
+    readEnvValue(await readEnvFileSource(envLocalPath), "OPENCLAW_GATEWAY_TOKEN") ??
+    normalizeEnvValue(process.env.OPENCLAW_GATEWAY_TOKEN);
+  if (!gatewayToken) {
+    return false;
+  }
+
+  if (reason?.trim()) {
+    appendGatewayRuntimeMessage(`restarting gateway runtime: ${reason.trim()}`);
+  }
+
+  await stopOpenClawGatewayRuntime();
+  startOpenClawGatewayRuntime({
+    gatewayPort: String(statusBeforeRestart.config.gatewayPort ?? 18789),
+    gatewayToken,
+  });
+  await waitForGatewayReachable(statusBeforeRestart.config.gatewayBaseUrl);
+  return true;
+}
+
+function scheduleOpenClawGatewayRuntimeRestart(reason: string) {
+  if (!openClawGatewayRuntime.child || openClawGatewayRuntime.status !== "running") {
+    return;
+  }
+
+  openClawAgentRegistryRestartReason = reason;
+  if (openClawAgentRegistryRestartTimer) {
+    return;
+  }
+
+  openClawAgentRegistryRestartTimer = setTimeout(() => {
+    const nextReason =
+      openClawAgentRegistryRestartReason ?? "OpenClaw agent registry changed.";
+    openClawAgentRegistryRestartReason = null;
+    openClawAgentRegistryRestartTimer = null;
+    void restartOpenClawGatewayRuntimeIfRunning(nextReason).catch((error) => {
+      appendGatewayRuntimeMessage(
+        `failed to restart gateway runtime after agent registry change: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
+  }, 300);
+}
+
+function ensureOpenClawAgentRegistryWatcher() {
+  if (openClawAgentRegistryWatcher) {
+    return;
+  }
+
+  const agentsDir = resolve(openClawStateDir, "agents");
+  if (!existsSync(agentsDir)) {
+    return;
+  }
+
+  try {
+    openClawAgentRegistryWatcher = watch(
+      agentsDir,
+      { persistent: false },
+      (eventType, filename) => {
+        const changedName = typeof filename === "string" ? filename.trim() : "";
+        if (!changedName || changedName.startsWith(".")) {
+          return;
+        }
+
+        scheduleOpenClawGatewayRuntimeRestart(
+          `OpenClaw agent registry changed (${eventType}: ${changedName}).`,
+        );
+      },
+    );
+    openClawAgentRegistryWatcher.on("error", (error) => {
+      appendGatewayRuntimeMessage(
+        `agent registry watch failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+  } catch (error) {
+    appendGatewayRuntimeMessage(
+      `could not watch OpenClaw agents directory: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+function cleanupOpenClawAgentRegistryWatcher() {
+  if (openClawAgentRegistryRestartTimer) {
+    clearTimeout(openClawAgentRegistryRestartTimer);
+    openClawAgentRegistryRestartTimer = null;
+  }
+  openClawAgentRegistryRestartReason = null;
+  openClawAgentRegistryWatcher?.close();
+  openClawAgentRegistryWatcher = null;
 }
 
 function startOpenClawGatewayRuntime(args: { gatewayPort: string; gatewayToken: string }) {
@@ -1429,6 +1537,11 @@ export default defineConfig({
     {
       name: "softbox-create-app-api",
       configureServer(server) {
+        ensureOpenClawAgentRegistryWatcher();
+        server.httpServer?.once("close", () => {
+          cleanupOpenClawAgentRegistryWatcher();
+        });
+
         let createAppInFlight = false;
         let appInstallInFlight = false;
         let appUninstallInFlight = false;
@@ -2375,6 +2488,9 @@ export default defineConfig({
               return;
             }
 
+            const restartedGateway = await restartOpenClawGatewayRuntimeIfRunning(
+              `OpenClaw agents synced after wrapping '${folderName}'.`,
+            );
             const status = await buildOpenClawStatus();
             writeJson(res, 200, {
               ok: true,
@@ -2383,6 +2499,7 @@ export default defineConfig({
               output: wrap.stdout.trim(),
               seedOutput,
               syncOutput,
+              restartedGateway,
               status,
             });
           } catch (error) {
@@ -2651,6 +2768,9 @@ export default defineConfig({
               // Keep uninstall successful even when sync cannot run.
             }
 
+            const restartedGateway = await restartOpenClawGatewayRuntimeIfRunning(
+              `OpenClaw agents synced after uninstalling '${appId}'.`,
+            );
             const status = await buildOpenClawStatus();
             writeJson(res, 200, {
               ok: true,
@@ -2660,6 +2780,7 @@ export default defineConfig({
               unwrapped: unwrapResult.unwrapped,
               deleteOutput,
               syncOutput,
+              restartedGateway,
               status,
             });
           } catch (error) {
@@ -2914,22 +3035,9 @@ export default defineConfig({
               });
             }
 
-            let restartedGateway = false;
-            if (openClawGatewayRuntime.child && openClawGatewayRuntime.status === "running") {
-              const statusBeforeRestart = await buildOpenClawStatus();
-              const gatewayToken =
-                readEnvValue(await readEnvFileSource(envLocalPath), "OPENCLAW_GATEWAY_TOKEN") ??
-                normalizeEnvValue(process.env.OPENCLAW_GATEWAY_TOKEN);
-              if (gatewayToken) {
-                await stopOpenClawGatewayRuntime();
-                startOpenClawGatewayRuntime({
-                  gatewayPort: String(statusBeforeRestart.config.gatewayPort ?? 18789),
-                  gatewayToken,
-                });
-                await waitForGatewayReachable(statusBeforeRestart.config.gatewayBaseUrl);
-                restartedGateway = true;
-              }
-            }
+            const restartedGateway = await restartOpenClawGatewayRuntimeIfRunning(
+              "image generation configuration changed.",
+            );
 
             writeJson(res, 200, {
               ok: true,
@@ -3331,10 +3439,14 @@ export default defineConfig({
                 });
                 return;
               }
+              const restartedGateway = await restartOpenClawGatewayRuntimeIfRunning(
+                "OpenClaw agents were synced from the Softbox control panel.",
+              );
               const status = await buildOpenClawStatus();
               writeJson(res, 200, {
                 ok: true,
                 output: stdout.trim(),
+                restartedGateway,
                 status,
               });
             },
@@ -3346,6 +3458,11 @@ export default defineConfig({
   publicDir: resolve(import.meta.dirname, "../public"),
   server: {
     port: 4173,
+    watch: {
+      // The worker mutates wrapped app source under /apps during pipeline runs.
+      // Those edits should not trigger a shell dev-server reload.
+      ignored: ["**/apps/**", "**/.tmp/**"],
+    },
   },
   build: {
     outDir: resolve(import.meta.dirname, "../dist-shell"),

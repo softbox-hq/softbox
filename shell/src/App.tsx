@@ -850,10 +850,15 @@ function getInspectBadgeStyle(target: { rect: InspectRect } | null): CSSProperti
 
 export function App() {
   const [shellId] = useState(() => getOrCreateShellId());
+  const lastResolvedAppIdRef = useRef<string | null>(null);
   const shellSelection = useQuery(convexApi.getShellSelection as any, { shellId }) as any;
   const appsQuery = useQuery(convexApi.listApps as any, {}) as any[] | undefined;
   const apps = appsQuery ?? [];
-  const appId = resolveMountedAppId(appsQuery, shellSelection);
+  const appId = resolveMountedAppId(
+    appsQuery,
+    shellSelection,
+    lastResolvedAppIdRef.current,
+  );
   const selectedApp = appId ? apps.find((app) => app.appId === appId) ?? null : null;
   const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
   const [selectedTargetBoxIds, setSelectedTargetBoxIds] = useState<string[]>([]);
@@ -1128,6 +1133,10 @@ export function App() {
       return changed ? next : current;
     });
   }, [agentThoughtSignature, agentThoughtLines, latestPipelineRun?._id, latestPipelineRun?.status]);
+
+  useEffect(() => {
+    lastResolvedAppIdRef.current = appId;
+  }, [appId]);
 
   useEffect(() => {
     setAppsOpen(false);

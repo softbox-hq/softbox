@@ -78,8 +78,8 @@ describe("resolveMountedAppId", () => {
     expect(
       resolveMountedAppId(
         [
-          { appId: "dashboard" },
-          { appId: "space" },
+          { appId: "app-1" },
+          { appId: "app-2" },
         ],
         null,
       ),
@@ -90,21 +90,44 @@ describe("resolveMountedAppId", () => {
     expect(
       resolveMountedAppId(
         [
-          { appId: "dashboard" },
-          { appId: "space" },
+          { appId: "app-1" },
+          { appId: "app-2" },
         ],
-        { selectedAppId: "space" },
+        { selectedAppId: "app-2" },
       ),
-    ).toBe("space");
+    ).toBe("app-2");
   });
 
   it("keeps the selected app mounted while the app list is still loading", () => {
-    expect(resolveMountedAppId(undefined, { selectedAppId: "space" })).toBe("space");
+    expect(resolveMountedAppId(undefined, { selectedAppId: "app-2" })).toBe("app-2");
+  });
+
+  it("keeps the previously mounted app while shell selection is still loading", () => {
+    expect(
+      resolveMountedAppId(
+        [
+          { appId: "app-1" },
+          { appId: "app-2" },
+        ],
+        undefined,
+        "app-2",
+      ),
+    ).toBe("app-2");
+  });
+
+  it("keeps the selected app mounted across a transient app-list gap", () => {
+    expect(
+      resolveMountedAppId(
+        [{ appId: "app-1" }],
+        { selectedAppId: "app-2" },
+        "app-2",
+      ),
+    ).toBe("app-2");
   });
 
   it("leaves the shell unmounted when the stored app no longer exists", () => {
     expect(
-      resolveMountedAppId([{ appId: "dashboard" }], { selectedAppId: "space" }),
+      resolveMountedAppId([{ appId: "app-1" }], { selectedAppId: "app-2" }),
     ).toBeNull();
   });
 });

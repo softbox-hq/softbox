@@ -27,7 +27,10 @@ import {
   type FailureStage,
 } from "./failureRecovery";
 import { readLiveAppFiles } from "./filesystem";
-import { normalizeOpenClawModelId } from "./openClawAgents";
+import {
+  normalizeOpenClawModelId,
+  recreateOpenClawAgentForApp,
+} from "./openClawAgents";
 import { liveAppStateSchema } from "./shared/liveApp";
 import { R2Uploader } from "./r2";
 import {
@@ -153,6 +156,14 @@ export function isOpenClawLiveSessionModelSwitchError(error: unknown): boolean {
     /LiveSessionModelSwitchError/iu.test(message) ||
     /Live session model switch requested/iu.test(message)
   );
+}
+
+export function isOpenClawUnknownAgentIdError(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? [error.message, error.stack ?? ""].filter(Boolean).join("\n")
+      : String(error);
+  return /unknown agent id/iu.test(message);
 }
 
 export function resetOpenClawBoxEngineContextSession(
@@ -511,31 +522,76 @@ export async function processJobById(
       try {
         rewrite = await runRewrite();
       } catch (error) {
-        if (!usesOpenClawSession || !isOpenClawLiveSessionModelSwitchError(error)) {
+        if (
+          usesOpenClawSession &&
+          boxEngineContext?.engine === "openclaw" &&
+          isOpenClawUnknownAgentIdError(error)
+        ) {
+          const retryMessage =
+            `OpenClaw gateway could not find agent '${boxEngineContext.agentId ?? appId}'; ` +
+            "re-registering the local agent and retrying once.";
+          logJob(runningJob._id, retryMessage);
+          pushAgentProgress(retryMessage);
+
+          await recreateOpenClawAgentForApp({
+            command: config.agentCommand,
+            projectRoot: config.projectRoot,
+            appId,
+            liveAppRoot,
+            model: boxEngineContext.model ?? config.agentModel ?? null,
+            openClaw: {
+              agentId:
+                boxEngineContext.rewriteConfigPatch.openClaw?.agentId ??
+                config.openClawAgentId ??
+                null,
+              agentIdPrefix:
+                boxEngineContext.rewriteConfigPatch.openClaw?.agentIdPrefix ??
+                config.openClawAgentIdPrefix ??
+                null,
+            },
+          });
+
+          if (boxEngineContext.boxId) {
+            await convex.resetBoxSession({
+              appId,
+              boxId: boxEngineContext.boxId,
+            });
+            boxEngineContext = resetOpenClawBoxEngineContextSession(boxEngineContext);
+          } else {
+            await convex.setAppOpenClawSession({
+              appId,
+              sessionId: null,
+            });
+          }
+
+          rewriteRequest.openClawSessionId = null;
+          await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_000));
+          rewrite = await runRewrite();
+        } else if (!usesOpenClawSession || !isOpenClawLiveSessionModelSwitchError(error)) {
           throw error;
-        }
-
-        const retryMessage = requestedOpenClawModel
-          ? `OpenClaw rejected a live model switch to ${requestedOpenClawModel}; resetting the session and retrying once.`
-          : "OpenClaw rejected a live model switch; resetting the session and retrying once.";
-        logJob(runningJob._id, retryMessage);
-        pushAgentProgress(retryMessage);
-
-        if (boxEngineContext?.engine === "openclaw" && boxEngineContext.boxId) {
-          await convex.resetBoxSession({
-            appId,
-            boxId: boxEngineContext.boxId,
-          });
-          boxEngineContext = resetOpenClawBoxEngineContextSession(boxEngineContext);
         } else {
-          await convex.setAppOpenClawSession({
-            appId,
-            sessionId: null,
-          });
-        }
+          const retryMessage = requestedOpenClawModel
+            ? `OpenClaw rejected a live model switch to ${requestedOpenClawModel}; resetting the session and retrying once.`
+            : "OpenClaw rejected a live model switch; resetting the session and retrying once.";
+          logJob(runningJob._id, retryMessage);
+          pushAgentProgress(retryMessage);
 
-        rewriteRequest.openClawSessionId = null;
-        rewrite = await runRewrite();
+          if (boxEngineContext?.engine === "openclaw" && boxEngineContext.boxId) {
+            await convex.resetBoxSession({
+              appId,
+              boxId: boxEngineContext.boxId,
+            });
+            boxEngineContext = resetOpenClawBoxEngineContextSession(boxEngineContext);
+          } else {
+            await convex.setAppOpenClawSession({
+              appId,
+              sessionId: null,
+            });
+          }
+
+          rewriteRequest.openClawSessionId = null;
+          rewrite = await runRewrite();
+        }
       }
       for (const message of extractAgentProgressMessages(rewrite.details.notes ?? "")) {
         pushAgentProgress(message);

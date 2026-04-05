@@ -254,6 +254,71 @@ export async function deleteOpenClawAgent(args: {
   cachedAgentList = null;
 }
 
+function resolveExpectedOpenClawAgent(args: {
+  appId: string;
+  projectRoot: string;
+  liveAppRoot: string;
+  openClaw: Pick<OpenClawRoutingConfig, "agentId" | "agentIdPrefix">;
+  model?: string | null;
+}): {
+  agentId: string;
+  routingMode: "shared" | "per_app";
+  workspace: string;
+  model: string | null;
+} {
+  const agentId = buildConfiguredOpenClawAgentId(args.appId, args.openClaw);
+  const routingMode: "shared" | "per_app" = isPerAppOpenClawRouting(args.openClaw)
+    ? "per_app"
+    : "shared";
+  const workspace = resolve(routingMode === "per_app" ? args.liveAppRoot : args.projectRoot);
+  const model = normalizeOpenClawModelId(args.model ?? null);
+  return {
+    agentId,
+    routingMode,
+    workspace,
+    model,
+  };
+}
+
+export async function recreateOpenClawAgentForApp(args: {
+  command: string;
+  projectRoot: string;
+  appId: string;
+  liveAppRoot: string;
+  openClaw: Pick<OpenClawRoutingConfig, "agentId" | "agentIdPrefix">;
+  model?: string | null;
+}): Promise<{
+  agentId: string;
+  workspace: string;
+  routingMode: "shared" | "per_app";
+  model: string | null;
+}> {
+  const expected = resolveExpectedOpenClawAgent(args);
+  const agents = await listOpenClawAgents({
+    command: args.command,
+    projectRoot: args.projectRoot,
+    forceRefresh: true,
+  });
+
+  if (agents.some((agent) => agent.id === expected.agentId)) {
+    await deleteOpenClawAgent({
+      command: args.command,
+      projectRoot: args.projectRoot,
+      agentId: expected.agentId,
+    });
+  }
+
+  await createOpenClawAgent({
+    command: args.command,
+    projectRoot: args.projectRoot,
+    agentId: expected.agentId,
+    workspace: expected.workspace,
+    model: expected.model ?? undefined,
+  });
+
+  return expected;
+}
+
 export async function resolveOpenClawAgentForApp(args: {
   command: string;
   projectRoot: string;
@@ -269,12 +334,10 @@ export async function resolveOpenClawAgentForApp(args: {
   repaired: boolean;
   model: string | null;
 }> {
-  const agentId = buildConfiguredOpenClawAgentId(args.appId, args.openClaw);
-  const routingMode = isPerAppOpenClawRouting(args.openClaw) ? "per_app" : "shared";
-  const expectedWorkspace = resolve(
-    routingMode === "per_app" ? args.liveAppRoot : args.projectRoot,
-  );
-  const expectedModel = normalizeOpenClawModelId(args.model ?? null);
+  const expected = resolveExpectedOpenClawAgent(args);
+  const { agentId, routingMode } = expected;
+  const expectedWorkspace = expected.workspace;
+  const expectedModel = expected.model;
   const agents = await listOpenClawAgents({
     command: args.command,
     projectRoot: args.projectRoot,

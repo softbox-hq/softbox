@@ -26,7 +26,12 @@ export function parseStateJson(value: string | null) {
 export function resolveMountedAppId(
   apps: AppSelectionRecord[] | undefined,
   shellSelection: ShellSelectionRecord,
+  previousMountedAppId: string | null = null,
 ) {
+  if (shellSelection === undefined) {
+    return previousMountedAppId;
+  }
+
   const selectedAppId = shellSelection?.selectedAppId ?? null;
   if (!selectedAppId) {
     return null;
@@ -34,7 +39,10 @@ export function resolveMountedAppId(
   if (apps === undefined) {
     return selectedAppId;
   }
-  return apps.some((app) => app.appId === selectedAppId) ? selectedAppId : null;
+  if (apps.some((app) => app.appId === selectedAppId)) {
+    return selectedAppId;
+  }
+  return previousMountedAppId === selectedAppId ? selectedAppId : null;
 }
 
 export function getRuntimeStatus(shellState: any): {

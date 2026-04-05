@@ -1,5 +1,7 @@
 export const initialLiveAppState = {
-  route: "/",
+  route: '/',
   selection: null,
-  ui: {},
-};
+  ui: {
+    mode: 'clean-slate',
+  },
+}
