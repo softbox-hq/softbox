@@ -110,6 +110,7 @@ export default defineSchema({
   apps: defineTable({
     appId: v.string(),
     templateId: v.optional(v.string()),
+    slug: v.optional(v.string()),
     name: v.string(),
     codexThreadId: v.optional(v.union(v.string(), v.null())),
     openClawSessionId: v.optional(v.union(v.string(), v.null())),

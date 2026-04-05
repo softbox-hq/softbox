@@ -1,4 +1,6 @@
 {
-  "label": "pretext-test",
+  "appId": "app_94c8b2e1",
+  "name": "Pretext Test",
+  "slug": "pretext-test",
   "runtime": "react-vite"
 }

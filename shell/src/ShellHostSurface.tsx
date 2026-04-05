@@ -18,6 +18,7 @@ import { systemServices } from "./systemServices";
 
 type ShellDesktopApp = {
   appId: string;
+  slug?: string | null;
   name: string;
   activeVersion?: {
     versionNumber: number;
@@ -30,7 +31,9 @@ type UnwrappedShellApp = {
   relativePath: string;
 };
 
-const desktopAppIconById: Partial<Record<string, string>> = {
+const createSlugPattern = /^[a-z0-9][a-z0-9-]*$/;
+
+const desktopAppIconBySlug: Partial<Record<string, string>> = {
   dashboard: paintIcon,
 };
 
@@ -86,7 +89,12 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const [activeTab, setActiveTab] = useState<"apps" | "services" | "server">("apps");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [settingsAppId, setSettingsAppId] = useState<string | null>(null);
+  const [settingsName, setSettingsName] = useState("");
+  const [settingsSlug, setSettingsSlug] = useState("");
+  const [settingsPending, setSettingsPending] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
   const [appName, setAppName] = useState("");
+  const [appSlug, setAppSlug] = useState("");
   const [createPending, setCreatePending] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [serviceStatuses, setServiceStatuses] = useState<ServiceStatus[] | null>(null);
@@ -135,13 +143,14 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
     }
   });
 
-  const normalizedAppName = appName.trim().toLowerCase();
+  const normalizedAppName = appName.trim();
+  const normalizedAppSlug = appSlug.trim().toLowerCase();
   const openClawAuthUrl =
     openClawStatus?.onboardSession.authUrl ??
     extractOpenClawAuthUrl(openClawStatus?.onboardSession.logs ?? []);
   const canSubmit =
     normalizedAppName.length > 0 &&
-    /^[a-z0-9][a-z0-9-]*$/.test(normalizedAppName) &&
+    (!normalizedAppSlug || createSlugPattern.test(normalizedAppSlug)) &&
     !createPending;
   const activeWallpaper = getDesktopWallpaper(wallpaperPreference.wallpaperId);
   const desktopWallpaperStyle = {
@@ -154,6 +163,8 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
 
   function openCreateAppModal() {
     setCreateError(null);
+    setAppName("");
+    setAppSlug("");
     setCreateModalOpen(true);
   }
 
@@ -167,6 +178,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
 
   function closeAppSettings() {
     setSettingsAppId(null);
+    setSettingsError(null);
   }
 
   function closeWallpaperPicker() {
@@ -175,7 +187,11 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
 
   async function handleCreateApp() {
     if (!canSubmit) {
-      setCreateError("Use lowercase letters, numbers, and hyphens only.");
+      setCreateError(
+        normalizedAppName.length === 0
+          ? "App name is required."
+          : "Slug must use lowercase letters, numbers, and hyphens only.",
+      );
       return;
     }
 
@@ -188,7 +204,8 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          appId: normalizedAppName,
+          name: normalizedAppName,
+          slug: normalizedAppSlug || undefined,
         }),
       });
       const payload = (await response.json().catch(() => null)) as
@@ -199,6 +216,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
       }
       setCreateModalOpen(false);
       setAppName("");
+      setAppSlug("");
       onAppCreated?.();
       onOpenApps();
     } catch (error) {
@@ -745,6 +763,65 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const showAppsSurface = true;
   const settingsApp = settingsAppId ? apps.find((app) => app.appId === settingsAppId) ?? null : null;
 
+  useEffect(() => {
+    if (!settingsApp) {
+      setSettingsName("");
+      setSettingsSlug("");
+      setSettingsPending(false);
+      setSettingsError(null);
+      return;
+    }
+
+    setSettingsName(settingsApp.name ?? "");
+    setSettingsSlug(settingsApp.slug ?? "");
+    setSettingsPending(false);
+    setSettingsError(null);
+  }, [settingsAppId, settingsApp?.name, settingsApp?.slug]);
+
+  async function handleSaveAppSettings() {
+    if (!settingsApp) {
+      return;
+    }
+
+    const nextName = settingsName.trim();
+    const nextSlug = settingsSlug.trim().toLowerCase();
+    if (!nextName) {
+      setSettingsError("App name is required.");
+      return;
+    }
+    if (nextSlug && !createSlugPattern.test(nextSlug)) {
+      setSettingsError("Slug must use lowercase letters, numbers, and hyphens only.");
+      return;
+    }
+
+    setSettingsPending(true);
+    setSettingsError(null);
+    try {
+      const response = await fetch("/__softbox/apps/update-metadata", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          appId: settingsApp.appId,
+          name: nextName,
+          slug: nextSlug || undefined,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { ok?: boolean; error?: string }
+        | null;
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+      closeAppSettings();
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSettingsPending(false);
+    }
+  }
+
   return (
     <>
       <ShellDesktopContextMenu
@@ -829,7 +906,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                     apps={apps.map((app) => ({
                       appId: app.appId,
                       title: app.name || app.appId,
-                      iconSrc: desktopAppIconById[app.appId],
+                      iconSrc: desktopAppIconBySlug[app.slug ?? app.appId],
                       selected: selectedAppId === app.appId,
                       onOpen: () => onSelectApp(app.appId),
                       actions: [
@@ -2169,10 +2246,10 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
           >
             <h3 className="text-lg font-semibold text-white">Create a new app</h3>
             <p className="mt-2 text-sm leading-6 text-slate-300">
-              Enter an app id. Softbox will run the full onboarding flow for you.
+              Enter a display name and optional slug. Softbox will generate the internal app id for you.
             </p>
             <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-              App id
+              Display name
             </label>
             <input
               autoFocus
@@ -2182,10 +2259,25 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                 setAppName(event.target.value);
                 setCreateError(null);
               }}
+              placeholder="My App"
+              className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50"
+            />
+            <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Slug
+            </label>
+            <input
+              type="text"
+              value={appSlug}
+              onChange={(event) => {
+                setAppSlug(event.target.value);
+                setCreateError(null);
+              }}
               placeholder="my-app"
               className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50"
             />
-            <p className="mt-2 text-xs text-slate-500">Lowercase letters, numbers, and hyphens only.</p>
+            <p className="mt-2 text-xs text-slate-500">
+              Optional. Lowercase letters, numbers, and hyphens only. Softbox still creates a separate stable app id.
+            </p>
             {createError ? <p className="mt-3 text-sm text-rose-300">{createError}</p> : null}
             <div className="mt-5 flex justify-end gap-2">
               <button
@@ -2223,7 +2315,7 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
               {settingsApp.name || settingsApp.appId} settings
             </h3>
             <p className="mt-2 text-sm leading-6 text-slate-300">
-              App settings are now opened from the desktop icon context menu.
+              Adjust the human-facing app identity without changing the stable internal app id.
             </p>
 
             <div className="mt-5 grid gap-3">
@@ -2231,6 +2323,38 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">App id</p>
                 <p className="mt-2 text-sm text-white">{settingsApp.appId}</p>
               </article>
+
+              <label className="rounded-[1rem] border border-white/10 bg-black/20 p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Display name</p>
+                <input
+                  type="text"
+                  value={settingsName}
+                  onChange={(event) => {
+                    setSettingsName(event.target.value);
+                    setSettingsError(null);
+                  }}
+                  disabled={settingsPending}
+                  className="mt-3 h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </label>
+
+              <label className="rounded-[1rem] border border-white/10 bg-black/20 p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Slug</p>
+                <input
+                  type="text"
+                  value={settingsSlug}
+                  onChange={(event) => {
+                    setSettingsSlug(event.target.value);
+                    setSettingsError(null);
+                  }}
+                  disabled={settingsPending}
+                  placeholder={settingsApp.slug ?? "my-app"}
+                  className="mt-3 h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+                <p className="mt-2 text-xs text-slate-500">
+                  Optional. Leave blank to derive it from the display name.
+                </p>
+              </label>
 
               <article className="rounded-[1rem] border border-white/10 bg-black/20 p-4">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Version</p>
@@ -2247,13 +2371,24 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
               </article>
             </div>
 
-            <div className="mt-5 flex justify-end">
+            {settingsError ? <p className="mt-4 text-sm text-rose-300">{settingsError}</p> : null}
+
+            <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={closeAppSettings}
+                disabled={settingsPending}
                 className="inline-flex h-9 items-center justify-center rounded-xl border border-white/10 bg-white/6 px-3.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10"
               >
                 Close
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveAppSettings()}
+                disabled={settingsPending}
+                className="inline-flex h-9 items-center justify-center rounded-xl bg-cyan-300 px-3.5 text-sm font-medium text-black transition-colors hover:bg-cyan-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+              >
+                {settingsPending ? "Saving..." : "Save"}
               </button>
             </div>
           </div>

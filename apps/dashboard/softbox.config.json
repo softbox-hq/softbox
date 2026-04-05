@@ -1,4 +1,6 @@
 {
-  "label": "dashboard",
+  "appId": "app_d4a7f1c2",
+  "name": "Dashboard",
+  "slug": "dashboard",
   "runtime": "react-vite"
 }

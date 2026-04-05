@@ -1,4 +1,6 @@
 {
-  "label": "space",
+  "appId": "app_1b72c9ef",
+  "name": "Space",
+  "slug": "space",
   "runtime": "react-vite"
 }

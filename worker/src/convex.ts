@@ -31,6 +31,7 @@ export type JobRecord = {
 
 export type AppConfigRecord = {
   appId: string;
+  slug?: string;
   name: string;
   codexThreadId?: string | null;
   openClawSessionId?: string | null;
@@ -43,6 +44,7 @@ export type AppConfigRecord = {
 
 export type AppRecord = {
   appId: string;
+  slug?: string;
   name: string;
   templateSourceStatus?: "unknown" | "available" | "missing";
   templateSourcePath?: string | null;
@@ -433,6 +435,7 @@ export class ConvexRuntimeClient {
   async seedApp(args: {
     appId: string;
     name: string;
+    slug: string;
     files: SourceFile[];
     manifestUrl: string;
     buildLog: string;

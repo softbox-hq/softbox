@@ -2601,7 +2601,7 @@ export function App() {
                                   {app.name}
                                 </p>
                                 <span className="rounded-md bg-black/20 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
-                                  {app.appId}
+                                  {app.slug ?? app.appId}
                                 </span>
                                 {app.templateSourceStatus === "missing" ? (
                                   <span className="rounded-md bg-amber-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-300 ring-1 ring-amber-500/20">
@@ -2915,7 +2915,7 @@ export function App() {
                 <div>
                   <p className="text-sm font-semibold text-white">Version history</p>
                   <p className="mt-1 text-xs text-gray-500">
-                    App <span className="font-medium text-gray-300">{selectedApp?.appId ?? appId ?? "none"}</span> only.
+                    App <span className="font-medium text-gray-300">{selectedApp?.slug ?? selectedApp?.name ?? appId ?? "none"}</span> only.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -3101,7 +3101,7 @@ export function App() {
                   <p className="text-sm font-semibold text-white">Split compare</p>
                   <p className="mt-1 text-xs text-gray-500">
                     Two isolated previews for{" "}
-                    <span className="font-medium text-gray-300">{selectedApp?.appId ?? appId ?? "none"}</span>.
+                    <span className="font-medium text-gray-300">{selectedApp?.slug ?? selectedApp?.name ?? appId ?? "none"}</span>.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

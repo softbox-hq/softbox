@@ -15,6 +15,12 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 import { config as loadEnv, parse as parseDotenv } from "dotenv";
+import {
+  generateOpaqueAppId,
+  isValidAppSlug,
+  normalizeAppSlug,
+} from "../worker/src/appIdentity";
+import { discoverWrappedApps } from "../worker/src/templates";
 import { systemServices } from "./src/systemServices";
 import type {
   OpenClawGatewayRuntime,
@@ -49,7 +55,9 @@ type UnwrappedAppRecord = {
 };
 type WrappedAppRecord = {
   appId: string;
+  slug: string;
   relativePath: string;
+  root: string;
 };
 
 type MutableOnboardSession = OpenClawOnboardSession & {
@@ -450,28 +458,12 @@ async function listUnwrappedApps(projectRootPath: string): Promise<UnwrappedAppR
 }
 
 async function listWrappedApps(projectRootPath: string): Promise<WrappedAppRecord[]> {
-  const appsRoot = resolve(projectRootPath, "apps");
-  if (!existsSync(appsRoot)) {
-    return [];
-  }
-
-  const entries = await readdir(appsRoot, { withFileTypes: true });
-  return entries
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
-    .map((entry) => {
-      const appId = entry.name;
-      const appRoot = resolve(appsRoot, appId);
-      const hasSoftboxConfig = existsSync(resolve(appRoot, "softbox.config.json"));
-      return {
-        appId,
-        relativePath: `apps/${appId}`,
-        isWrapped: hasSoftboxConfig,
-      };
-    })
-    .filter((entry) => entry.isWrapped)
-    .map((entry) => ({
-      appId: entry.appId,
-      relativePath: entry.relativePath,
+  return discoverWrappedApps(projectRootPath).apps
+    .map((app) => ({
+      appId: app.appId,
+      slug: app.slug,
+      relativePath: app.relativeRoot,
+      root: app.root,
     }))
     .sort((left, right) => left.appId.localeCompare(right.appId));
 }
@@ -524,7 +516,8 @@ async function stripUiScreenshotScript(appRoot: string) {
 }
 
 async function unwrapInstalledApp(projectRootPath: string, appId: string) {
-  const appRoot = resolve(projectRootPath, "apps", appId);
+  const wrappedApp = (await listWrappedApps(projectRootPath)).find((app) => app.appId === appId);
+  const appRoot = wrappedApp?.root ?? resolve(projectRootPath, "apps", appId);
   if (!existsSync(appRoot)) {
     return {
       unwrapped: false,
@@ -559,6 +552,32 @@ async function unwrapInstalledApp(projectRootPath: string, appId: string) {
     unwrapped: removed.length > 0,
     removed,
   };
+}
+
+async function updateWrappedAppMetadataConfig(args: {
+  projectRootPath: string;
+  appId: string;
+  name: string;
+  slug: string;
+}) {
+  const wrappedApp = discoverWrappedApps(args.projectRootPath).apps.find((app) => app.appId === args.appId);
+  if (!wrappedApp) {
+    throw new Error(`Unknown wrapped app '${args.appId}'.`);
+  }
+
+  const currentSource = await readFile(wrappedApp.configPath, "utf8");
+  const parsed = JSON.parse(currentSource) as JsonRecord;
+  const nextConfig: JsonRecord = {
+    ...parsed,
+    appId: wrappedApp.appId,
+    name: args.name,
+    slug: args.slug,
+    runtime: typeof parsed.runtime === "string" ? parsed.runtime : "react-vite",
+  };
+  delete nextConfig.label;
+
+  await writeFile(wrappedApp.configPath, `${JSON.stringify(nextConfig, null, 2)}\n`, "utf8");
+  return wrappedApp.relativeRoot;
 }
 
 function collectScopes(items: unknown[]) {
@@ -1716,7 +1735,7 @@ export default defineConfig({
           });
 
           req.on("end", () => {
-            let payload: { appId?: string } = {};
+            let payload: { name?: string; slug?: string } = {};
             try {
               payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
             } catch {
@@ -1726,23 +1745,39 @@ export default defineConfig({
               return;
             }
 
-            const appId = payload.appId?.trim().toLowerCase() ?? "";
-            if (!/^[a-z0-9][a-z0-9-]*$/.test(appId)) {
+            const rawName = payload.name?.trim() ?? "";
+            if (!rawName) {
               res.statusCode = 400;
               res.setHeader("Content-Type", "application/json");
               res.end(
                 JSON.stringify({
                   ok: false,
-                  error: "App id must use lowercase letters, numbers, and hyphens only.",
+                  error: "App name is required.",
                 }),
               );
               return;
             }
 
+            const name = rawName;
+            const slug = normalizeAppSlug(payload.slug?.trim() || name);
+            if (!slug || !isValidAppSlug(slug)) {
+              res.statusCode = 400;
+              res.setHeader("Content-Type", "application/json");
+              res.end(
+                JSON.stringify({
+                  ok: false,
+                  error: "Slug must use lowercase letters, numbers, and hyphens only.",
+                }),
+              );
+              return;
+            }
+
+            const appId = generateOpaqueAppId(discoverWrappedApps(projectRoot).apps.map((app) => app.appId));
+
             createAppInFlight = true;
             const child = spawn(
               "pnpm",
-              ["new-app", appId, "--", "--template", "react-ts"],
+              ["new-app", slug, "--name", name, "--app-id", appId, "--", "--template", "react-ts"],
               {
                 cwd: projectRoot,
                 env: process.env,
@@ -1772,7 +1807,7 @@ export default defineConfig({
               if ((code ?? 0) === 0) {
                 res.statusCode = 200;
                 res.setHeader("Content-Type", "application/json");
-                res.end(JSON.stringify({ ok: true, appId }));
+                res.end(JSON.stringify({ ok: true, appId, slug, name }));
                 return;
               }
 
@@ -1821,31 +1856,34 @@ export default defineConfig({
 
           try {
             const payload = await readJsonBody(req);
-            const appId = String(payload.appId ?? "").trim().toLowerCase();
-            if (!/^[a-z0-9][a-z0-9-]*$/.test(appId)) {
+            const folderName = String(payload.appId ?? "").trim().toLowerCase();
+            if (!/^[a-z0-9][a-z0-9-]*$/.test(folderName)) {
               writeJson(res, 400, {
                 ok: false,
-                error: "App id must use lowercase letters, numbers, and hyphens only.",
+                error: "App folder must use lowercase letters, numbers, and hyphens only.",
               });
               return;
             }
 
             const unwrappedApps = await listUnwrappedApps(projectRoot);
-            const selectedApp = unwrappedApps.find((app) => app.appId === appId);
+            const selectedApp = unwrappedApps.find((app) => app.appId === folderName);
             if (!selectedApp) {
               writeJson(res, 404, {
                 ok: false,
                 error:
-                  `App '${appId}' was not found as an unwrapped app under /apps. ` +
+                  `App '${folderName}' was not found as an unwrapped app under /apps. ` +
                   `Refresh and try again.`,
               });
               return;
             }
 
+            const generatedAppId = generateOpaqueAppId(
+              discoverWrappedApps(projectRoot).apps.map((app) => app.appId),
+            );
             appInstallInFlight = true;
             const wrap = await runExecFile(
               "pnpm",
-              ["wrap-app", "--", "--path", selectedApp.relativePath],
+              ["wrap-app", "--", "--path", selectedApp.relativePath, "--app-id", generatedAppId],
               {
                 cwd: projectRoot,
               },
@@ -1855,7 +1893,7 @@ export default defineConfig({
             try {
               const seed = await runExecFile(
                 "pnpm",
-                ["seed", "--", "--app", appId],
+                ["seed", "--", "--app", generatedAppId],
                 { cwd: projectRoot },
               );
               seedOutput = seed.stdout.trim();
@@ -1863,7 +1901,7 @@ export default defineConfig({
               writeJson(res, 500, {
                 ok: false,
                 wrapped: true,
-                error: `App '${appId}' was wrapped, but seeding failed: ${error instanceof Error ? error.message : String(error)}`,
+                error: `App '${folderName}' was wrapped, but seeding failed: ${error instanceof Error ? error.message : String(error)}`,
                 output: wrap.stdout.trim(),
               });
               return;
@@ -1881,7 +1919,7 @@ export default defineConfig({
               writeJson(res, 500, {
                 ok: false,
                 wrapped: true,
-                error: `App '${appId}' was wrapped, but syncing agents failed: ${error instanceof Error ? error.message : String(error)}`,
+                error: `App '${folderName}' was wrapped, but syncing agents failed: ${error instanceof Error ? error.message : String(error)}`,
                 output: wrap.stdout.trim(),
               });
               return;
@@ -1890,7 +1928,7 @@ export default defineConfig({
             const status = await buildOpenClawStatus();
             writeJson(res, 200, {
               ok: true,
-              appId,
+              appId: generatedAppId,
               installed: true,
               output: wrap.stdout.trim(),
               seedOutput,
@@ -1909,6 +1947,84 @@ export default defineConfig({
 
         server.middlewares.use("/__softbox/apps/install", handleInstallApp);
         server.middlewares.use("/__softbox/apps/wrap-and-sync", handleInstallApp);
+
+        server.middlewares.use("/__softbox/apps/update-metadata", async (req, res) => {
+          if (req.method !== "POST") {
+            writeJson(res, 405, { ok: false, error: "Method not allowed" });
+            return;
+          }
+
+          try {
+            const payload = await readJsonBody(req);
+            const appId = String(payload.appId ?? "").trim();
+            const name = String(payload.name ?? "").trim();
+            const slug = normalizeAppSlug(String(payload.slug ?? "").trim() || name);
+
+            if (!appId) {
+              writeJson(res, 400, { ok: false, error: "App id is required." });
+              return;
+            }
+            if (!name) {
+              writeJson(res, 400, { ok: false, error: "App name is required." });
+              return;
+            }
+            if (!slug || !isValidAppSlug(slug)) {
+              writeJson(res, 400, {
+                ok: false,
+                error: "Slug must use lowercase letters, numbers, and hyphens only.",
+              });
+              return;
+            }
+
+            const wrappedApps = discoverWrappedApps(projectRoot).apps;
+            const conflictingApp = wrappedApps.find(
+              (app) => app.appId !== appId && app.slug === slug,
+            );
+            if (conflictingApp) {
+              writeJson(res, 409, {
+                ok: false,
+                error: `Slug '${slug}' is already used by another wrapped app.`,
+              });
+              return;
+            }
+
+            const relativeRoot = await updateWrappedAppMetadataConfig({
+              projectRootPath: projectRoot,
+              appId,
+              name,
+              slug,
+            });
+
+            try {
+              await runExecFile(
+                "pnpm",
+                ["exec", "convex", "run", "apps:updateAppMetadata", JSON.stringify({ appId, name, slug })],
+                { cwd: projectRoot },
+              );
+            } catch (error) {
+              writeJson(res, 500, {
+                ok: false,
+                error:
+                  `Updated ${relativeRoot}, but failed to sync Convex metadata: ` +
+                  `${error instanceof Error ? error.message : String(error)}`,
+              });
+              return;
+            }
+
+            writeJson(res, 200, {
+              ok: true,
+              appId,
+              name,
+              slug,
+              relativeRoot,
+            });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        });
 
         server.middlewares.use("/__softbox/apps/uninstall", async (req, res) => {
           if (req.method !== "POST") {

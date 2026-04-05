@@ -10,5 +10,5 @@
       "@shared/*": ["../worker/src/shared/*"]
     }
   },
-  "include": ["src", "vite.config.ts", "../worker/src/shared"]
+  "include": ["src", "vite.config.ts", "../worker/src/shared", "../worker/src/appIdentity.ts", "../worker/src/templates.ts"]
 }

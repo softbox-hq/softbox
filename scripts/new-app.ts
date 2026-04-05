@@ -6,52 +6,59 @@ import { select } from "@inquirer/prompts";
 import { config as loadEnv } from "dotenv";
 import { stdin as input, stdout as output, stderr } from "node:process";
 import { extname, join, resolve as resolvePath } from "node:path";
+import {
+  defaultAppDisplayNameFromSlug,
+  generateOpaqueAppId,
+  isValidOpaqueAppId,
+  normalizeAppDisplayName,
+  normalizeAppSlug,
+} from "../worker/src/appIdentity";
+import { discoverWrappedApps } from "../worker/src/templates";
 
 loadEnv({ path: ".env.local", quiet: true });
 loadEnv({ path: ".env", quiet: true });
 
-const appIdPattern = /^[a-z0-9][a-z0-9-]*$/;
 const defaultViteTemplate = "react-ts";
 const starterOptions = [
   {
     id: "blank-react-ts",
     label: "Blank React + TypeScript",
     description: "Create a fresh Vite app with the react-ts starter and wrap it for Softbox.",
-    mode: "vite-template",
-    appIdBase: "react-app",
+    mode: "vite-template" as const,
+    appSlugBase: "react-app",
     viteArgs: ["--template", "react-ts"],
   },
   {
     id: "blank-react",
     label: "Blank React + JavaScript",
     description: "Create a fresh Vite app with the react starter and wrap it for Softbox.",
-    mode: "vite-template",
-    appIdBase: "react-js-app",
+    mode: "vite-template" as const,
+    appSlugBase: "react-js-app",
     viteArgs: ["--template", "react"],
   },
   {
     id: "dashboard-example",
     label: "Dashboard Example",
     description: "Copy the bundled Softbox-ready dashboard starter.",
-    mode: "copy-starter",
-    appIdBase: "dashboard",
-    sourceAppId: "dashboard-example",
+    mode: "copy-starter" as const,
+    appSlugBase: "dashboard",
+    sourceDirName: "dashboard-example",
   },
   {
     id: "grid-example",
     label: "Grid Example",
     description: "Copy the wrapped grid starter app.",
-    mode: "copy-starter",
-    appIdBase: "grid",
-    sourceAppId: "grid-example",
+    mode: "copy-starter" as const,
+    appSlugBase: "grid",
+    sourceDirName: "grid-example",
   },
   {
     id: "tictactoe-example",
     label: "Tic Tac Toe Example",
     description: "Copy the wrapped tic tac toe starter app.",
-    mode: "copy-starter",
-    appIdBase: "tictactoe",
-    sourceAppId: "tictactoe-example",
+    mode: "copy-starter" as const,
+    appSlugBase: "tictactoe",
+    sourceDirName: "tictactoe-example",
   },
 ];
 const textRewriteExtensions = new Set([
@@ -69,20 +76,32 @@ const textRewriteExtensions = new Set([
   ".yaml",
 ]);
 
+type StarterOption = (typeof starterOptions)[number];
+
+type ParsedArgs = {
+  help: boolean;
+  appId: string | null;
+  name: string | null;
+  slug: string | null;
+  starterId: string | null;
+  viteArgs: string[];
+};
+
 function printHelp() {
   output.write(
     [
       "Usage:",
-      "  pnpm new-app [app-id] [--starter <starter-id>] [-- <vite args...>]",
+      "  pnpm new-app [slug] [--name <display-name>] [--starter <starter-id>] [--app-id <opaque-id>] [-- <vite args...>]",
       "",
       "Examples:",
       "  pnpm new-app",
       "  pnpm new-app my-app",
+      "  pnpm new-app my-app --name \"My App\"",
       "  pnpm new-app --starter dashboard-example",
       "  pnpm new-app my-app -- --template react-ts",
       "",
       `Default template: ${defaultViteTemplate}`,
-      "Then Softbox runs the full onboarding flow for the new app.",
+      "Softbox will generate a stable internal app id automatically when one is not supplied.",
       "",
       "Starters:",
       ...starterOptions.map((starter) => `  - ${starter.id}: ${starter.label}`),
@@ -90,16 +109,19 @@ function printHelp() {
   );
 }
 
-function parseArgs(argv) {
+function parseArgs(argv: string[]): ParsedArgs {
   if (argv.includes("--help") || argv.includes("-h")) {
-    return { help: true, appId: null, viteArgs: [], starterId: null };
+    return { help: true, appId: null, name: null, slug: null, starterId: null, viteArgs: [] };
   }
 
   const separatorIndex = argv.indexOf("--");
   const args = separatorIndex >= 0 ? argv.slice(0, separatorIndex) : argv;
   const viteArgs = separatorIndex >= 0 ? argv.slice(separatorIndex + 1) : [];
-  const positional = [];
-  let starterId = null;
+  const positional: string[] = [];
+  let starterId: string | null = null;
+  let slug: string | null = null;
+  let name: string | null = null;
+  let appId: string | null = null;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -111,36 +133,63 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (arg === "--slug") {
+      slug = args[index + 1]?.trim() || null;
+      if (!slug) {
+        throw new Error("missing value for --slug");
+      }
+      index += 1;
+      continue;
+    }
+    if (arg === "--name") {
+      name = args[index + 1]?.trim() || null;
+      if (!name) {
+        throw new Error("missing value for --name");
+      }
+      index += 1;
+      continue;
+    }
+    if (arg === "--app-id") {
+      appId = args[index + 1]?.trim() || null;
+      if (!appId) {
+        throw new Error("missing value for --app-id");
+      }
+      index += 1;
+      continue;
+    }
     positional.push(arg);
   }
 
-  const appId = positional[0]?.trim() || null;
-
+  const positionalSlug = positional[0]?.trim() || null;
   if (positional.length > 1) {
-    throw new Error("expected at most one app id before '--'");
+    throw new Error("expected at most one slug before '--'");
+  }
+  if (slug && positionalSlug && slug !== positionalSlug) {
+    throw new Error("slug was provided twice with different values");
   }
 
-  return { help: false, appId, viteArgs, starterId };
+  return {
+    help: false,
+    appId,
+    name,
+    slug: slug ?? positionalSlug,
+    starterId,
+    viteArgs,
+  };
 }
 
-function validateAppId(appId) {
-  if (!appId) {
-    throw new Error("app id is required");
-  }
-  if (appId.includes("/") || appId.includes("\\")) {
-    throw new Error("enter only the app id, not apps/<name>");
-  }
-  if (!appIdPattern.test(appId)) {
-    throw new Error("app id must use lowercase letters, numbers, and hyphens only");
+function validateOpaqueAppId(appId: string) {
+  if (!isValidOpaqueAppId(appId)) {
+    throw new Error("app id must match the opaque form 'app_<id>'");
   }
 }
 
-async function ensureTargetDoesNotExist(appId) {
-  const targetDir = join(process.cwd(), "apps", appId);
+async function ensureTargetDoesNotExist(slug: string) {
+  const targetDir = join(process.cwd(), "apps", slug);
   try {
     await access(targetDir, constants.F_OK);
-    throw new Error(`apps/${appId} already exists`);
-  } catch (error) {
+    throw new Error(`apps/${slug} already exists`);
+  } catch (error: any) {
     if (error?.code === "ENOENT") {
       return;
     }
@@ -148,7 +197,7 @@ async function ensureTargetDoesNotExist(appId) {
   }
 }
 
-function getStarterById(starterId) {
+function getStarterById(starterId: string): StarterOption {
   const starter = starterOptions.find((option) => option.id === starterId);
   if (!starter) {
     throw new Error(`unknown starter '${starterId}'`);
@@ -156,7 +205,7 @@ function getStarterById(starterId) {
   return starter;
 }
 
-async function selectStarterInteractive() {
+async function selectStarterInteractive(): Promise<StarterOption> {
   if (!input.isTTY || !output.isTTY) {
     return starterOptions[0];
   }
@@ -173,12 +222,12 @@ async function selectStarterInteractive() {
   return starter;
 }
 
-async function pickStarter(starterId, appId, viteArgs) {
+async function pickStarter(starterId: string | null, slug: string | null, viteArgs: string[]) {
   if (starterId) {
     return getStarterById(starterId);
   }
 
-  if (viteArgs.length > 0 || appId) {
+  if (viteArgs.length > 0 || slug) {
     return starterOptions[0];
   }
 
@@ -193,28 +242,31 @@ async function listExistingAppDirs() {
     .map((entry) => entry.name);
 }
 
-async function suggestAppId(starter) {
+async function suggestAppSlug(starter: StarterOption) {
   const existing = new Set(await listExistingAppDirs());
   let index = 1;
 
-  while (existing.has(`${starter.appIdBase}-${index}`)) {
+  while (existing.has(`${starter.appSlugBase}-${index}`)) {
     index += 1;
   }
 
-  return `${starter.appIdBase}-${index}`;
+  return `${starter.appSlugBase}-${index}`;
 }
 
-async function resolveTargetAppId(initialAppId, starter) {
-  const appId = initialAppId ?? (await suggestAppId(starter));
-  validateAppId(appId);
-  await ensureTargetDoesNotExist(appId);
-  if (!initialAppId) {
-    output.write(`[new-app] generated app id '${appId}'\n`);
+async function resolveTargetAppSlug(initialSlug: string | null, starter: StarterOption) {
+  const explicit = normalizeAppSlug(initialSlug ?? "");
+  const slug = explicit || (await suggestAppSlug(starter));
+  if (!slug) {
+    throw new Error("could not derive a valid app slug");
   }
-  return appId;
+  await ensureTargetDoesNotExist(slug);
+  if (!initialSlug) {
+    output.write(`[new-app] generated slug '${slug}'\n`);
+  }
+  return slug;
 }
 
-function hasTemplateArg(viteArgs) {
+function hasTemplateArg(viteArgs: string[]) {
   return viteArgs.some(
     (arg, index) =>
       arg === "--template" ||
@@ -224,7 +276,7 @@ function hasTemplateArg(viteArgs) {
   );
 }
 
-function buildViteArgs(viteArgs) {
+function buildViteArgs(viteArgs: string[]) {
   if (hasTemplateArg(viteArgs)) {
     return viteArgs;
   }
@@ -232,7 +284,7 @@ function buildViteArgs(viteArgs) {
   return ["--template", defaultViteTemplate, ...viteArgs];
 }
 
-async function rewriteStarterReferences(root, sourceAppId, targetAppId) {
+async function rewriteStarterReferences(root: string, sourceValue: string, targetValue: string) {
   const entries = await readdir(root, { withFileTypes: true });
 
   for (const entry of entries) {
@@ -241,7 +293,7 @@ async function rewriteStarterReferences(root, sourceAppId, targetAppId) {
       if (entry.name === "node_modules" || entry.name === "dist" || entry.name === ".git") {
         continue;
       }
-      await rewriteStarterReferences(fullPath, sourceAppId, targetAppId);
+      await rewriteStarterReferences(fullPath, sourceValue, targetValue);
       continue;
     }
 
@@ -250,17 +302,17 @@ async function rewriteStarterReferences(root, sourceAppId, targetAppId) {
     }
 
     const source = await readFile(fullPath, "utf8");
-    if (!source.includes(sourceAppId)) {
+    if (!source.includes(sourceValue)) {
       continue;
     }
 
-    await writeFile(fullPath, source.replaceAll(sourceAppId, targetAppId), "utf8");
+    await writeFile(fullPath, source.replaceAll(sourceValue, targetValue), "utf8");
   }
 }
 
-async function copyStarterApp(starter, appId) {
-  const sourceRoot = join(process.cwd(), "apps", starter.sourceAppId);
-  const targetRoot = join(process.cwd(), "apps", appId);
+async function copyStarterApp(starter: Extract<StarterOption, { mode: "copy-starter" }>, slug: string) {
+  const sourceRoot = join(process.cwd(), "apps", starter.sourceDirName);
+  const targetRoot = join(process.cwd(), "apps", slug);
 
   await cp(sourceRoot, targetRoot, {
     recursive: true,
@@ -270,39 +322,45 @@ async function copyStarterApp(starter, appId) {
   await rm(join(targetRoot, ".softbox", "screenshots"), { recursive: true, force: true });
   await rm(join(targetRoot, ".softbox", "reports"), { recursive: true, force: true });
   await mkdir(join(targetRoot, ".softbox"), { recursive: true });
-  await rewriteStarterReferences(targetRoot, starter.sourceAppId, appId);
+  await rewriteStarterReferences(targetRoot, starter.sourceDirName, slug);
 }
 
-function runCommand({ step, command, args, env, allowFailure = false }) {
-  output.write(`[new-app] ${step}\n`);
-  const child = spawn(command, args, {
+function runCommand(args: {
+  step: string;
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+  allowFailure?: boolean;
+}) {
+  output.write(`[new-app] ${args.step}\n`);
+  const child = spawn(args.command, args.args, {
     cwd: process.cwd(),
     env: {
       ...process.env,
-      ...env,
+      ...(args.env ?? {}),
     },
     stdio: "inherit",
   });
 
-  return new Promise((resolve, reject) => {
+  return new Promise<{ ok: boolean; code: number }>((resolve, reject) => {
     child.on("error", (error) => {
       reject(
-        new Error(`failed to start ${command} ${args.join(" ")}: ${error.message}`),
+        new Error(`failed to start ${args.command} ${args.args.join(" ")}: ${error.message}`),
       );
     });
 
     child.on("exit", (code, signal) => {
       if (signal) {
-        reject(new Error(`${command} exited from signal ${signal}`));
+        reject(new Error(`${args.command} exited from signal ${signal}`));
         return;
       }
 
       if ((code ?? 0) !== 0) {
-        if (allowFailure) {
+        if (args.allowFailure) {
           resolve({ ok: false, code: code ?? 1 });
           return;
         }
-        reject(new Error(`${command} exited with code ${code ?? 1}`));
+        reject(new Error(`${args.command} exited with code ${code ?? 1}`));
         return;
       }
 
@@ -334,46 +392,61 @@ function isWorkerRunning() {
 }
 
 async function main() {
-  const { help, appId: initialAppId, viteArgs, starterId } = parseArgs(process.argv.slice(2));
-  if (help) {
+  const parsed = parseArgs(process.argv.slice(2));
+  if (parsed.help) {
     printHelp();
     return;
   }
 
-  const starter = await pickStarter(starterId, initialAppId, viteArgs);
-  const appId = await resolveTargetAppId(initialAppId, starter);
+  const starter = await pickStarter(parsed.starterId, parsed.slug, parsed.viteArgs);
+  const slug = await resolveTargetAppSlug(parsed.slug, starter);
+  const appId =
+    parsed.appId?.trim() ||
+    generateOpaqueAppId(discoverWrappedApps(resolvePath(process.cwd())).apps.map((app) => app.appId));
+  validateOpaqueAppId(appId);
+  const appName = normalizeAppDisplayName(parsed.name, slug);
   const softboxEnv = { APP_ID: appId };
 
   if (starter.mode === "vite-template") {
-    const resolvedViteArgs = viteArgs.length > 0 ? buildViteArgs(viteArgs) : starter.viteArgs;
+    const resolvedViteArgs = parsed.viteArgs.length > 0 ? buildViteArgs(parsed.viteArgs) : starter.viteArgs;
 
     await runCommand({
-      step: `scaffold apps/${appId} with npm create vite@latest`,
+      step: `scaffold apps/${slug} with npm create vite@latest`,
       command: "npm",
       args: [
         "create",
         "vite@latest",
-        `apps/${appId}`,
+        `apps/${slug}`,
         "--",
         "--no-interactive",
         ...resolvedViteArgs,
       ],
       env: {
-        // Skip npm's "Do you wish to install and run ..." confirmation so
-        // create-vite runs non-interactively and onboarding can always continue.
         npm_config_yes: "true",
       },
     });
-
-    await runCommand({
-      step: `wrap apps/${appId} for Softbox`,
-      command: "pnpm",
-      args: ["wrap-app", "--", "--path", `apps/${appId}`],
-    });
   } else {
-    output.write(`[new-app] copy starter ${starter.sourceAppId} -> apps/${appId}\n`);
-    await copyStarterApp(starter, appId);
+    output.write(`[new-app] copy starter ${starter.sourceDirName} -> apps/${slug}\n`);
+    await copyStarterApp(starter, slug);
   }
+
+  await runCommand({
+    step: `wrap apps/${slug} for Softbox`,
+    command: "pnpm",
+    args: [
+      "wrap-app",
+      "--",
+      "--path",
+      `apps/${slug}`,
+      "--app-id",
+      appId,
+      "--slug",
+      slug,
+      "--name",
+      appName,
+      ...(starter.mode === "copy-starter" ? ["--force"] : []),
+    ],
+  });
 
   const doctorResult = await runCommand({
     step: `run doctor for ${appId}`,
@@ -397,7 +470,7 @@ async function main() {
 
   if (isOpenClawPerAppRoutingEnabled()) {
     await runCommand({
-      step: `sync OpenClaw per-app agents`,
+      step: "sync OpenClaw per-app agents",
       command: "pnpm",
       args: ["worker:openclaw-sync-agents", "--", "--apply"],
     });
@@ -405,7 +478,10 @@ async function main() {
 
   output.write(
     [
-      `[new-app] completed onboarding for '${appId}'`,
+      `[new-app] completed onboarding for '${appName}'`,
+      `[new-app] app id: ${appId}`,
+      `[new-app] slug: ${slug}`,
+      `[new-app] source: apps/${slug}`,
       `[new-app] note: APP_ID was only set for the doctor step in this command run.`,
       ...(isOpenClawPerAppRoutingEnabled() && isWorkerRunning()
         ? [

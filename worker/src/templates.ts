@@ -1,11 +1,20 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { basename, relative, resolve } from "node:path";
+import {
+  defaultAppDisplayNameFromSlug,
+  isValidAppSlug,
+  isValidOpaqueAppId,
+  normalizeAppSlug,
+} from "./appIdentity";
 
 export const defaultWrappedAppId = "vite-default";
 export const softboxConfigFileName = "softbox.config.json";
 
 type WrappedAppConfig = {
+  appId?: string;
+  slug?: string;
+  name?: string;
   label?: string;
   runtime?: string;
   templateId?: string;
@@ -15,6 +24,7 @@ export type WrappedAppId = string;
 
 export type RegisteredWrappedApp = {
   appId: string;
+  slug: string;
   label: string;
   runtime: string | null;
   root: string;
@@ -40,6 +50,15 @@ function readWrappedAppConfig(configPath: string): WrappedAppConfig {
   }
 
   const config = parsed as Record<string, unknown>;
+  if (config.appId !== undefined && typeof config.appId !== "string") {
+    throw new Error("Optional field 'appId' must be a string.");
+  }
+  if (config.slug !== undefined && typeof config.slug !== "string") {
+    throw new Error("Optional field 'slug' must be a string.");
+  }
+  if (config.name !== undefined && typeof config.name !== "string") {
+    throw new Error("Optional field 'name' must be a string.");
+  }
   if (config.label !== undefined && typeof config.label !== "string") {
     throw new Error("Optional field 'label' must be a string.");
   }
@@ -50,7 +69,21 @@ function readWrappedAppConfig(configPath: string): WrappedAppConfig {
     throw new Error("Legacy field 'templateId' must be a string when present.");
   }
 
+  const appId = typeof config.appId === "string" ? config.appId.trim() : undefined;
+  if (appId !== undefined && appId.length > 0 && !isValidOpaqueAppId(appId)) {
+    throw new Error("Optional field 'appId' must match the opaque form 'app_<id>'.");
+  }
+
+  const rawSlug = typeof config.slug === "string" ? config.slug.trim() : undefined;
+  const slug = rawSlug !== undefined ? normalizeAppSlug(rawSlug) : undefined;
+  if (rawSlug !== undefined && (!slug || !isValidAppSlug(slug))) {
+    throw new Error("Optional field 'slug' must use lowercase letters, numbers, and hyphens only.");
+  }
+
   return {
+    appId: appId && appId.length > 0 ? appId : undefined,
+    slug: slug && slug.length > 0 ? slug : undefined,
+    name: typeof config.name === "string" ? config.name.trim() : undefined,
     label: typeof config.label === "string" ? config.label.trim() : undefined,
     runtime: typeof config.runtime === "string" ? config.runtime.trim() : undefined,
     templateId:
@@ -65,6 +98,8 @@ export function discoverWrappedApps(projectRoot: string): {
   const appsRoot = resolve(projectRoot, "apps");
   const issues: WrappedAppDiscoveryIssue[] = [];
   const apps: RegisteredWrappedApp[] = [];
+  const seenAppIds = new Set<string>();
+  const seenSlugs = new Set<string>();
 
   if (!existsSync(appsRoot)) {
     issues.push({
@@ -115,20 +150,45 @@ export function discoverWrappedApps(projectRoot: string): {
       continue;
     }
 
-    const appId = basename(relativeRoot);
+    const dirName = basename(relativeRoot);
+    const appId = config.appId || dirName;
+    const slug = config.slug || normalizeAppSlug(dirName) || dirName;
+    const label = config.name || config.label || defaultAppDisplayNameFromSlug(slug);
     if (config.templateId && config.templateId !== appId) {
       issues.push({
         appDir: relativeRoot,
         severity: "warning",
         message:
           `Legacy 'templateId' field '${config.templateId}' does not match app id '${appId}'. ` +
-          `The worker now uses the app directory name as the only source id and ignores 'templateId'.`,
+          `The worker now uses the explicit 'appId' field when present and ignores 'templateId'.`,
       });
     }
 
+    if (seenAppIds.has(appId)) {
+      issues.push({
+        appDir: relativeRoot,
+        severity: "error",
+        message: `Duplicate app id '${appId}' found in ${softboxConfigFileName}.`,
+      });
+      continue;
+    }
+
+    if (seenSlugs.has(slug)) {
+      issues.push({
+        appDir: relativeRoot,
+        severity: "error",
+        message: `Duplicate slug '${slug}' found in ${softboxConfigFileName}.`,
+      });
+      continue;
+    }
+
+    seenAppIds.add(appId);
+    seenSlugs.add(slug);
+
     apps.push({
       appId,
-      label: config.label || appId,
+      slug,
+      label,
       runtime: config.runtime || null,
       root,
       relativeRoot,
@@ -148,8 +208,8 @@ function getWrappedAppRecord(projectRoot: string, appId: string): RegisteredWrap
   const record = listWrappedApps(projectRoot).find((app) => app.appId === appId);
   if (!record) {
     throw new Error(
-      `Unknown app id '${appId}'. Add '${softboxConfigFileName}' under /apps/${appId} ` +
-        `or run 'pnpm wrap-app -- --path apps/<app-id>'.`,
+      `Unknown app id '${appId}'. Add '${softboxConfigFileName}' under /apps/<folder> ` +
+        `with a matching "appId", or run 'pnpm wrap-app -- --path apps/<folder>'.`,
     );
   }
   return record;
@@ -185,6 +245,13 @@ export function getWrappedAppLabel(
   return getWrappedAppRecord(projectRoot, appId).label;
 }
 
+export function getWrappedAppSlug(
+  appId: string,
+  projectRoot = resolve(process.cwd()),
+): string {
+  return getWrappedAppRecord(projectRoot, appId).slug;
+}
+
 export function resolveWrappedAppRoot(projectRoot: string, appId: string): string {
   return getWrappedAppRecord(projectRoot, appId).root;
 }
@@ -204,8 +271,8 @@ export async function inspectWrappedAppSource(
       path: null,
       message:
         `App '${appId}' is not registered under /apps. ` +
-        `Add '${softboxConfigFileName}' under /apps/${appId} or run ` +
-        `'pnpm wrap-app -- --path apps/${appId}'.`,
+        `Add '${softboxConfigFileName}' under an app folder with a matching "appId" or run ` +
+        `'pnpm wrap-app -- --path apps/<folder>'.`,
     };
   }
 

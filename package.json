@@ -5,7 +5,7 @@
   "packageManager": "pnpm@10.17.1",
   "scripts": {
     "setup": "tsx scripts/setup.ts",
-    "new-app": "node scripts/new-app.mjs",
+    "new-app": "tsx scripts/new-app.ts",
     "start": "tsx scripts/dev.tsx",
     "start:verbose": "tsx scripts/dev.tsx --verbose",
     "start:sync-agents": "tsx scripts/dev.tsx --sync-agents",

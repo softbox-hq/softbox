@@ -12,6 +12,7 @@ import { R2Uploader } from "./r2";
 import {
   discoverWrappedApps,
   getWrappedAppLabel,
+  getWrappedAppSlug,
   resolveWrappedAppRoot,
 } from "./templates";
 import {
@@ -187,6 +188,7 @@ async function main(): Promise<void> {
       await convex.seedApp({
         appId: config.appId,
         name: getWrappedAppLabel(config.appId, config.projectRoot),
+        slug: getWrappedAppSlug(config.appId, config.projectRoot),
         files,
         manifestUrl: `${config.publicDevelopmentUrl}/${manifestKeyForVersion(config.appId, 1)}`,
         buildLog: "Seeded from source app",

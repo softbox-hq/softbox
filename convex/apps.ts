@@ -599,6 +599,7 @@ async function collectLegacyTemplateFieldCleanupSummary(
 function buildAppReplacementDoc(app: any, nextAppId: string, updatedAt: number) {
   const nextDoc: Record<string, unknown> = {
     appId: nextAppId,
+    slug: app.slug ?? app.appId,
     name: app.name,
     codexThreadId: app.codexThreadId ?? null,
     openClawSessionId: app.openClawSessionId ?? null,
@@ -1014,6 +1015,7 @@ export const getShellState = query({
 
     return {
       appId: app.appId,
+      slug: app.slug ?? app.appId,
       name: app.name,
       box,
       boxes: serializedBoxes,
@@ -1519,6 +1521,7 @@ export const listApps = query({
 
         return {
           appId: app.appId,
+          slug: app.slug ?? app.appId,
           name: app.name,
           box: primaryBox,
           boxes,
@@ -1544,7 +1547,17 @@ export const listApps = query({
       }),
     );
 
-    return appsWithVersions.sort((left, right) => left.appId.localeCompare(right.appId));
+    return appsWithVersions.sort((left, right) => {
+      const nameOrder = left.name.localeCompare(right.name);
+      if (nameOrder !== 0) {
+        return nameOrder;
+      }
+      const slugOrder = (left.slug ?? left.appId).localeCompare(right.slug ?? right.appId);
+      if (slugOrder !== 0) {
+        return slugOrder;
+      }
+      return left.appId.localeCompare(right.appId);
+    });
   },
 });
 
@@ -1905,6 +1918,7 @@ export const seedApp = mutation({
   args: {
     appId: v.string(),
     name: v.string(),
+    slug: v.string(),
     files: v.array(
       v.object({
         path: v.string(),
@@ -1922,6 +1936,11 @@ export const seedApp = mutation({
       .first();
 
     if (existingApp) {
+      await ctx.db.patch(existingApp._id, {
+        name: args.name,
+        slug: args.slug,
+        updatedAt: Date.now(),
+      });
       return existingApp._id;
     }
 
@@ -1938,6 +1957,7 @@ export const seedApp = mutation({
 
     const appId = await ctx.db.insert("apps", {
       appId: args.appId,
+      slug: args.slug,
       name: args.name,
       codexThreadId: null,
       openClawSessionId: null,
@@ -1992,6 +2012,7 @@ export const getAppConfig = query({
 
     return {
       appId: app.appId,
+      slug: app.slug ?? app.appId,
       name: app.name,
       codexThreadId: app.codexThreadId ?? null,
       openClawSessionId: app.openClawSessionId ?? null,
@@ -2001,6 +2022,43 @@ export const getAppConfig = query({
       engineProfile: serializeEngineProfile(engineProfile),
       providerProfile: serializeProviderProfile(providerProfile),
     };
+  },
+});
+
+export const updateAppMetadata = mutation({
+  args: {
+    appId: v.string(),
+    name: v.string(),
+    slug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const app = await getAppByIdOrThrow(ctx, args.appId);
+    const nextName = args.name.trim();
+    const nextSlug = args.slug.trim();
+
+    if (!nextName) {
+      throw new Error("App name is required.");
+    }
+    if (!nextSlug) {
+      throw new Error("App slug is required.");
+    }
+
+    const apps = await ctx.db.query("apps").collect();
+    const conflictingApp = apps.find(
+      (candidate: any) =>
+        candidate._id !== app._id && (candidate.slug ?? candidate.appId) === nextSlug,
+    );
+    if (conflictingApp) {
+      throw new Error(`App slug '${nextSlug}' is already in use.`);
+    }
+
+    await ctx.db.patch(app._id, {
+      name: nextName,
+      slug: nextSlug,
+      updatedAt: Date.now(),
+    });
+
+    return { updated: true };
   },
 });
 

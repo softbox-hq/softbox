@@ -2,11 +2,22 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { ensureAppTooling } from "../worker/src/appAgents";
-import { softboxConfigFileName } from "../worker/src/templates";
+import {
+  defaultAppDisplayNameFromSlug,
+  generateOpaqueAppId,
+  isValidAppSlug,
+  isValidOpaqueAppId,
+  normalizeAppDisplayName,
+  normalizeAppSlug,
+} from "../worker/src/appIdentity";
+import { discoverWrappedApps, softboxConfigFileName } from "../worker/src/templates";
 
 type Args = {
   appPath: string;
+  appId: string | null;
   force: boolean;
+  name: string | null;
+  slug: string | null;
 };
 
 type AppInspection = {
@@ -18,17 +29,44 @@ type AppInspection = {
 
 const sourceExtensions = [".tsx", ".jsx", ".ts", ".js"];
 
+function readOption(argv: string[], name: string): string | null {
+  const optionIndex = argv.indexOf(name);
+  if (optionIndex < 0) {
+    return null;
+  }
+
+  const value = argv[optionIndex + 1]?.trim();
+  if (!value) {
+    throw new Error(`Missing value for ${name}.`);
+  }
+
+  return value;
+}
+
 function parseArgs(argv: string[]): Args {
-  const positional = argv.filter((arg) => !arg.startsWith("-"));
+  const positional: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--path" || arg === "--app-id" || arg === "--name" || arg === "--slug") {
+      index += 1;
+      continue;
+    }
+    if (!arg.startsWith("-")) {
+      positional.push(arg);
+    }
+  }
   const pathIndex = argv.indexOf("--path");
   const appPath = (pathIndex >= 0 ? argv[pathIndex + 1] : positional[0])?.trim();
+  const appId = readOption(argv, "--app-id");
   const force = argv.includes("--force");
+  const name = readOption(argv, "--name");
+  const slug = readOption(argv, "--slug");
 
   if (!appPath) {
     throw new Error("Missing app path. Use --path apps/<name>.");
   }
 
-  return { appPath, force };
+  return { appPath, appId, force, name, slug };
 }
 
 async function readPackageJson(appRoot: string): Promise<Record<string, unknown> | null> {
@@ -38,6 +76,19 @@ async function readPackageJson(appRoot: string): Promise<Record<string, unknown>
   }
 
   return JSON.parse(await readFile(packageJsonPath, "utf8")) as Record<string, unknown>;
+}
+
+async function readExistingSoftboxConfig(appRoot: string): Promise<Record<string, unknown> | null> {
+  const configPath = resolve(appRoot, softboxConfigFileName);
+  if (!existsSync(configPath)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }
 
 function toRelativePath(projectRoot: string, absolutePath: string): string {
@@ -301,10 +352,16 @@ export function unmount() {
 `;
 }
 
-function buildSoftboxConfigSource(appName: string): string {
+function buildSoftboxConfigSource(args: {
+  appId: string;
+  name: string;
+  slug: string;
+}): string {
   return `${JSON.stringify(
     {
-      label: appName,
+      appId: args.appId,
+      name: args.name,
+      slug: args.slug,
       runtime: "react-vite",
     },
     null,
@@ -330,12 +387,37 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const projectRoot = resolve(process.cwd());
   const inspection = await inspectApp(projectRoot, args);
+  const folderName = inspection.relativeAppRoot.split("/").pop() ?? "app";
+  const normalizedFolderSlug = normalizeAppSlug(folderName);
 
   const entryPath = resolve(inspection.appRoot, "src", "entry.tsx");
   const defaultStatePath = resolve(inspection.appRoot, "src", "defaultState.ts");
   const runtimePath = resolve(inspection.appRoot, "src", "adapter", "runtime.tsx");
   const shellAdapterPath = resolve(inspection.appRoot, "src", "adapter", "shellAdapter.tsx");
   const configPath = resolve(inspection.appRoot, softboxConfigFileName);
+  const existingConfig = await readExistingSoftboxConfig(inspection.appRoot);
+  const wrappedApps = discoverWrappedApps(projectRoot).apps.filter((app) => app.root !== inspection.appRoot);
+  const existingAppIds = new Set(wrappedApps.map((app) => app.appId));
+  const nextAppId = args.appId?.trim() || String(existingConfig?.appId ?? "").trim() || generateOpaqueAppId(existingAppIds);
+  const nextSlug =
+    normalizeAppSlug(args.slug?.trim() || String(existingConfig?.slug ?? "").trim() || normalizedFolderSlug);
+  const nextName = normalizeAppDisplayName(
+    args.name?.trim() || String(existingConfig?.name ?? existingConfig?.label ?? "").trim(),
+    nextSlug || normalizedFolderSlug || "app",
+  );
+
+  if (!isValidOpaqueAppId(nextAppId)) {
+    throw new Error(`App id '${nextAppId}' must match the opaque form 'app_<id>'.`);
+  }
+  if (existingAppIds.has(nextAppId)) {
+    throw new Error(`App id '${nextAppId}' is already registered in another wrapped app.`);
+  }
+  if (!nextSlug || !isValidAppSlug(nextSlug)) {
+    throw new Error("Slug must use lowercase letters, numbers, and hyphens only.");
+  }
+  if (wrappedApps.some((app) => app.slug === nextSlug)) {
+    throw new Error(`Slug '${nextSlug}' is already registered in another wrapped app.`);
+  }
 
   await writeFileUnlessPresent(entryPath, buildEntrySource(inspection.cssImports), args.force);
   await writeFileUnlessPresent(defaultStatePath, buildDefaultStateSource(), args.force);
@@ -347,15 +429,17 @@ async function main(): Promise<void> {
   );
   await writeFileUnlessPresent(
     configPath,
-    buildSoftboxConfigSource(
-      inspection.relativeAppRoot.split("/").pop() ?? "app",
-    ),
+    buildSoftboxConfigSource({
+      appId: nextAppId,
+      name: nextName || defaultAppDisplayNameFromSlug(nextSlug),
+      slug: nextSlug,
+    }),
     args.force,
   );
   const tooling = await ensureAppTooling({
     projectRoot,
     appRoot: inspection.appRoot,
-    appName: inspection.relativeAppRoot.split("/").pop() ?? "app",
+    appName: nextName || defaultAppDisplayNameFromSlug(nextSlug),
     force: args.force,
   });
 
@@ -365,6 +449,9 @@ async function main(): Promise<void> {
   console.log(`[wrap-app] wrote ${toRelativePath(projectRoot, runtimePath)}`);
   console.log(`[wrap-app] wrote ${toRelativePath(projectRoot, shellAdapterPath)}`);
   console.log(`[wrap-app] wrote ${toRelativePath(projectRoot, configPath)}`);
+  console.log(`[wrap-app] app id ${nextAppId}`);
+  console.log(`[wrap-app] slug ${nextSlug}`);
+  console.log(`[wrap-app] name ${nextName || defaultAppDisplayNameFromSlug(nextSlug)}`);
   if (tooling.wroteAgentsFile) {
     console.log(`[wrap-app] wrote ${tooling.relativeAgentsFilePath}`);
   }
@@ -375,7 +462,7 @@ async function main(): Promise<void> {
     console.log(`[wrap-app] updated ${toRelativePath(projectRoot, resolve(inspection.appRoot, "package.json"))} with ui:screenshot`);
   }
   console.log(
-    `[wrap-app] next: run 'pnpm run doctor', then 'pnpm seed' and choose '${inspection.relativeAppRoot.split("/").pop() ?? "app"}' or run 'pnpm seed -- --app ${inspection.relativeAppRoot.split("/").pop() ?? "app"}'`,
+    `[wrap-app] next: run 'pnpm run doctor', then 'pnpm seed' and choose '${nextAppId}' or run 'pnpm seed -- --app ${nextAppId}'`,
   );
 }
 

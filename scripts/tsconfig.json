@@ -13,6 +13,7 @@
     "../shell/src/serviceStatus.ts",
     "../shell/src/systemServices.ts",
     "../worker/src/appAgents.ts",
+    "../worker/src/appIdentity.ts",
     "../worker/src/boxes.ts",
     "../worker/src/config.ts",
     "../worker/src/loadEnv.ts",
