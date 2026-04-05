@@ -260,41 +260,98 @@ export async function resolveOpenClawAgentForApp(args: {
   appId: string;
   liveAppRoot: string;
   openClaw: Pick<OpenClawRoutingConfig, "agentId" | "agentIdPrefix">;
+  model?: string | null;
+  autoRepair?: boolean;
 }): Promise<{
   agentId: string;
   workspace: string | null;
   routingMode: "shared" | "per_app";
+  repaired: boolean;
+  model: string | null;
 }> {
   const agentId = buildConfiguredOpenClawAgentId(args.appId, args.openClaw);
+  const routingMode = isPerAppOpenClawRouting(args.openClaw) ? "per_app" : "shared";
+  const expectedWorkspace = resolve(
+    routingMode === "per_app" ? args.liveAppRoot : args.projectRoot,
+  );
+  const expectedModel = normalizeOpenClawModelId(args.model ?? null);
   const agents = await listOpenClawAgents({
     command: args.command,
     projectRoot: args.projectRoot,
   });
   const registeredAgent = agents.find((agent) => agent.id === agentId);
+  const hasWorkspaceMismatch =
+    registeredAgent !== undefined && registeredAgent.workspace !== expectedWorkspace;
+  const hasModelMismatch =
+    registeredAgent !== undefined &&
+    expectedModel !== null &&
+    registeredAgent.model !== expectedModel;
+
+  async function createExpectedAgent() {
+    await createOpenClawAgent({
+      command: args.command,
+      projectRoot: args.projectRoot,
+      agentId,
+      workspace: expectedWorkspace,
+      model: expectedModel ?? undefined,
+    });
+  }
 
   if (!registeredAgent) {
-    const expectedWorkspace = resolve(args.liveAppRoot);
+    if (args.autoRepair) {
+      await createExpectedAgent();
+      return {
+        agentId,
+        workspace: expectedWorkspace,
+        routingMode,
+        repaired: true,
+        model: expectedModel,
+      };
+    }
+
     throw new Error(
-      isPerAppOpenClawRouting(args.openClaw)
+      routingMode === "per_app"
         ? `Expected OpenClaw agent '${agentId}' for app '${args.appId}', but it is not configured. ` +
             `Create it with: openclaw agents add ${agentId} --workspace ${expectedWorkspace} --non-interactive`
         : `Configured OpenClaw agent '${agentId}' was not found. Create it or switch to per-app routing with OPENCLAW_AGENT_ID_PREFIX.`,
     );
   }
 
-  if (isPerAppOpenClawRouting(args.openClaw)) {
-    const expectedWorkspace = resolve(args.liveAppRoot);
-    if (registeredAgent.workspace !== expectedWorkspace) {
+  if (hasWorkspaceMismatch || hasModelMismatch) {
+    if (args.autoRepair) {
+      await deleteOpenClawAgent({
+        command: args.command,
+        projectRoot: args.projectRoot,
+        agentId,
+      });
+      await createExpectedAgent();
+      return {
+        agentId,
+        workspace: expectedWorkspace,
+        routingMode,
+        repaired: true,
+        model: expectedModel,
+      };
+    }
+
+    if (hasWorkspaceMismatch) {
       throw new Error(
         `OpenClaw agent '${agentId}' is configured for workspace '${registeredAgent.workspace ?? "unknown"}', ` +
-          `but Softbox expects '${expectedWorkspace}' in per-app mode.`,
+          `but Softbox expects '${expectedWorkspace}'${routingMode === "per_app" ? " in per-app mode" : ""}.`,
       );
     }
+
+    throw new Error(
+      `OpenClaw agent '${agentId}' is configured for model '${registeredAgent.model ?? "unknown"}', ` +
+        `but Softbox expects '${expectedModel}'.`,
+    );
   }
 
   return {
     agentId,
     workspace: registeredAgent.workspace,
-    routingMode: isPerAppOpenClawRouting(args.openClaw) ? "per_app" : "shared",
+    routingMode,
+    repaired: false,
+    model: registeredAgent.model,
   };
 }

@@ -81,7 +81,7 @@ export function resolveBoxEngineContext(args: {
     liveAppRoot;
   const targetPath = box.targetPath ?? workspacePath;
   const model = normalizeOpenClawModelId(
-    providerProfile?.model ?? box.model ?? config.agentModel ?? null,
+    providerProfile?.model ?? config.agentModel ?? box.model ?? null,
   );
   const context: BoxEngineContext = {
     boxId: box.boxId,
@@ -104,8 +104,8 @@ export function resolveBoxEngineContext(args: {
       typeof box.sessionKeyGeneration === "number" && Number.isFinite(box.sessionKeyGeneration)
         ? Math.max(0, Math.trunc(box.sessionKeyGeneration))
         : 0,
-    provider: box.provider ?? providerProfile?.provider ?? inferProviderFromModel(model),
-    model: box.model ?? model,
+    provider: providerProfile?.provider ?? box.provider ?? inferProviderFromModel(model),
+    model: model ?? box.model ?? null,
     engineProfile,
     providerProfile,
     policy,
@@ -146,7 +146,9 @@ export function resolveBoxEngineContext(args: {
       : (routing.routingMode ?? routedPolicy.routingMode) === "shared"
         ? config.projectRoot
         : null);
-  const routedModel = normalizeOpenClawModelId(providerProfile?.model ?? box.model ?? routing.model ?? null);
+  const routedModel = normalizeOpenClawModelId(
+    providerProfile?.model ?? routing.model ?? box.model ?? null,
+  );
 
   return {
     boxId: box.boxId ?? buildBoxId("openclaw", appId),
@@ -164,8 +166,8 @@ export function resolveBoxEngineContext(args: {
       typeof box.sessionKeyGeneration === "number" && Number.isFinite(box.sessionKeyGeneration)
         ? Math.max(0, Math.trunc(box.sessionKeyGeneration))
         : 0,
-    provider: box.provider ?? providerProfile?.provider ?? inferProviderFromModel(routedModel),
-    model: box.model ?? routedModel,
+    provider: providerProfile?.provider ?? box.provider ?? inferProviderFromModel(routedModel),
+    model: routedModel ?? box.model ?? null,
     engineProfile,
     providerProfile,
     policy: routedPolicy,

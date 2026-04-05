@@ -122,9 +122,13 @@ export function DesktopIconField(props: { apps: DesktopIconFieldApp[] }) {
   );
 
   useEffect(() => {
-    setLayout((currentLayout) =>
-      normalizeDesktopIconLayout(appIds, currentLayout),
-    );
+    setLayout((currentLayout) => {
+      const persistedLayout = readStoredDesktopIconLayout();
+      return normalizeDesktopIconLayout(appIds, {
+        ...(persistedLayout ?? {}),
+        ...currentLayout,
+      });
+    });
   }, [appIdsSignature]);
 
   useEffect(() => {

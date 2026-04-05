@@ -1,0 +1,128 @@
+:root {
+  color-scheme: light dark;
+}
+
+.reader-shell {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  box-sizing: border-box;
+}
+
+.reader-header {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  align-items: end;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.78rem;
+  margin-bottom: 0.5rem;
+  color: var(--text);
+}
+
+.reader-header h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 4rem);
+  line-height: 0.95;
+}
+
+.lede {
+  margin-top: 0.75rem;
+  max-width: 52ch;
+  color: var(--text);
+}
+
+.book-form {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: color-mix(in oklab, var(--bg) 92%, var(--border));
+}
+
+.book-form label {
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.book-form-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.book-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.8rem 0.9rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+}
+
+.book-form button {
+  padding: 0.8rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reader-frame {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  overflow: hidden;
+}
+
+.reader-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.92rem;
+  color: var(--text);
+  background: color-mix(in oklab, var(--bg) 96%, var(--border));
+}
+
+.reader-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 70vh;
+  background: var(--bg);
+}
+
+.reader-canvas > div {
+  height: 100%;
+}
+
+@media (max-width: 900px) {
+  .reader-shell {
+    padding: 1rem;
+  }
+
+  .reader-header {
+    grid-template-columns: 1fr;
+  }
+
+  .book-form-row {
+    flex-direction: column;
+  }
+
+  .reader-meta {
+    flex-direction: column;
+  }
+}

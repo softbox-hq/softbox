@@ -167,14 +167,15 @@ export async function backfillOpenClawBoxProfiles(
 
   const routingHints = inferOpenClawRoutingHints(openClawBoxes);
   const exemplarBox = openClawBoxes.find((box) => box.model || box.provider) ?? openClawBoxes[0];
+  const configuredModel = readTrimmed(config.agentModel);
   const engineProfile = buildDefaultOpenClawEngineProfile(config, {
     routingMode: routingHints.routingMode,
     sessionKeyPrefix: routingHints.sessionKeyPrefix,
     agentIdPrefix: routingHints.agentIdPrefix,
   });
   const providerProfile = buildDefaultProviderProfile(config, {
-    model: exemplarBox?.model ?? null,
-    provider: exemplarBox?.provider ?? null,
+    model: configuredModel ? null : exemplarBox?.model ?? null,
+    provider: configuredModel ? null : exemplarBox?.provider ?? null,
   });
 
   await convex.upsertEngineProfile(engineProfile);
@@ -201,8 +202,8 @@ export async function backfillOpenClawBoxProfiles(
       targetPath: box.targetPath,
       workspacePath: box.workspacePath,
       sessionId: box.sessionId,
-      provider: box.provider ?? providerProfile.provider,
-      model: box.model ?? providerProfile.model,
+      provider: providerProfile.provider ?? box.provider,
+      model: providerProfile.model ?? box.model,
       status: box.status,
       policy: box.policy,
       lastRunAt: box.lastRunAt,

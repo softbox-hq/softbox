@@ -12,6 +12,7 @@ import {
 } from "./agent";
 import { manifestKeyForVersion } from "./artifacts";
 import {
+  type BoxEngineContext,
   buildFailedBoxRunUpdate,
   buildSuccessfulBoxRunUpdate,
   persistBoxRunUpdate,
@@ -26,6 +27,7 @@ import {
   type FailureStage,
 } from "./failureRecovery";
 import { readLiveAppFiles } from "./filesystem";
+import { normalizeOpenClawModelId } from "./openClawAgents";
 import { liveAppStateSchema } from "./shared/liveApp";
 import { R2Uploader } from "./r2";
 import {
@@ -126,18 +128,54 @@ export function buildRewriteAgentConfig(args: {
           },
         }
       : {};
+  const resolvedModel = args.boxEngineContext?.model ?? args.config.agentModel;
 
   return {
     appId: args.appId,
     boxId: args.boxEngineContext?.boxId ?? args.selectedBoxId,
     command: args.config.agentCommand,
-    model: args.config.agentModel,
+    model: resolvedModel,
     timeoutMs: args.config.agentTimeoutMs,
     projectRoot: args.config.projectRoot,
     liveAppRoot: args.liveAppRoot,
     liveAppLabel: args.liveAppLabel,
     ...baseOpenClawConfig,
     ...args.boxEngineContext?.rewriteConfigPatch,
+  };
+}
+
+export function isOpenClawLiveSessionModelSwitchError(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? [error.message, error.stack ?? ""].filter(Boolean).join("\n")
+      : String(error);
+  return (
+    /LiveSessionModelSwitchError/iu.test(message) ||
+    /Live session model switch requested/iu.test(message)
+  );
+}
+
+export function resetOpenClawBoxEngineContextSession(
+  boxEngineContext: BoxEngineContext | null,
+): BoxEngineContext | null {
+  if (!boxEngineContext || boxEngineContext.engine !== "openclaw") {
+    return boxEngineContext;
+  }
+
+  const nextSessionKeyGeneration = boxEngineContext.sessionKeyGeneration + 1;
+  return {
+    ...boxEngineContext,
+    sessionId: null,
+    sessionKeyGeneration: nextSessionKeyGeneration,
+    rewriteConfigPatch: {
+      ...boxEngineContext.rewriteConfigPatch,
+      openClaw: boxEngineContext.rewriteConfigPatch.openClaw
+        ? {
+            ...boxEngineContext.rewriteConfigPatch.openClaw,
+            sessionKeyGeneration: nextSessionKeyGeneration,
+          }
+        : undefined,
+    },
   };
 }
 
@@ -395,54 +433,110 @@ export async function processJobById(
         runningJob._id,
         `calling agent command '${config.agentCommand}' from ${config.projectRoot} with ${config.agentTimeoutMs}ms timeout`,
       );
-      const rewrite = await rewriteLiveAppFiles(
-        buildRewriteAgentConfig({
-          config,
+      const rewriteRequest = {
+        prompt: runningJob.prompt,
+        files: currentFiles,
+        liveAppLabel,
+        latestBuildError: shellState?.lastBuildError ?? null,
+        latestRuntimeError: shellState?.lastRuntimeError ?? null,
+        currentState: parseState(shellState?.currentStateJson ?? null),
+        codexThreadId:
+          usesCodexThread
+            ? (
+                boxEngineContext?.sessionId ??
+                (shouldUseMirroredAppSession ? appConfig.codexThreadId ?? null : null)
+              )
+            : (appConfig.codexThreadId ?? null),
+        openClawSessionId:
+          usesOpenClawSession
+            ? (
+                boxEngineContext?.sessionId ??
+                (shouldUseMirroredAppSession ? appConfig.openClawSessionId ?? null : null)
+              )
+            : (appConfig.openClawSessionId ?? null),
+        boxContext: boxEngineContext
+          ? {
+              boxId: boxEngineContext.boxId,
+              engine: boxEngineContext.engine,
+              role: boxEngineContext.policy.role ?? null,
+              instructions: boxEngineContext.policy.instructions ?? null,
+              readOnly: boxEngineContext.policy.readOnly === true,
+              proposalOnly: boxEngineContext.policy.proposalOnly === true,
+              canPromote: boxEngineContext.policy.canPromote === true,
+            }
+          : null,
+        primaryTargetFiles,
+      };
+      const runRewrite = () =>
+        rewriteLiveAppFiles(
+          buildRewriteAgentConfig({
+            config,
+            appId,
+            selectedBoxId,
+            liveAppRoot,
+            liveAppLabel,
+            boxEngineContext,
+            usesOpenClawSession,
+          }),
+          rewriteRequest,
+          {
+            onProgress: pushAgentProgress,
+          },
+        );
+      const storedOpenClawModel = normalizeOpenClawModelId(appConfig.box?.model ?? null);
+      const requestedOpenClawModel = normalizeOpenClawModelId(boxEngineContext?.model ?? null);
+      if (
+        usesOpenClawSession &&
+        boxEngineContext?.engine === "openclaw" &&
+        boxEngineContext.sessionId &&
+        boxEngineContext.boxId &&
+        storedOpenClawModel &&
+        requestedOpenClawModel &&
+        storedOpenClawModel !== requestedOpenClawModel
+      ) {
+        const resetMessage =
+          `OpenClaw target model changed from ${storedOpenClawModel} to ${requestedOpenClawModel}; ` +
+          "resetting the live session before the agent run.";
+        logJob(runningJob._id, resetMessage);
+        pushAgentProgress(resetMessage);
+        await convex.resetBoxSession({
           appId,
-          selectedBoxId,
-          liveAppRoot,
-          liveAppLabel,
-          boxEngineContext,
-          usesOpenClawSession,
-        }),
-        {
-          prompt: runningJob.prompt,
-          files: currentFiles,
-          liveAppLabel,
-          latestBuildError: shellState?.lastBuildError ?? null,
-          latestRuntimeError: shellState?.lastRuntimeError ?? null,
-          currentState: parseState(shellState?.currentStateJson ?? null),
-          codexThreadId:
-            usesCodexThread
-              ? (
-                  boxEngineContext?.sessionId ??
-                  (shouldUseMirroredAppSession ? appConfig.codexThreadId ?? null : null)
-                )
-              : (appConfig.codexThreadId ?? null),
-          openClawSessionId:
-            usesOpenClawSession
-              ? (
-                  boxEngineContext?.sessionId ??
-                  (shouldUseMirroredAppSession ? appConfig.openClawSessionId ?? null : null)
-                )
-              : (appConfig.openClawSessionId ?? null),
-          boxContext: boxEngineContext
-            ? {
-                boxId: boxEngineContext.boxId,
-                engine: boxEngineContext.engine,
-                role: boxEngineContext.policy.role ?? null,
-                instructions: boxEngineContext.policy.instructions ?? null,
-                readOnly: boxEngineContext.policy.readOnly === true,
-                proposalOnly: boxEngineContext.policy.proposalOnly === true,
-                canPromote: boxEngineContext.policy.canPromote === true,
-              }
-            : null,
-          primaryTargetFiles,
-        },
-        {
-          onProgress: pushAgentProgress,
-        },
-      );
+          boxId: boxEngineContext.boxId,
+        });
+        boxEngineContext = resetOpenClawBoxEngineContextSession(boxEngineContext);
+        rewriteRequest.openClawSessionId = null;
+      }
+
+      let rewrite;
+      try {
+        rewrite = await runRewrite();
+      } catch (error) {
+        if (!usesOpenClawSession || !isOpenClawLiveSessionModelSwitchError(error)) {
+          throw error;
+        }
+
+        const retryMessage = requestedOpenClawModel
+          ? `OpenClaw rejected a live model switch to ${requestedOpenClawModel}; resetting the session and retrying once.`
+          : "OpenClaw rejected a live model switch; resetting the session and retrying once.";
+        logJob(runningJob._id, retryMessage);
+        pushAgentProgress(retryMessage);
+
+        if (boxEngineContext?.engine === "openclaw" && boxEngineContext.boxId) {
+          await convex.resetBoxSession({
+            appId,
+            boxId: boxEngineContext.boxId,
+          });
+          boxEngineContext = resetOpenClawBoxEngineContextSession(boxEngineContext);
+        } else {
+          await convex.setAppOpenClawSession({
+            appId,
+            sessionId: null,
+          });
+        }
+
+        rewriteRequest.openClawSessionId = null;
+        rewrite = await runRewrite();
+      }
       for (const message of extractAgentProgressMessages(rewrite.details.notes ?? "")) {
         pushAgentProgress(message);
       }

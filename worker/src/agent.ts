@@ -870,6 +870,8 @@ async function runOpenClawGateway(
     projectRoot: config.projectRoot,
     appId: config.appId,
     liveAppRoot: config.liveAppRoot,
+    model: config.model ?? null,
+    autoRepair: true,
     openClaw: {
       agentId: config.openClaw.agentId ?? null,
       agentIdPrefix: config.openClaw.agentIdPrefix ?? null,
@@ -882,12 +884,17 @@ async function runOpenClawGateway(
       sessionKeyPrefix: config.openClaw.sessionKeyPrefix,
     },
   });
+  if (resolvedAgent.repaired) {
+    console.log(
+      `[worker] repaired OpenClaw agent '${resolvedAgent.agentId}' for model ${resolvedAgent.model ?? "default"} before invoking the gateway`,
+    );
+  }
   const args = buildOpenClawGatewayArgs(
     config,
     prompt,
     resolvedAgent.agentId,
     sessionKey,
-    sessionState?.openClawSessionId ?? null,
+    resolvedAgent.repaired ? null : (sessionState?.openClawSessionId ?? null),
   );
   const startedAt = performance.now();
 

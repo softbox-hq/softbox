@@ -318,6 +318,13 @@ export class ConvexRuntimeClient {
     await this.client.mutation(convexApi.deleteBox as any, args);
   }
 
+  async resetBoxSession(args: {
+    appId: string;
+    boxId: string;
+  }): Promise<{ reset: boolean }> {
+    return await this.client.mutation(convexApi.resetBoxSession as any, args);
+  }
+
   async updateBoxPolicy(args: {
     boxId: string;
     role?: string | null;

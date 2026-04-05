@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { WorkerConfig } from "../src/config";
 import type { BoxEngineContext } from "../src/boxEngines";
-import { buildRewriteAgentConfig } from "../src/jobs";
+import {
+  buildRewriteAgentConfig,
+  isOpenClawLiveSessionModelSwitchError,
+  resetOpenClawBoxEngineContextSession,
+} from "../src/jobs";
 
 function buildWorkerConfig(overrides?: Partial<WorkerConfig>): WorkerConfig {
   return {
@@ -112,6 +116,66 @@ describe("buildRewriteAgentConfig", () => {
       agentIdPrefix: null,
       sessionKeyPrefix: "box-scope",
       sessionKeyGeneration: 4,
+    });
+  });
+
+  it("uses the resolved box model for agent runs instead of the repo default model", () => {
+    const config = buildWorkerConfig({
+      agentModel: "gpt-5.4-mini",
+    });
+
+    const rewriteConfig = buildRewriteAgentConfig({
+      config,
+      appId: "vite-default",
+      selectedBoxId: "box_123",
+      liveAppRoot: "/tmp/softbox/apps/vite-default",
+      liveAppLabel: "vite-default",
+      boxEngineContext: {
+        ...buildBoxContext(),
+        model: "openai-codex/gpt-5.4",
+      },
+      usesOpenClawSession: true,
+    });
+
+    expect(rewriteConfig.model).toBe("openai-codex/gpt-5.4");
+  });
+});
+
+describe("isOpenClawLiveSessionModelSwitchError", () => {
+  it("detects the OpenClaw live-session model switch error", () => {
+    expect(
+      isOpenClawLiveSessionModelSwitchError(
+        new Error(
+          "GatewayClientRequestError: LiveSessionModelSwitchError: Live session model switch requested: openai-codex/gpt-5.4-mini",
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("ignores unrelated gateway failures", () => {
+    expect(
+      isOpenClawLiveSessionModelSwitchError(
+        new Error("GatewayClientRequestError: pairing required"),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("resetOpenClawBoxEngineContextSession", () => {
+  it("clears the session and increments the session generation for retries", () => {
+    expect(
+      resetOpenClawBoxEngineContextSession({
+        ...buildBoxContext(),
+        sessionId: "session_123",
+      }),
+    ).toMatchObject({
+      sessionId: null,
+      sessionKeyGeneration: 5,
+      rewriteConfigPatch: {
+        openClaw: {
+          sessionKeyGeneration: 5,
+        },
+      },
     });
   });
 });

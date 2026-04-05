@@ -868,6 +868,7 @@ export function App() {
   const setSelectedAppMutation = useMutation(convexApi.setSelectedApp as any);
   const createBoxMutation = useMutation(convexApi.createBox as any);
   const deleteBoxMutation = useMutation(convexApi.deleteBox as any);
+  const resetBoxSessionMutation = useMutation(convexApi.resetBoxSession as any);
   const updateBoxPolicyMutation = useMutation(convexApi.updateBoxPolicy as any);
   const deletePipelineRunMutation = useMutation(convexApi.deletePipelineRun as any);
   const submitPrompt = useMutation(convexApi.submitPrompt as any);
@@ -2703,6 +2704,30 @@ export function App() {
                                             className="inline-flex h-8 items-center rounded-lg border border-white/10 bg-[#1a1a1f] px-2.5 text-[11px] font-medium text-gray-300 transition-colors hover:bg-[#25252b] disabled:cursor-wait disabled:opacity-50"
                                           >
                                             {boxBusy ? "Saving..." : "Edit"}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={Boolean(boxActionKey)}
+                                            onClick={async () => {
+                                              const confirmed = window.confirm(
+                                                `Reset OpenClaw session for '${box.boxId}'? This forces the next run to start fresh so model changes can apply.`,
+                                              );
+                                              if (!confirmed) {
+                                                return;
+                                              }
+                                              setBoxActionKey(`reset:${box.boxId}`);
+                                              try {
+                                                await resetBoxSessionMutation({
+                                                  appId: app.appId,
+                                                  boxId: box.boxId,
+                                                });
+                                              } finally {
+                                                setBoxActionKey(null);
+                                              }
+                                            }}
+                                            className="inline-flex h-8 items-center rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 text-[11px] font-medium text-amber-200 transition-colors hover:bg-amber-500/20 disabled:cursor-wait disabled:opacity-50"
+                                          >
+                                            Reset session
                                           </button>
                                           <button
                                             type="button"
