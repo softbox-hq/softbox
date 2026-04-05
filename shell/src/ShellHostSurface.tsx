@@ -37,6 +37,36 @@ const desktopAppIconBySlug: Partial<Record<string, string>> = {
   dashboard: paintIcon,
 };
 
+const imageGenerationProviderPresets = {
+  openai: {
+    label: "OpenAI",
+    defaultModel: "openai/gpt-image-1",
+    secretHint: "OPENAI_API_KEY",
+  },
+  google: {
+    label: "Google",
+    defaultModel: "google/gemini-3.1-flash-image-preview",
+    secretHint: "GEMINI_API_KEY",
+  },
+  fal: {
+    label: "fal",
+    defaultModel: "fal/fal-ai/flux/dev",
+    secretHint: "FAL_KEY",
+  },
+  minimax: {
+    label: "MiniMax",
+    defaultModel: "minimax/image-01",
+    secretHint: "MINIMAX_API_KEY",
+  },
+  "minimax-portal": {
+    label: "MiniMax Portal",
+    defaultModel: "minimax-portal/image-01",
+    secretHint: "MINIMAX_OAUTH_TOKEN",
+  },
+} as const;
+
+type ImageGenerationProviderId = keyof typeof imageGenerationProviderPresets;
+
 type ShellHostSurfaceProps = {
   content: ShellHostEmptyStateContent;
   apps: ShellDesktopApp[];
@@ -117,6 +147,14 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const [authChoice, setAuthChoice] = useState("oauth");
   const [providerSecret, setProviderSecret] = useState("");
   const [tokenProvider, setTokenProvider] = useState("openai-codex");
+  const [imageGenerationProvider, setImageGenerationProvider] =
+    useState<ImageGenerationProviderId>("openai");
+  const [imageGenerationModel, setImageGenerationModel] = useState<string>(
+    imageGenerationProviderPresets.openai.defaultModel,
+  );
+  const [imageProviderSecret, setImageProviderSecret] = useState("");
+  const [imageConfigDirty, setImageConfigDirty] = useState(false);
+  const [imageConfigMessage, setImageConfigMessage] = useState<string | null>(null);
   const [oauthCallbackInput, setOauthCallbackInput] = useState("");
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
   const [serverInfoError, setServerInfoError] = useState<string | null>(null);
@@ -148,6 +186,8 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
   const openClawAuthUrl =
     openClawStatus?.onboardSession.authUrl ??
     extractOpenClawAuthUrl(openClawStatus?.onboardSession.logs ?? []);
+  const activeImageProviderPreset =
+    imageGenerationProviderPresets[imageGenerationProvider];
   const canSubmit =
     normalizedAppName.length > 0 &&
     (!normalizedAppSlug || createSlugPattern.test(normalizedAppSlug)) &&
@@ -423,6 +463,15 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
         setAgentIdPrefix(status.config.agentIdPrefix ?? "");
         setSessionKeyPrefix(status.config.sessionKeyPrefix ?? "softbox");
       }
+      if (!imageConfigDirty) {
+        const nextImageProvider =
+          status.imageGeneration.configuredProvider ?? "openai";
+        setImageGenerationProvider(nextImageProvider);
+        setImageGenerationModel(
+          status.config.imageGenerationModel ??
+            imageGenerationProviderPresets[nextImageProvider].defaultModel,
+        );
+      }
       setOpenClawError(null);
     } catch (error) {
       setOpenClawError(error instanceof Error ? error.message : String(error));
@@ -460,6 +509,48 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
       setOpenClawConfigDirty(false);
       setGatewayToken("");
       setOpenClawError(null);
+    } catch (error) {
+      setOpenClawError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOpenClawActionPending(null);
+    }
+  }
+
+  async function saveImageGenerationConfig() {
+    setOpenClawActionPending("save-image");
+    setImageConfigMessage(null);
+    try {
+      const response = await fetch("/__softbox/openclaw/image/configure", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          provider: imageGenerationProvider,
+          model: imageGenerationModel,
+          providerSecret: imageProviderSecret,
+        }),
+      });
+      const payload = (await response.json()) as
+        | {
+            ok?: boolean;
+            error?: string;
+            restartedGateway?: boolean;
+            status?: OpenClawStatus;
+          }
+        | undefined;
+      if (!response.ok || !payload?.ok || !payload.status) {
+        throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+      }
+      setOpenClawStatus(payload.status);
+      setImageProviderSecret("");
+      setImageConfigDirty(false);
+      setOpenClawError(null);
+      setImageConfigMessage(
+        payload.restartedGateway
+          ? "Saved image generation config and restarted the local gateway."
+          : "Saved image generation config.",
+      );
     } catch (error) {
       setOpenClawError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -1070,6 +1161,12 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                       </div>
                     ) : null}
 
+                    {imageConfigMessage ? (
+                      <div className="mt-4 border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+                        {imageConfigMessage}
+                      </div>
+                    ) : null}
+
                     <div className="mt-5 flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -1216,6 +1313,99 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                         {openClawActionPending === "sync" ? "Syncing..." : "Sync agents"}
                       </button>
                     </div>
+
+                    <div className="mt-6 border border-white/10 bg-black/20 p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            Image Generation
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-slate-300">
+                            OpenClaw already exposes the <code>image_generate</code> tool. Softbox
+                            only needs a default image model plus a local provider key for the gateway
+                            and worker process.
+                          </p>
+                        </div>
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${statusTone(openClawStatus?.imageGeneration.status ?? "unknown")}`}>
+                          {openClawStatus?.imageGeneration.status ?? "unknown"}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid gap-4 md:grid-cols-3">
+                        <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                          Provider
+                          <select
+                            value={imageGenerationProvider}
+                            onChange={(event) => {
+                              const nextProvider = event.target.value as ImageGenerationProviderId;
+                              setImageGenerationProvider(nextProvider);
+                              setImageGenerationModel(
+                                imageGenerationProviderPresets[nextProvider].defaultModel,
+                              );
+                              setImageConfigDirty(true);
+                              setImageConfigMessage(null);
+                            }}
+                            className="mt-2 h-11 w-full border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors focus:border-cyan-300/50"
+                          >
+                            {Object.entries(imageGenerationProviderPresets).map(([providerId, preset]) => (
+                              <option key={providerId} value={providerId}>
+                                {preset.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                          Image model
+                          <input
+                            type="text"
+                            value={imageGenerationModel}
+                            onChange={(event) => {
+                              setImageGenerationModel(event.target.value);
+                              setImageConfigDirty(true);
+                              setImageConfigMessage(null);
+                            }}
+                            className="mt-2 h-11 w-full border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50"
+                          />
+                        </label>
+
+                        <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                          Provider key
+                          <input
+                            type="password"
+                            value={imageProviderSecret}
+                            onChange={(event) => {
+                              setImageProviderSecret(event.target.value);
+                              setImageConfigDirty(true);
+                              setImageConfigMessage(null);
+                            }}
+                            placeholder={
+                              openClawStatus?.imageGeneration.authConfigured
+                                ? `Stored locally. Enter a new ${activeImageProviderPreset.secretHint} to rotate it.`
+                                : `Paste ${activeImageProviderPreset.secretHint}`
+                            }
+                            className="mt-2 h-11 w-full border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition-colors placeholder:text-slate-500 focus:border-cyan-300/50"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => void saveImageGenerationConfig()}
+                          disabled={openClawActionPending !== null}
+                          className="inline-flex h-9 items-center justify-center bg-cyan-300 px-3.5 text-sm font-medium text-black transition-colors hover:bg-cyan-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                        >
+                          {openClawActionPending === "save-image"
+                            ? "Saving..."
+                            : "Save image config"}
+                        </button>
+                        <p className="text-xs leading-5 text-slate-500">
+                          Softbox writes the provider key to <code>.env.local</code>. If your gateway
+                          runs outside Softbox, restart it after rotating the key.
+                        </p>
+                      </div>
+                    </div>
                   </section>
 
                   <section className="border border-white/10 bg-black/20 p-5">
@@ -1262,6 +1452,21 @@ export function ShellHostSurface(props: ShellHostSurfaceProps) {
                       </p>
                       <p className="text-xs leading-5 text-slate-500">
                         Routing: {openClawStatus?.config.routingMode ?? "unknown"} · Session prefix: {openClawStatus?.config.sessionKeyPrefix ?? "softbox"}
+                      </p>
+                      <div className="flex items-center justify-between gap-3">
+                        <span>Image generation</span>
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${statusTone(openClawStatus?.imageGeneration.status ?? "unknown")}`}>
+                          {openClawStatus?.imageGeneration.status ?? "unknown"}
+                        </span>
+                      </div>
+                      <p className="text-xs leading-5 text-slate-500">
+                        {openClawStatus?.imageGeneration.message ?? "No image generation information yet."}
+                      </p>
+                      <p className="text-xs leading-5 text-slate-500">
+                        Model: {openClawStatus?.config.imageGenerationModel ?? "unset"}
+                      </p>
+                      <p className="text-xs leading-5 text-slate-500">
+                        Auth env: {(openClawStatus?.imageGeneration.authEnvHints ?? []).join(" / ") || "unknown"}
                       </p>
                     </div>
                   </section>

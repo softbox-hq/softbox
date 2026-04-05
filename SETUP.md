@@ -307,6 +307,36 @@ openclaw gateway run --port 18789 --verbose
 
 If that says the port is already in use, a gateway is already running and the problem is not "gateway missing".
 
+### 5.4 Optional: enable OpenClaw image generation
+
+OpenClaw already exposes the `image_generate` tool when a provider is available.
+
+For the default OpenAI path, put this in `.env.local`:
+
+```env
+OPENAI_API_KEY=<your-openai-api-key>
+```
+
+Softbox can also save this from the desktop OpenClaw panel.
+
+If you want a non-OpenAI image provider, use the provider-specific env var instead:
+
+```env
+GEMINI_API_KEY=
+GOOGLE_API_KEY=
+FAL_KEY=
+MINIMAX_API_KEY=
+MINIMAX_OAUTH_TOKEN=
+```
+
+And make sure OpenClaw has a default image model configured, for example:
+
+```bash
+openclaw config set agents.defaults.imageGenerationModel '"openai/gpt-image-1"' --strict-json
+```
+
+If the gateway is already running, restart it after changing image-provider env vars so the new key is visible to OpenClaw tool calls.
+
 ## 6. Start Redis
 
 If `pnpm setup` did not already start it, run:

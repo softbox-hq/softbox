@@ -1,6 +1,12 @@
 import type { ServiceHealthStatus } from "./serviceStatus";
 
 export type OpenClawRoutingMode = "shared" | "per_app";
+export type OpenClawImageGenerationProvider =
+  | "openai"
+  | "google"
+  | "fal"
+  | "minimax"
+  | "minimax-portal";
 
 export type OpenClawConfigStatus = {
   agentCommand: string | null;
@@ -15,6 +21,7 @@ export type OpenClawConfigStatus = {
   agentId: string | null;
   agentIdPrefix: string | null;
   sessionKeyPrefix: string | null;
+  imageGenerationModel: string | null;
   envFilePath: string;
   openClawConfigPath: string;
 };
@@ -54,6 +61,15 @@ export type OpenClawGatewayRuntime = {
   exitCode: number | null;
 };
 
+export type OpenClawImageGenerationStatus = {
+  status: ServiceHealthStatus;
+  message: string;
+  configuredModel: string | null;
+  configuredProvider: OpenClawImageGenerationProvider | null;
+  authConfigured: boolean;
+  authEnvHints: string[];
+};
+
 export type OpenClawStatus = {
   checkedAt: number;
   config: OpenClawConfigStatus;
@@ -62,6 +78,7 @@ export type OpenClawStatus = {
     message: string;
   };
   devices: OpenClawDeviceStatus;
+  imageGeneration: OpenClawImageGenerationStatus;
   gatewayRuntime: OpenClawGatewayRuntime;
   onboardSession: OpenClawOnboardSession;
 };

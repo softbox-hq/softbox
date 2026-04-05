@@ -24,6 +24,7 @@ import { discoverWrappedApps } from "../worker/src/templates";
 import { systemServices } from "./src/systemServices";
 import type {
   OpenClawGatewayRuntime,
+  OpenClawImageGenerationProvider,
   OpenClawOnboardSession,
   OpenClawStatus,
   OpenClawRoutingMode,
@@ -102,6 +103,35 @@ let openClawGatewayRuntime: MutableGatewayRuntime = {
   ...idleGatewayRuntime(),
   child: null,
 };
+
+const imageGenerationProviderDefaults = {
+  openai: {
+    defaultModel: "openai/gpt-image-1",
+    authEnvHints: ["OPENAI_API_KEY"],
+  },
+  google: {
+    defaultModel: "google/gemini-3.1-flash-image-preview",
+    authEnvHints: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+  },
+  fal: {
+    defaultModel: "fal/fal-ai/flux/dev",
+    authEnvHints: ["FAL_KEY"],
+  },
+  minimax: {
+    defaultModel: "minimax/image-01",
+    authEnvHints: ["MINIMAX_API_KEY"],
+  },
+  "minimax-portal": {
+    defaultModel: "minimax-portal/image-01",
+    authEnvHints: ["MINIMAX_OAUTH_TOKEN", "MINIMAX_API_KEY"],
+  },
+} satisfies Record<
+  OpenClawImageGenerationProvider,
+  {
+    defaultModel: string;
+    authEnvHints: string[];
+  }
+>;
 
 function serializeOnboardSession(): OpenClawOnboardSession {
   return {
@@ -197,6 +227,114 @@ function parseGatewayPort(rawUrl: string | null) {
 
 function inferRoutingMode(agentId: string | null, agentIdPrefix: string | null): OpenClawRoutingMode {
   return agentId ? "shared" : "per_app";
+}
+
+function isImageGenerationProvider(
+  value: string,
+): value is OpenClawImageGenerationProvider {
+  return Object.prototype.hasOwnProperty.call(imageGenerationProviderDefaults, value);
+}
+
+function inferImageGenerationProvider(
+  model: string | null,
+): OpenClawImageGenerationProvider | null {
+  const normalized = model?.trim().toLowerCase() ?? "";
+  if (!normalized.includes("/")) {
+    return null;
+  }
+
+  const provider = normalized.slice(0, normalized.indexOf("/"));
+  return isImageGenerationProvider(provider) ? provider : null;
+}
+
+function defaultImageGenerationModelForProvider(
+  provider: OpenClawImageGenerationProvider,
+): string {
+  return imageGenerationProviderDefaults[provider].defaultModel;
+}
+
+function primaryImageGenerationAuthEnvForProvider(
+  provider: OpenClawImageGenerationProvider,
+): string {
+  return imageGenerationProviderDefaults[provider].authEnvHints[0];
+}
+
+function readConfiguredImageGenerationModel(root: JsonRecord | null): string | null {
+  const configured = readOpenClawConfigValue(root, ["agents", "defaults", "imageGenerationModel"]);
+  if (typeof configured === "string") {
+    return normalizeEnvValue(configured);
+  }
+  if (!configured || typeof configured !== "object" || Array.isArray(configured)) {
+    return null;
+  }
+
+  const primary = (configured as JsonRecord).primary;
+  return typeof primary === "string" ? normalizeEnvValue(primary) : null;
+}
+
+function buildImageGenerationStatus(args: {
+  envSource: string;
+  openClawConfig: JsonRecord | null;
+}): OpenClawStatus["imageGeneration"] {
+  const configuredModel = readConfiguredImageGenerationModel(args.openClawConfig);
+  const configuredProvider = inferImageGenerationProvider(configuredModel);
+  const authEnvHints = configuredProvider
+    ? imageGenerationProviderDefaults[configuredProvider].authEnvHints
+    : [];
+  const authConfigured = authEnvHints.some(
+    (name) =>
+      Boolean(readEnvValue(args.envSource, name)) ||
+      Boolean(normalizeEnvValue(process.env[name])),
+  );
+
+  if (!configuredModel) {
+    return {
+      status: "warning",
+      message:
+        "OpenClaw has no default image generation model configured yet. Softbox can set one locally.",
+      configuredModel: null,
+      configuredProvider: null,
+      authConfigured: false,
+      authEnvHints: [],
+    };
+  }
+
+  if (!configuredProvider) {
+    return {
+      status: "warning",
+      message:
+        `OpenClaw image generation model '${configuredModel}' is set, ` +
+        "but Softbox does not know which provider env var it needs.",
+      configuredModel,
+      configuredProvider: null,
+      authConfigured: false,
+      authEnvHints: [],
+    };
+  }
+
+  if (authConfigured) {
+    return {
+      status: "healthy",
+      message:
+        `${configuredProvider} image generation is configured locally. ` +
+        "If the gateway was already running before this key was added, restart it to pick up the new env.",
+      configuredModel,
+      configuredProvider,
+      authConfigured: true,
+      authEnvHints,
+    };
+  }
+
+  return {
+    status: "warning",
+    message:
+      `${configuredProvider} image generation is configured, ` +
+      `but ${authEnvHints.join(" / ")} is missing from the local env.`,
+    configuredModel,
+    configuredProvider,
+    authConfigured: false,
+    authEnvHints,
+  };
 }
 
 function readOpenClawConfigValue(root: JsonRecord | null, path: string[]) {
@@ -942,7 +1080,12 @@ async function buildOpenClawStatus(): Promise<OpenClawStatus> {
     readEnvValue(envSource, "OPENCLAW_SESSION_KEY_PREFIX") ??
     normalizeEnvValue(process.env.OPENCLAW_SESSION_KEY_PREFIX) ??
     "softbox";
+  const imageGenerationModel = readConfiguredImageGenerationModel(openClawConfig);
   const routingMode = inferRoutingMode(agentId, agentIdPrefix);
+  const imageGeneration = buildImageGenerationStatus({
+    envSource,
+    openClawConfig,
+  });
 
   let gateway: OpenClawStatus["gateway"] = {
     status: gatewayBaseUrl ? "warning" : "error",
@@ -1037,11 +1180,13 @@ async function buildOpenClawStatus(): Promise<OpenClawStatus> {
       agentId,
       agentIdPrefix,
       sessionKeyPrefix,
+      imageGenerationModel,
       envFilePath: envLocalPath,
       openClawConfigPath,
     },
     gateway,
     devices,
+    imageGeneration,
     gatewayRuntime: {
       status: openClawGatewayRuntime.status,
       startedAt: openClawGatewayRuntime.startedAt,
@@ -2318,6 +2463,69 @@ export default defineConfig({
 
             const status = await buildOpenClawStatus();
             writeJson(res, 200, { ok: true, status });
+          } catch (error) {
+            writeJson(res, 500, {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        });
+
+        server.middlewares.use("/__softbox/openclaw/image/configure", async (req, res) => {
+          if (req.method !== "POST") {
+            writeJson(res, 405, { ok: false, error: "Method not allowed" });
+            return;
+          }
+
+          try {
+            const payload = await readJsonBody(req);
+            const rawProvider = String(payload.provider ?? "").trim();
+            const provider = isImageGenerationProvider(rawProvider) ? rawProvider : null;
+            const model = String(payload.model ?? "").trim();
+            const providerSecret = String(payload.providerSecret ?? "").trim();
+
+            if (!provider) {
+              writeJson(res, 400, { ok: false, error: "Choose a supported image provider." });
+              return;
+            }
+
+            const resolvedModel = model || defaultImageGenerationModelForProvider(provider);
+            await runExecFile("openclaw", [
+              "config",
+              "set",
+              "agents.defaults.imageGenerationModel",
+              JSON.stringify(resolvedModel),
+              "--strict-json",
+            ]);
+
+            if (providerSecret) {
+              await updateLocalEnv({
+                [primaryImageGenerationAuthEnvForProvider(provider)]: providerSecret,
+              });
+            }
+
+            let restartedGateway = false;
+            if (openClawGatewayRuntime.child && openClawGatewayRuntime.status === "running") {
+              const statusBeforeRestart = await buildOpenClawStatus();
+              const gatewayToken =
+                readEnvValue(await readEnvFileSource(envLocalPath), "OPENCLAW_GATEWAY_TOKEN") ??
+                normalizeEnvValue(process.env.OPENCLAW_GATEWAY_TOKEN);
+              if (gatewayToken) {
+                await stopOpenClawGatewayRuntime();
+                startOpenClawGatewayRuntime({
+                  gatewayPort: String(statusBeforeRestart.config.gatewayPort ?? 18789),
+                  gatewayToken,
+                });
+                await waitForGatewayReachable(statusBeforeRestart.config.gatewayBaseUrl);
+                restartedGateway = true;
+              }
+            }
+
+            writeJson(res, 200, {
+              ok: true,
+              restartedGateway,
+              status: await buildOpenClawStatus(),
+            });
           } catch (error) {
             writeJson(res, 500, {
               ok: false,
