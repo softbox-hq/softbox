@@ -18,6 +18,7 @@ import { config as loadEnv, parse as parseDotenv } from "dotenv";
 import {
   generateOpaqueAppId,
   isValidAppSlug,
+  isValidOpaqueAppId,
   normalizeAppSlug,
 } from "../worker/src/appIdentity";
 import { discoverWrappedApps } from "../worker/src/templates";
@@ -2607,10 +2608,11 @@ export default defineConfig({
           try {
             const payload = await readJsonBody(req);
             const appId = String(payload.appId ?? "").trim().toLowerCase();
-            if (!/^[a-z0-9][a-z0-9-]*$/.test(appId)) {
+            if (!isValidAppSlug(appId) && !isValidOpaqueAppId(appId)) {
               writeJson(res, 400, {
                 ok: false,
-                error: "App id must use lowercase letters, numbers, and hyphens only.",
+                error:
+                  "App id must be a slug like 'my-app' or an opaque id like 'app_1234abcd'.",
               });
               return;
             }
