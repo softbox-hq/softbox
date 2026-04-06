@@ -221,6 +221,17 @@ export class LiveAppBundler {
       });
     }
 
+    try {
+      const bundledWad = await readFile(join(liveAppRoot, "DOOM.WAD"));
+      artifacts.push({
+        key: sharedArtifactKey(appId, "DOOM.WAD"),
+        body: bundledWad,
+        contentType: contentTypeFor("DOOM.WAD"),
+      });
+    } catch {
+      // Optional local IWAD for Doom-style apps.
+    }
+
     if (!entryUrl) {
       throw new Error("Bundle output did not include entry.js");
     }

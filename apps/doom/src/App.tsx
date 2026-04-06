@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { initialLiveAppState } from "./defaultState";
 import { useSoftboxRuntime } from "./adapter/runtime";
 import doomEngineWasmUrl from "./assets/doom-engine/websockets-doom.wasm";
-import bundledDoomWadUrl from "../DOOM.WAD";
 import "./App.css";
 
 type DoomFrameMessage =
@@ -11,9 +10,11 @@ type DoomFrameMessage =
   | { type: "doom-error"; message: string };
 
 type DoomStatus = typeof initialLiveAppState.status;
+type BundledWadStatus = "checking" | "available" | "missing";
 
 const doomEngineScriptUrl = "https://silentspacemarine.com/websockets-doom.js";
 const bundledDoomWadName = "DOOM.WAD";
+const bundledDoomWadUrl = new URL("DOOM.WAD", doomEngineWasmUrl).toString();
 const doomDefaultConfigText = `use_libsamplerate             0
 aspect_ratio_correct          0
 force_software_renderer       0
@@ -274,12 +275,36 @@ function App() {
   const [frameReady, setFrameReady] = useState(false);
   const [sessionKey, setSessionKey] = useState(0);
   const [wadFile, setWadFile] = useState<File | null>(null);
+  const [bundledWadStatus, setBundledWadStatus] = useState<BundledWadStatus>("checking");
   const [status, setStatus] = useState<DoomStatus>(runtime.initialState.status);
   const [lastError, setLastError] = useState<string | null>(runtime.initialState.lastError);
 
   useEffect(() => {
     runtime.publishState(initialLiveAppState);
   }, [runtime]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkBundledWad() {
+      try {
+        const response = await fetch(bundledDoomWadUrl, { method: "HEAD" });
+        if (!cancelled) {
+          setBundledWadStatus(response.ok ? "available" : "missing");
+        }
+      } catch {
+        if (!cancelled) {
+          setBundledWadStatus("missing");
+        }
+      }
+    }
+
+    checkBundledWad();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function focusDoomFrame() {
     const frame = iframeRef.current;
@@ -328,7 +353,7 @@ function App() {
           setLastError(data.message);
           runtime.publishState({
             status: "error",
-            wadName: wadFile?.name ?? null,
+            wadName: wadFile?.name ?? (bundledWadStatus === "available" ? bundledDoomWadName : null),
             lastError: data.message,
           });
           runtime.reportError({ message: data.message });
@@ -341,10 +366,14 @@ function App() {
     return () => {
       window.removeEventListener("message", onMessage);
     };
-  }, [runtime, wadFile]);
+  }, [bundledWadStatus, runtime, wadFile]);
 
   useEffect(() => {
     if (!frameReady || !iframeRef.current?.contentWindow) {
+      return;
+    }
+
+    if (!wadFile && bundledWadStatus !== "available") {
       return;
     }
 
@@ -370,7 +399,7 @@ function App() {
           },
       "*",
     );
-  }, [frameReady, runtime, wadFile, sessionKey]);
+  }, [bundledWadStatus, frameReady, runtime, wadFile, sessionKey]);
 
   function handleWadSelection(event: ChangeEvent<HTMLInputElement>) {
     const nextFile = event.target.files?.[0];
@@ -388,7 +417,7 @@ function App() {
   }
 
   function restartCurrentWad() {
-    if (!wadFile) {
+    if (!wadFile && bundledWadStatus !== "available") {
       return;
     }
 
@@ -398,93 +427,74 @@ function App() {
     setSessionKey((value) => value + 1);
   }
 
-  async function enterFullscreen() {
-    const iframe = iframeRef.current;
-
-    if (!iframe) {
-      return;
-    }
-
-    if (document.fullscreenElement) {
-      await document.exitFullscreen();
-      return;
-    }
-
-    await iframe.requestFullscreen();
-  }
-
-  const statusLabel =
-    status === "idle"
-      ? "Waiting for a WAD"
-      : status === "loading"
-        ? "Booting Doom"
-        : status === "running"
-          ? "Running"
-          : "Boot failed";
+  const activeWadName = wadFile?.name ?? (bundledWadStatus === "available" ? bundledDoomWadName : null);
+  const showSetupOverlay = bundledWadStatus === "missing" && !wadFile;
+  const showLoadingOverlay = !showSetupOverlay && (bundledWadStatus === "checking" || status === "loading");
+  const showErrorOverlay = status === "error" && Boolean(lastError);
 
   return (
-    <main className="doom-shell">
-      <section className="doom-panel doom-intro">
-        <p className="eyebrow">Softbox / Doom</p>
-        <h1>Browser-hosted Doom with an external WAD.</h1>
-        <p className="lede">
-          This app wraps a WebAssembly Doom engine inside Vite and keeps the
-          Softbox runtime bridge thin. It now boots the bundled
-          <code> DOOM.WAD </code> by default, and you can override it with a
-          local <code>.wad</code> file.
-        </p>
+    <main className="doom-app">
+      <iframe
+        key={sessionKey}
+        ref={iframeRef}
+        title="Doom Engine"
+        className="doom-iframe"
+        tabIndex={0}
+        srcDoc={buildDoomFrameDoc()}
+      />
 
-        <div className="control-row">
-          <label className="file-button">
-            <input type="file" accept=".wad,application/octet-stream" onChange={handleWadSelection} />
-            <span>{wadFile ? "Choose another WAD" : "Choose override WAD"}</span>
-          </label>
-          <button type="button" className="secondary-button" onClick={restartCurrentWad}>
-            Restart
-          </button>
-          <button type="button" className="secondary-button" onClick={enterFullscreen}>
-            Fullscreen
-          </button>
-        </div>
-
-        <dl className="status-grid">
-          <div>
-            <dt>Status</dt>
-            <dd>{statusLabel}</dd>
+      {showLoadingOverlay ? (
+        <div className="doom-overlay">
+          <div className="doom-card doom-card--compact">
+            <p className="doom-kicker">Doom</p>
+            <h1>{bundledWadStatus === "checking" ? "Checking for DOOM.WAD" : "Loading Doom"}</h1>
+            <p>
+              {bundledWadStatus === "checking"
+                ? "Looking for a bundled IWAD in apps/doom."
+                : `Booting ${activeWadName ?? bundledDoomWadName}...`}
+            </p>
           </div>
-          <div>
-            <dt>WAD</dt>
-            <dd>{wadFile?.name ?? `${bundledDoomWadName} (bundled)`}</dd>
-          </div>
-          <div>
-            <dt>Mode</dt>
-            <dd>Bundled IWAD boot with optional local override</dd>
-          </div>
-        </dl>
-
-        <p className="hint">Use the bundled IWAD first. Override only if you want to test another WAD.</p>
-
-        {lastError ? <p className="error-banner">{lastError}</p> : null}
-      </section>
-
-      <section className="doom-panel doom-stage">
-        <div className="stage-header">
-          <span>Engine Frame</span>
-          <span>{wadFile ? wadFile.name : `${bundledDoomWadName} (bundled)`}</span>
         </div>
+      ) : null}
 
-        <div className="stage-frame">
-          <iframe
-            key={sessionKey}
-            ref={iframeRef}
-            title="Doom Engine"
-            className="doom-iframe"
-            tabIndex={0}
-            srcDoc={buildDoomFrameDoc()}
-          />
+      {showSetupOverlay ? (
+        <div className="doom-overlay">
+          <div className="doom-card">
+            <p className="doom-kicker">Setup Required</p>
+            <h1>Add your WAD to the Doom app.</h1>
+            <p>
+              Put your IWAD at <code>apps/doom/DOOM.WAD</code>.
+            </p>
+            <p>
+              Then run <code>pnpm seed -- --app app_adfc5a25</code> so Softbox rebuilds the Doom app version.
+            </p>
+            <p>You can also load a WAD just for this browser session right now.</p>
+            <label className="doom-button">
+              <input type="file" accept=".wad,application/octet-stream" onChange={handleWadSelection} />
+              <span>Load Temporary WAD</span>
+            </label>
+          </div>
         </div>
-        <p className="hint doom-controls-hint">Click inside the game frame, then use arrow keys or WASD.</p>
-      </section>
+      ) : null}
+
+      {showErrorOverlay ? (
+        <div className="doom-overlay">
+          <div className="doom-card">
+            <p className="doom-kicker">Boot Failed</p>
+            <h1>Doom did not start cleanly.</h1>
+            <p>{lastError}</p>
+            <div className="doom-actions">
+              <button type="button" className="doom-button doom-button--button" onClick={restartCurrentWad}>
+                Retry
+              </button>
+              <label className="doom-button">
+                <input type="file" accept=".wad,application/octet-stream" onChange={handleWadSelection} />
+                <span>Choose Another WAD</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
