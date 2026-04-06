@@ -1,52 +1,63 @@
-.clean-slate {
-  flex: 1;
+.game-shell {
   min-height: 100svh;
+  width: 100%;
   display: grid;
   place-items: center;
-  padding: 32px;
-  box-sizing: border-box;
+  padding: 0;
 }
 
-.clean-slate__card {
-  width: min(100%, 560px);
-  padding: 40px;
-  border: 1px solid var(--border);
-  border-radius: 24px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.9)),
-    var(--panel);
-  box-shadow: var(--shadow);
+.board {
+  position: relative;
+  width: min(100svh, 100vw);
+  height: min(100svh, 100vw);
+  display: grid;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  outline: none;
+  background: #050b16;
 }
 
-.clean-slate__eyebrow {
-  display: inline-block;
-  margin-bottom: 16px;
-  padding: 6px 10px;
+.board:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.cell {
+  background: var(--cell);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.06);
+}
+
+.cell--snake {
+  background: linear-gradient(180deg, var(--snake), var(--snake-dark));
+}
+
+.cell--head {
+  background: linear-gradient(180deg, var(--snake-head), var(--snake));
+}
+
+.cell--apple {
+  background: radial-gradient(circle at 35% 35%, #fff1f2, var(--apple) 58%, var(--apple-dark));
+}
+
+.board__overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(2, 6, 23, 0.32);
+}
+
+.overlay-button {
+  appearance: none;
+  border: 0;
   border-radius: 999px;
-  font-size: 0.75rem;
+  padding: 16px 24px;
+  background: rgba(15, 23, 42, 0.8);
+  color: white;
+  font: inherit;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.clean-slate h1 {
-  margin: 0 0 12px;
-}
-
-.clean-slate p {
-  max-width: 32ch;
-  color: var(--text-muted);
-}
-
-@media (max-width: 640px) {
-  .clean-slate {
-    padding: 20px;
-  }
-
-  .clean-slate__card {
-    padding: 28px;
-    border-radius: 20px;
-  }
+  cursor: pointer;
+  backdrop-filter: blur(6px);
 }
