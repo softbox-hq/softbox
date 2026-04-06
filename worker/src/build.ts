@@ -25,17 +25,19 @@ export type BuildVersionResult = {
 };
 
 function contentTypeFor(fileName: string): string {
-  if (fileName.endsWith(".json")) return "application/json";
-  if (fileName.endsWith(".js")) return "application/javascript";
-  if (fileName.endsWith(".css")) return "text/css";
-  if (fileName.endsWith(".map")) return "application/json";
-  if (fileName.endsWith(".svg")) return "image/svg+xml";
-  if (fileName.endsWith(".png")) return "image/png";
-  if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) return "image/jpeg";
-  if (fileName.endsWith(".gif")) return "image/gif";
-  if (fileName.endsWith(".webp")) return "image/webp";
-  if (fileName.endsWith(".wasm")) return "application/wasm";
-  if (fileName.endsWith(".sqlite")) return "application/x-sqlite3";
+  const normalizedName = fileName.toLowerCase();
+  if (normalizedName.endsWith(".json")) return "application/json";
+  if (normalizedName.endsWith(".js")) return "application/javascript";
+  if (normalizedName.endsWith(".css")) return "text/css";
+  if (normalizedName.endsWith(".map")) return "application/json";
+  if (normalizedName.endsWith(".svg")) return "image/svg+xml";
+  if (normalizedName.endsWith(".png")) return "image/png";
+  if (normalizedName.endsWith(".jpg") || normalizedName.endsWith(".jpeg")) return "image/jpeg";
+  if (normalizedName.endsWith(".gif")) return "image/gif";
+  if (normalizedName.endsWith(".webp")) return "image/webp";
+  if (normalizedName.endsWith(".wasm")) return "application/wasm";
+  if (normalizedName.endsWith(".sqlite")) return "application/x-sqlite3";
+  if (normalizedName.endsWith(".wad")) return "application/octet-stream";
   return "application/octet-stream";
 }
 
@@ -135,6 +137,8 @@ export class LiveAppBundler {
         ".gif": "file",
         ".webp": "file",
         ".wasm": "file",
+        ".wad": "file",
+        ".WAD": "file",
         ".sqlite": "file",
       },
       plugins: [

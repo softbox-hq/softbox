@@ -40,14 +40,19 @@ function DesktopActionCard(props, ref) {
       } ${className}`}
     >
       <span
-        className={`pointer-events-none flex size-[72px] items-center justify-center overflow-hidden rounded-[1.35rem] shadow-[0_16px_30px_rgba(0,0,0,0.28)] transition-transform group-hover:scale-[1.03] ${
+        className={`pointer-events-none flex size-[72px] items-center justify-center transition-transform group-hover:scale-[1.03] ${
           iconSrc
-            ? "bg-transparent"
+            ? ""
             : "border border-white/10 bg-[linear-gradient(180deg,rgba(148,163,184,0.22),rgba(15,23,42,0.9))]"
         }`}
       >
         {iconSrc ? (
-          <img src={iconSrc} alt="" className="pointer-events-none size-full object-contain" draggable={false} />
+          <img
+            src={iconSrc}
+            alt=""
+            className="pointer-events-none max-h-full max-w-full object-contain"
+            draggable={false}
+          />
         ) : (
           <span className="pointer-events-none text-lg font-semibold tracking-[0.08em] text-slate-100">
             {fallbackLabel}
