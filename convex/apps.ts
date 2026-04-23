@@ -203,12 +203,12 @@ async function syncAppFiles(
   appId: string,
   files: Array<{ path: string; content: string }>,
 ) {
-  const existingFiles = await ctx.db
+  const existingFiles: any[] = await ctx.db
     .query("appFiles")
     .withIndex("by_appId", (q: any) => q.eq("appId", appId))
     .collect();
 
-  const existingByPath = new Map(existingFiles.map((file: any) => [file.path, file]));
+  const existingByPath = new Map<string, any>(existingFiles.map((file: any) => [file.path, file]));
   const nextPaths = new Set(files.map((file) => file.path));
 
   for (const file of files) {
