@@ -8,7 +8,11 @@ import { config as loadEnv, parse as parseDotenv } from "dotenv";
 import type { ServiceHealthStatus, ServiceStatus as DesktopServiceStatus } from "../shell/src/serviceStatus";
 import { systemServices } from "../shell/src/systemServices";
 import { ensureOpenClawAgentIdPrefixInEnvFile } from "../worker/src/openClawRouting";
-import { parseS3ApiUrl } from "../worker/src/config";
+import {
+  checkLocalMinioPublicProbe,
+  ensureLocalMinioBucket,
+  loadLocalMinioConfig,
+} from "../worker/src/localMinio";
 
 type Mode = "quiet" | "verbose";
 type ServiceName = "shell" | "convex" | "worker" | "agents";
@@ -393,18 +397,8 @@ async function checkHttpHealth(url: string, label: string): Promise<{ ok: boolea
 }
 
 function isLocalMinioProviderConfigured(): boolean {
-  if ((process.env.ARTIFACT_STORAGE_PROVIDER ?? "r2").trim().toLowerCase() !== "minio") {
-    return false;
-  }
-
-  const s3Api = process.env.MINIO_S3_API?.trim();
-  if (!s3Api) {
-    return true;
-  }
-
   try {
-    const parsed = parseS3ApiUrl(s3Api);
-    return isLocalHttpUrl(parsed.endpoint);
+    return loadLocalMinioConfig(process.env) !== null;
   } catch {
     return true;
   }
@@ -438,6 +432,21 @@ function summarizeSyncLines(lines: string[]): { detail: string; warnings: string
   };
 }
 
+function summarizeSyncFailure(rawMessage: string): string {
+  const message = stripAnsi(rawMessage);
+  if (/scope upgrade pending approval|pairing required/i.test(message)) {
+    return "OpenClaw agent sync needs pairing approval. Approve the pending device request, then retry.";
+  }
+
+  const lastLine = message
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .pop();
+
+  return lastLine ?? "OpenClaw agent sync failed.";
+}
+
 function classifyEventLevel(line: string, stream: StreamKind): EventLevel {
   if (/\b(error|failed|crashed)\b/i.test(line)) {
     return "error";
@@ -455,7 +464,7 @@ function createInitialState(options: RuntimeOptions): DashboardState {
 
   const agentDetail = options.syncAgents
     ? "Queued"
-    : "Manual. Run pnpm worker:openclaw-sync-agents -- --apply";
+    : "Disabled for this start run";
 
   return {
     desktopServices: createInitialDesktopServices(),
@@ -1199,11 +1208,46 @@ class DevRuntime {
       return;
     }
 
-    const s3Api = process.env.MINIO_S3_API?.trim();
-    let endpoint = "http://127.0.0.1:9000";
-    if (s3Api) {
+    let localMinio: ReturnType<typeof loadLocalMinioConfig>;
+    try {
+      localMinio = loadLocalMinioConfig(process.env);
+    } catch (error) {
+      this.updateDesktopService("Artifact Storage", {
+        status: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+
+    if (!localMinio) {
+      this.updateDesktopService("Artifact Storage", {
+        status: "warning",
+        message: "Artifact storage auto-start is only supported for local MinIO.",
+      });
+      return;
+    }
+
+    const initial = await checkHttpHealth(localMinio.healthUrl, "MinIO health endpoint");
+    if (initial.ok) {
       try {
-        endpoint = parseS3ApiUrl(s3Api).endpoint;
+        const ensured = await ensureLocalMinioBucket(localMinio);
+        const publicProbe = await checkLocalMinioPublicProbe(localMinio);
+        if (!publicProbe.ok) {
+          throw new Error(publicProbe.message);
+        }
+
+        this.updateDesktopService("Artifact Storage", {
+          status: "healthy",
+          message: "Local MinIO is ready for preview and live artifacts.",
+        });
+        this.pushEvent(
+          "success",
+          "worker",
+          ensured.bucketCreated
+            ? `Local MinIO bucket '${localMinio.bucket}' created and initialized.`
+            : "Local MinIO is reachable.",
+        );
+        return;
       } catch (error) {
         this.updateDesktopService("Artifact Storage", {
           status: "error",
@@ -1211,15 +1255,6 @@ class DevRuntime {
         });
         return;
       }
-    }
-    const healthUrl = `${endpoint.replace(/\/+$/, "")}/minio/health/live`;
-    const initial = await checkHttpHealth(healthUrl, "MinIO health endpoint");
-    if (initial.ok) {
-      this.updateDesktopService("Artifact Storage", {
-        status: "healthy",
-        message: "Local MinIO is ready for preview and live artifacts.",
-      });
-      return;
     }
 
     this.pushEvent("info", "worker", "Artifact storage is not healthy. Starting local MinIO.");
@@ -1242,22 +1277,44 @@ class DevRuntime {
 
     let latest = initial;
     for (let attempt = 0; attempt < 20; attempt += 1) {
-      latest = await checkHttpHealth(healthUrl, "MinIO health endpoint");
+      latest = await checkHttpHealth(localMinio.healthUrl, "MinIO health endpoint");
       if (latest.ok) {
         break;
       }
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 1000));
     }
 
-    this.updateDesktopService("Artifact Storage", {
-      status: latest.ok ? "healthy" : "error",
-      message: latest.ok
-        ? "Local MinIO is ready for preview and live artifacts."
-        : latest.message,
-    });
+    if (!latest.ok) {
+      this.updateDesktopService("Artifact Storage", {
+        status: "error",
+        message: latest.message,
+      });
+      return;
+    }
 
-    if (latest.ok) {
-      this.pushEvent("success", "worker", "Local MinIO is reachable.");
+    try {
+      const ensured = await ensureLocalMinioBucket(localMinio);
+      const publicProbe = await checkLocalMinioPublicProbe(localMinio);
+      if (!publicProbe.ok) {
+        throw new Error(publicProbe.message);
+      }
+
+      this.updateDesktopService("Artifact Storage", {
+        status: "healthy",
+        message: "Local MinIO is ready for preview and live artifacts.",
+      });
+      this.pushEvent(
+        "success",
+        "worker",
+        ensured.bucketCreated
+          ? `Local MinIO bucket '${localMinio.bucket}' created and initialized.`
+          : "Local MinIO is reachable.",
+      );
+    } catch (error) {
+      this.updateDesktopService("Artifact Storage", {
+        status: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -1401,25 +1458,9 @@ class DevRuntime {
 
   private async syncAgentsIfNeeded(): Promise<void> {
     if (!this.options.syncAgents) {
-      if (!isOpenClawCommand(this.options.agentCommand)) {
-        this.updateService("agents", {
-          status: "skipped",
-          detail: `Disabled for agent command '${this.options.agentCommand}'`,
-        });
-        return;
-      }
-
-      if (this.options.sharedOpenClawAgentId) {
-        this.updateService("agents", {
-          status: "skipped",
-          detail: "Shared OPENCLAW_AGENT_ID configured",
-        });
-        return;
-      }
-
       this.updateService("agents", {
         status: "skipped",
-        detail: "Manual. Run pnpm worker:openclaw-sync-agents -- --apply",
+        detail: "Disabled for this start run",
       });
       return;
     }
@@ -1456,21 +1497,30 @@ class DevRuntime {
     });
     this.pushEvent("info", "agents", "Syncing OpenClaw agents for this checkout.");
 
-    const lines = await this.runOneShotCommand(
-      "pnpm",
-      ["worker:openclaw-sync-agents", "--", "--apply"],
-      "agents",
-    );
+    try {
+      const lines = await this.runOneShotCommand(
+        "pnpm",
+        ["worker:openclaw-sync-agents", "--", "--apply"],
+        "agents",
+      );
 
-    const { detail, warnings } = summarizeSyncLines(lines);
-    this.updateService("agents", {
-      status: "ready",
-      detail,
-    });
-    this.pushEvent("success", "agents", detail);
+      const { detail, warnings } = summarizeSyncLines(lines);
+      this.updateService("agents", {
+        status: "ready",
+        detail,
+      });
+      this.pushEvent("success", "agents", detail);
 
-    for (const warning of warnings) {
-      this.pushEvent("warn", "agents", warning.replace("[sync-openclaw-agents] ", ""));
+      for (const warning of warnings) {
+        this.pushEvent("warn", "agents", warning.replace("[sync-openclaw-agents] ", ""));
+      }
+    } catch (error) {
+      const detail = summarizeSyncFailure(error instanceof Error ? error.message : String(error));
+      this.updateService("agents", {
+        status: "error",
+        detail,
+      });
+      this.pushEvent("warn", "agents", detail);
     }
   }
 
@@ -1749,9 +1799,9 @@ async function main(): Promise<void> {
 
   const args = new Set(process.argv.slice(2));
   if (args.has("--help") || args.has("-h")) {
-    console.log("Usage: pnpm start [-- --verbose] [--sync-agents]");
+    console.log("Usage: pnpm start [-- --verbose] [--no-sync-agents]");
     console.log("  --verbose      Show raw child-process logs instead of the Ink dashboard.");
-    console.log("  --sync-agents  Run pnpm worker:openclaw-sync-agents -- --apply before worker startup.");
+    console.log("  --no-sync-agents  Skip the automatic OpenClaw per-app agent sync before worker startup.");
     return;
   }
 
@@ -1783,7 +1833,7 @@ async function main(): Promise<void> {
     agentCommand,
     sharedOpenClawAgentId,
     mode,
-    syncAgents: args.has("--sync-agents"),
+    syncAgents: !args.has("--no-sync-agents"),
   });
 
   if (openClawRouting.updated && openClawRouting.prefix) {
@@ -1806,8 +1856,8 @@ async function main(): Promise<void> {
     if (!onboardingDone) {
       console.log("[start] onboarding mode detected; starting the shell first");
     }
-    if (args.has("--sync-agents")) {
-      console.log("[start] OpenClaw agent sync is enabled for this start run");
+    if (args.has("--no-sync-agents")) {
+      console.log("[start] automatic OpenClaw agent sync is disabled for this run");
     }
   }
 

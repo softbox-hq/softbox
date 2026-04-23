@@ -16,6 +16,7 @@
     "../worker/src/appIdentity.ts",
     "../worker/src/boxes.ts",
     "../worker/src/config.ts",
+    "../worker/src/localMinio.ts",
     "../worker/src/loadEnv.ts",
     "../worker/src/openClawAgents.ts",
     "../worker/src/openClawRouting.ts",

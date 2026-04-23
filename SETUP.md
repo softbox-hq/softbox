@@ -47,6 +47,7 @@ What `pnpm run bootstrap` does:
 - generates a checkout-scoped `OPENCLAW_AGENT_ID_PREFIX` when that field is blank
 - starts Redis with Docker if Docker is available
 - starts MinIO too when `.env.local` is using the local MinIO artifact-storage mode
+- when local MinIO is configured, creates the bucket, enables public reads, and writes the probe object Softbox checks
 
 `pnpm run bootstrap` does not finish the whole install. You still need to fill `.env.local`.
 
@@ -394,6 +395,10 @@ This starts:
 - Convex
 - the worker
 - the shell
+
+`pnpm start` also:
+- auto-provisions the local MinIO bucket/probe if local MinIO is enabled
+- auto-syncs per-app OpenClaw agents unless you pass `--no-sync-agents`
 
 The shell URL is usually:
 

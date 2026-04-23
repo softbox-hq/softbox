@@ -1759,20 +1759,16 @@ export default defineConfig({
           }
 
           let healthy = false;
-          let healthMessage = composeRunning
-            ? `MinIO health endpoint is not responding at ${minioOnboardingHealthUrl}.`
-            : "MinIO is not running yet, so the health endpoint is unavailable.";
+          let healthMessage = `MinIO health endpoint is not responding at ${minioOnboardingHealthUrl}.`;
 
-          if (composeRunning) {
-            try {
-              const response = await fetchWithTimeout(minioOnboardingHealthUrl, { method: "GET" });
-              healthy = response.ok;
-              healthMessage = response.ok
-                ? `MinIO health endpoint responded from ${minioOnboardingHealthUrl}.`
-                : `MinIO health endpoint returned ${response.status}.`;
-            } catch (error) {
-              healthMessage = error instanceof Error ? error.message : String(error);
-            }
+          try {
+            const response = await fetchWithTimeout(minioOnboardingHealthUrl, { method: "GET" });
+            healthy = response.ok;
+            healthMessage = response.ok
+              ? `MinIO health endpoint responded from ${minioOnboardingHealthUrl}.`
+              : `MinIO health endpoint returned ${response.status}.`;
+          } catch (error) {
+            healthMessage = error instanceof Error ? error.message : String(error);
           }
 
           let bucketReady = false;
@@ -1858,7 +1854,7 @@ export default defineConfig({
               valuesMatch,
               message: envMessage,
             },
-            ready: docker.usable && composeRunning && healthy && bucketReady && publicProbeReachable && valuesMatch,
+            ready: healthy && bucketReady && publicProbeReachable && valuesMatch,
           };
         }
 
@@ -2894,10 +2890,6 @@ export default defineConfig({
                 if (minioStatus.ready) {
                   status = "healthy";
                   message = "Local MinIO is ready for preview and live artifacts.";
-                } else if (!minioStatus.docker.installed || !minioStatus.docker.usable) {
-                  message = minioStatus.docker.message;
-                } else if (!minioStatus.minio.composeRunning) {
-                  message = minioStatus.minio.composeMessage;
                 } else if (!minioStatus.minio.healthy) {
                   message = minioStatus.minio.healthMessage;
                 } else if (!minioStatus.minio.bucketReady) {
@@ -2908,6 +2900,12 @@ export default defineConfig({
                 } else if (!minioStatus.env.valuesMatch) {
                   status = "warning";
                   message = minioStatus.env.message;
+                } else if (!minioStatus.docker.installed || !minioStatus.docker.usable) {
+                  status = "warning";
+                  message = minioStatus.docker.message;
+                } else if (!minioStatus.minio.composeRunning) {
+                  status = "warning";
+                  message = minioStatus.minio.composeMessage;
                 }
 
                 return {

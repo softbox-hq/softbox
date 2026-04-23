@@ -115,7 +115,7 @@ pnpm run bootstrap
 
 Use `pnpm run bootstrap`, not `pnpm setup`. `setup` is a pnpm built-in command, so the repo bootstrap script must be invoked through `run`.
 
-`pnpm run bootstrap` copies `.env.local` from `.env.example`, fills the checkout-scoped OpenClaw prefix, and starts local Docker services for the current artifact-storage mode. On a fresh clone that means Redis + MinIO.
+`pnpm run bootstrap` copies `.env.local` from `.env.example`, fills the checkout-scoped OpenClaw prefix, starts local Docker services for the current artifact-storage mode, and when you use local MinIO it also creates the bucket, enables public reads, and writes the probe object Softbox checks. On a fresh clone that means Redis + MinIO.
 
 If you skip `pnpm run bootstrap`, start the local services yourself:
 
@@ -145,6 +145,7 @@ Notes:
 - leave `OPENCLAW_AGENT_ID_PREFIX` blank unless you intentionally want a custom prefix; `pnpm run bootstrap` and `pnpm start` will generate a checkout-scoped value automatically so multiple local clones do not collide in OpenClaw
 - queueing is handled by BullMQ in the worker process; Redis is the only extra service you need to run locally
 - `pnpm start` starts Convex, the worker, and the shell together
+- `pnpm start` auto-provisions the local MinIO bucket/probe when you use local MinIO and auto-syncs per-app OpenClaw agents unless you pass `--no-sync-agents`
 - if `pnpm start` reports a missing package such as `bullmq`, the repo install is incomplete; rerun `pnpm install` at the repo root
 - use `pnpm run doctor` instead of `pnpm doctor` because `doctor` is a reserved pnpm command
 
@@ -203,7 +204,7 @@ That command now does the full local onboarding flow for a supported Softbox app
 4. runs `pnpm wrap-app -- --path apps/<your-app>` when wrapping is needed
 5. runs `pnpm run doctor`
 6. runs `pnpm seed -- --app <your-app>`
-7. in per-app OpenClaw mode, runs `pnpm worker:openclaw-sync-agents -- --apply`
+7. starts normally; `pnpm start` auto-syncs per-app OpenClaw agents
 8. sets the new app as the default shell selection so the shell can mount it on refresh
 
 Current starters:

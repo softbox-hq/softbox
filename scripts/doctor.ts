@@ -341,7 +341,7 @@ async function main(): Promise<void> {
             "fail",
             "OpenClaw agent",
             isPerAppOpenClawRouting({ agentIdPrefix: openClawAgentIdPrefix || null })
-              ? `Expected agent '${expectedAgentId}' for app '${openClawCheckApp.appId}'. Run 'pnpm worker:openclaw-sync-agents -- --apply'.`
+              ? `Expected agent '${expectedAgentId}' for app '${openClawCheckApp.appId}'. Run 'pnpm start' once or 'pnpm worker:openclaw-sync-agents -- --apply'.`
               : `Configured agent '${expectedAgentId}' was not found in OpenClaw.`,
           );
         } else if (
@@ -363,7 +363,7 @@ async function main(): Promise<void> {
             results,
             "warn",
             "OpenClaw agent",
-            `Agent '${expectedAgentId}' uses model '${matchingAgent.model}', expected '${normalizedAgentModel}'. Run 'pnpm worker:openclaw-sync-agents -- --apply' to repair it.`,
+            `Agent '${expectedAgentId}' uses model '${matchingAgent.model}', expected '${normalizedAgentModel}'. Run 'pnpm start' once or 'pnpm worker:openclaw-sync-agents -- --apply' to repair it.`,
           );
         } else {
           pushResult(
