@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { initialLiveAppState } from "./defaultState";
 import { useSoftboxRuntime } from "./adapter/runtime";
 import doomEngineWasmUrl from "./assets/doom-engine/websockets-doom.wasm";
+import bundledDoomWadUrl from "../DOOM.WAD";
 import "./App.css";
 
 type DoomFrameMessage =
@@ -14,7 +15,6 @@ type BundledWadStatus = "checking" | "available" | "missing";
 
 const doomEngineScriptUrl = "https://silentspacemarine.com/websockets-doom.js";
 const bundledDoomWadName = "DOOM.WAD";
-const bundledDoomWadUrl = new URL("DOOM.WAD", doomEngineWasmUrl).toString();
 const doomDefaultConfigText = `use_libsamplerate             0
 aspect_ratio_correct          0
 force_software_renderer       0

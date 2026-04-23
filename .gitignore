@@ -14,8 +14,7 @@ apps/**/IDENTITY.md
 apps/**/SOUL.md
 apps/**/TOOLS.md
 apps/**/USER.md
-apps/doom/*.wad
-apps/doom/*.WAD
+apps/doom/DOOM-original.WAD
 .archive
 .convex
 .env.local
