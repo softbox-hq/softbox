@@ -873,7 +873,7 @@ async function scrubLegacyTemplateIds(ctx: any): Promise<void> {
 async function deleteAppDataRecords(ctx: any, appId: string) {
   const boxes = await ctx.db
     .query("boxes")
-    .withIndex("by_appId", (q) => q.eq("appId", appId))
+    .withIndex("by_appId", (q: any) => q.eq("appId", appId))
     .collect();
   for (const box of boxes) {
     await ctx.db.delete(box._id);
@@ -881,7 +881,7 @@ async function deleteAppDataRecords(ctx: any, appId: string) {
 
   const pipelineStages = await ctx.db
     .query("pipelineStages")
-    .withIndex("by_appId_and_startedAt", (q) => q.eq("appId", appId))
+    .withIndex("by_appId_and_startedAt", (q: any) => q.eq("appId", appId))
     .collect();
   for (const stage of pipelineStages) {
     await ctx.db.delete(stage._id);
@@ -889,7 +889,7 @@ async function deleteAppDataRecords(ctx: any, appId: string) {
 
   const pipelineRuns = await ctx.db
     .query("pipelineRuns")
-    .withIndex("by_appId_and_submittedAt", (q) => q.eq("appId", appId))
+    .withIndex("by_appId_and_submittedAt", (q: any) => q.eq("appId", appId))
     .collect();
   for (const run of pipelineRuns) {
     await ctx.db.delete(run._id);
@@ -897,7 +897,7 @@ async function deleteAppDataRecords(ctx: any, appId: string) {
 
   const runtimeErrors = await ctx.db
     .query("runtimeErrors")
-    .withIndex("by_appId_and_createdAt", (q) => q.eq("appId", appId))
+    .withIndex("by_appId_and_createdAt", (q: any) => q.eq("appId", appId))
     .collect();
   for (const error of runtimeErrors) {
     await ctx.db.delete(error._id);
@@ -905,7 +905,7 @@ async function deleteAppDataRecords(ctx: any, appId: string) {
 
   const versions = await ctx.db
     .query("versions")
-    .withIndex("by_appId_and_versionNumber", (q) => q.eq("appId", appId))
+    .withIndex("by_appId_and_versionNumber", (q: any) => q.eq("appId", appId))
     .collect();
   for (const version of versions) {
     await ctx.db.delete(version._id);
@@ -913,7 +913,7 @@ async function deleteAppDataRecords(ctx: any, appId: string) {
 
   const appFiles = await ctx.db
     .query("appFiles")
-    .withIndex("by_appId", (q) => q.eq("appId", appId))
+    .withIndex("by_appId", (q: any) => q.eq("appId", appId))
     .collect();
   for (const file of appFiles) {
     await ctx.db.delete(file._id);
@@ -921,7 +921,7 @@ async function deleteAppDataRecords(ctx: any, appId: string) {
 
   const jobs = await ctx.db
     .query("jobs")
-    .withIndex("by_appId_and_submittedAt", (q) => q.eq("appId", appId))
+    .withIndex("by_appId_and_submittedAt", (q: any) => q.eq("appId", appId))
     .collect();
   for (const job of jobs) {
     await ctx.db.delete(job._id);
@@ -969,7 +969,7 @@ export const getShellState = query({
 
     const readyVersions = await ctx.db
       .query("versions")
-      .withIndex("by_appId_and_status", (q) =>
+      .withIndex("by_appId_and_status", (q: any) =>
         q.eq("appId", args.appId).eq("status", "ready"),
       )
       .collect();
