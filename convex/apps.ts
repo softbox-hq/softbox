@@ -198,6 +198,44 @@ async function getArtifactPurgeTaskByAppId(ctx: any, appId: string) {
     .first();
 }
 
+async function syncAppFiles(
+  ctx: any,
+  appId: string,
+  files: Array<{ path: string; content: string }>,
+) {
+  const existingFiles = await ctx.db
+    .query("appFiles")
+    .withIndex("by_appId", (q: any) => q.eq("appId", appId))
+    .collect();
+
+  const existingByPath = new Map(existingFiles.map((file: any) => [file.path, file]));
+  const nextPaths = new Set(files.map((file) => file.path));
+
+  for (const file of files) {
+    const existing = existingByPath.get(file.path);
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        content: file.content,
+        updatedAt: Date.now(),
+      });
+      continue;
+    }
+
+    await ctx.db.insert("appFiles", {
+      appId,
+      path: file.path,
+      content: file.content,
+      updatedAt: Date.now(),
+    });
+  }
+
+  for (const existing of existingFiles) {
+    if (!nextPaths.has(existing.path)) {
+      await ctx.db.delete(existing._id);
+    }
+  }
+}
+
 function sortBoxesForApp(boxes: any[], appId: string) {
   return [...boxes].sort((left, right) => {
     const leftPrimary = left.boxId === `${left.engine ?? "openclaw"}:${appId}` ? 0 : 1;
@@ -1934,18 +1972,59 @@ export const seedApp = mutation({
     stateJson: v.string(),
   },
   handler: async (ctx, args) => {
+    const now = Date.now();
     const existingApp = await ctx.db
       .query("apps")
       .withIndex("by_appId", (q) => q.eq("appId", args.appId))
       .first();
 
     if (existingApp) {
+      const versions = await ctx.db
+        .query("versions")
+        .withIndex("by_appId_and_versionNumber", (q) => q.eq("appId", args.appId))
+        .collect();
+      const nextVersionNumber = highestVersionNumber(versions) + 1;
+      const versionId = await ctx.db.insert("versions", {
+        appId: args.appId,
+        versionNumber: nextVersionNumber,
+        status: "active",
+        manifestUrl: args.manifestUrl,
+        buildLog: args.buildLog,
+        runtimeHealth: "healthy",
+        stateJson: args.stateJson,
+        createdAt: now,
+      });
+
+      if (existingApp.activeVersionId && existingApp.activeVersionId !== versionId) {
+        const previousActiveVersion = await ctx.db.get(existingApp.activeVersionId);
+        if (previousActiveVersion && previousActiveVersion.status === "active") {
+          await ctx.db.patch(previousActiveVersion._id, {
+            status: "ready",
+          });
+        }
+      }
+
+      await syncAppFiles(ctx, args.appId, args.files);
+
+      const patch: Record<string, unknown> = {
+        name: existingApp.name || args.name,
+        slug: existingApp.slug || args.slug,
+        activeVersionId: versionId,
+        previewCursorVersionNumber: nextVersionNumber,
+        currentStateJson: args.stateJson,
+        lastBuildError: null,
+        lastRuntimeError: null,
+        updatedAt: now,
+      };
+      if (args.description !== undefined) {
+        patch.description = args.description ?? null;
+      }
+      if (args.iconAssetPath !== undefined) {
+        patch.iconAssetPath = args.iconAssetPath ?? null;
+      }
+
       await ctx.db.patch(existingApp._id, {
-        name: args.name,
-        slug: args.slug,
-        description: args.description ?? null,
-        iconAssetPath: args.iconAssetPath ?? null,
-        updatedAt: Date.now(),
+        ...patch,
       });
       return existingApp._id;
     }
@@ -1958,7 +2037,7 @@ export const seedApp = mutation({
       buildLog: args.buildLog,
       runtimeHealth: "healthy",
       stateJson: args.stateJson,
-      createdAt: Date.now(),
+      createdAt: now,
     });
 
     const appId = await ctx.db.insert("apps", {
@@ -1978,17 +2057,10 @@ export const seedApp = mutation({
       currentStateJson: args.stateJson,
       lastBuildError: null,
       lastRuntimeError: null,
-      updatedAt: Date.now(),
+      updatedAt: now,
     });
 
-    for (const file of args.files) {
-      await ctx.db.insert("appFiles", {
-        appId: args.appId,
-        path: file.path,
-        content: file.content,
-        updatedAt: Date.now(),
-      });
-    }
+    await syncAppFiles(ctx, args.appId, args.files);
 
     return appId;
   },
