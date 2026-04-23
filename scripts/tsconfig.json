@@ -20,6 +20,7 @@
     "../worker/src/loadEnv.ts",
     "../worker/src/openClawAgents.ts",
     "../worker/src/openClawRouting.ts",
+    "../worker/src/shared/convexApi.ts",
     "../worker/src/shared/liveApp.ts",
     "../worker/src/templates.ts"
   ]

@@ -145,7 +145,7 @@ Notes:
 - leave `OPENCLAW_AGENT_ID_PREFIX` blank unless you intentionally want a custom prefix; `pnpm run bootstrap` and `pnpm start` will generate a checkout-scoped value automatically so multiple local clones do not collide in OpenClaw
 - queueing is handled by BullMQ in the worker process; Redis is the only extra service you need to run locally
 - `pnpm start` starts Convex, the worker, and the shell together
-- `pnpm start` auto-provisions the local MinIO bucket/probe when you use local MinIO and auto-syncs per-app OpenClaw agents unless you pass `--no-sync-agents`
+- `pnpm start` auto-provisions the local MinIO bucket/probe when you use local MinIO, seeds wrapped apps that still have no live version, and auto-syncs per-app OpenClaw agents unless you pass `--no-auto-seed` / `--no-sync-agents`
 - if `pnpm start` reports a missing package such as `bullmq`, the repo install is incomplete; rerun `pnpm install` at the repo root
 - use `pnpm run doctor` instead of `pnpm doctor` because `doctor` is a reserved pnpm command
 
@@ -167,6 +167,7 @@ That opens an arrow-key picker over wrapped apps and seeds the one you choose.
 It also includes a `Seed all wrapped apps` choice.
 For automation, run `pnpm seed -- --app <app-id>` or `pnpm seed -- --all`.
 On a fresh clone, Softbox now auto-installs app-local dependencies for the selected app before building it.
+`pnpm start` also auto-seeds wrapped apps that still have no live version, so manual `pnpm seed` is mainly for explicit reseeds or repairs.
 After that, switch mounted apps from the shell UI instead of changing env vars.
 
 If you already have older local Convex data from the pre-migration `templateId` architecture, inspect it first and then apply the rewrite once:

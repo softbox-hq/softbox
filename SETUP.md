@@ -398,6 +398,7 @@ This starts:
 
 `pnpm start` also:
 - auto-provisions the local MinIO bucket/probe if local MinIO is enabled
+- auto-seeds wrapped apps that still have no live version unless you pass `--no-auto-seed`
 - auto-syncs per-app OpenClaw agents unless you pass `--no-sync-agents`
 
 The shell URL is usually:
@@ -410,9 +411,14 @@ If port `4173` is busy, Vite will choose another port and print it.
 
 ## 9. Seed The First App
 
-Softbox will not mount apps in the shell until at least one wrapped app has been seeded into Convex.
+`pnpm start` now auto-seeds wrapped apps that still have no live version.
 
-Run:
+Use `pnpm seed` manually when you want to:
+- reseed a specific app
+- seed everything up front
+- repair local Convex state explicitly
+
+Manual command:
 
 ```bash
 pnpm seed
@@ -437,7 +443,7 @@ Notes:
 
 ## 10. Final Verification
 
-After seeding:
+After startup:
 
 1. Refresh the shell in the browser.
 2. Confirm a wrapped app mounts.
@@ -469,12 +475,12 @@ Fix:
 Most common causes:
 - R2 CORS policy is missing
 - `PUBLIC_DEVELOPMENT_URL` is wrong
-- no app has been seeded yet
+- the automatic seed step failed or was skipped
 
 Fix:
 - verify the CORS JSON
 - verify `PUBLIC_DEVELOPMENT_URL`
-- run `pnpm seed`
+- rerun `pnpm start` or run `pnpm seed`
 
 ### OpenClaw gateway settings missing
 
@@ -499,7 +505,7 @@ A Softbox-hosted app still needs:
 
 Fix:
 - run `pnpm wrap-app -- --path apps/<your-app>` if needed
-- then run `pnpm seed`
+- then rerun `pnpm start` or run `pnpm seed`
 
 ## Short Version
 
@@ -509,8 +515,6 @@ If you already know the services and only need the command order:
 pnpm install
 pnpm run bootstrap
 # fill .env.local
-docker compose up -d redis minio
 pnpm run doctor
 pnpm start
-pnpm seed
 ```

@@ -10,6 +10,7 @@
     "start": "tsx scripts/dev.tsx",
     "start:verbose": "tsx scripts/dev.tsx --verbose",
     "start:sync-agents": "tsx scripts/dev.tsx",
+    "start:no-auto-seed": "tsx scripts/dev.tsx --no-auto-seed",
     "start:no-sync-agents": "tsx scripts/dev.tsx --no-sync-agents",
     "dev:shell": "vite --config shell/vite.config.ts",
     "dev:worker": "tsx watch --exclude '.tmp/**' --exclude '/tmp/live-runtime-state-*' worker/src/index.ts",

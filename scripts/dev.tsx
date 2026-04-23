@@ -3,11 +3,14 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync, unwatchFile, watchFile } from "node:fs";
 import { Socket } from "node:net";
 import { resolve } from "node:path";
+import { ConvexHttpClient } from "convex/browser";
 import { Box, Newline, Text, render } from "ink";
 import { config as loadEnv, parse as parseDotenv } from "dotenv";
 import type { ServiceHealthStatus, ServiceStatus as DesktopServiceStatus } from "../shell/src/serviceStatus";
 import { systemServices } from "../shell/src/systemServices";
 import { ensureOpenClawAgentIdPrefixInEnvFile } from "../worker/src/openClawRouting";
+import { convexApi } from "../worker/src/shared/convexApi";
+import { discoverWrappedApps } from "../worker/src/templates";
 import {
   checkLocalMinioPublicProbe,
   ensureLocalMinioBucket,
@@ -58,6 +61,7 @@ type DesktopTableLayout = {
 
 type RuntimeOptions = {
   agentCommand: string;
+  autoSeedMissingApps: boolean;
   envLocalPath: string;
   mode: Mode;
   onboardingDone: boolean;
@@ -445,6 +449,13 @@ function summarizeSyncFailure(rawMessage: string): string {
     .pop();
 
   return lastLine ?? "OpenClaw agent sync failed.";
+}
+
+function summarizeSeedLines(appId: string, lines: string[]): string {
+  const seededLine = [...lines]
+    .reverse()
+    .find((line) => line.startsWith(`Seeded app '${appId}'`) || line.includes(`'${appId}'`));
+  return seededLine ?? `Seeded '${appId}'.`;
 }
 
 function classifyEventLevel(line: string, stream: StreamKind): EventLevel {
@@ -1040,6 +1051,7 @@ class DevRuntime {
     try {
       await this.ensureLocalRedisIfNeeded();
       await this.ensureLocalArtifactStorageIfNeeded();
+      await this.seedMissingAppsIfNeeded();
       await this.ensureLocalGatewayIfNeeded();
       await this.syncAgentsIfNeeded();
 
@@ -1315,6 +1327,62 @@ class DevRuntime {
         status: "error",
         message: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  private async seedMissingAppsIfNeeded(): Promise<void> {
+    if (!this.options.autoSeedMissingApps) {
+      this.pushEvent("info", "worker", "Automatic seeding is disabled for this start run.");
+      return;
+    }
+
+    const convexUrl = process.env.CONVEX_URL?.trim();
+    if (!convexUrl) {
+      this.pushEvent(
+        "warn",
+        "worker",
+        "Automatic seeding skipped because CONVEX_URL is not configured.",
+      );
+      return;
+    }
+
+    const discovery = discoverWrappedApps(process.cwd());
+    if (discovery.apps.length === 0) {
+      return;
+    }
+
+    const client = new ConvexHttpClient(convexUrl);
+    const existingApps = (await client.query(convexApi.listApps as any, {})) as Array<{
+      activeVersion?: { _id: string } | null;
+      appId: string;
+    }>;
+    const existingById = new Map(existingApps.map((app) => [app.appId, app]));
+    const missingApps = discovery.apps.filter((app) => {
+      const existing = existingById.get(app.appId);
+      return !existing || !existing.activeVersion;
+    });
+
+    if (missingApps.length === 0) {
+      return;
+    }
+
+    const detail =
+      missingApps.length === 1
+        ? `Seeding '${missingApps[0].appId}' because it has no live version yet.`
+        : `Seeding ${missingApps.length} wrapped app(s) with no live version yet.`;
+    this.updateService("worker", {
+      status: "starting",
+      detail,
+    });
+    this.pushEvent("info", "worker", detail);
+
+    for (const app of missingApps) {
+      const lines = await this.runOneShotCommand(
+        "pnpm",
+        ["seed", "--", "--app", app.appId, "--force"],
+        "worker",
+      );
+      this.pushEvent("success", "worker", summarizeSeedLines(app.appId, lines));
     }
   }
 
@@ -1799,8 +1867,9 @@ async function main(): Promise<void> {
 
   const args = new Set(process.argv.slice(2));
   if (args.has("--help") || args.has("-h")) {
-    console.log("Usage: pnpm start [-- --verbose] [--no-sync-agents]");
+    console.log("Usage: pnpm start [-- --verbose] [--no-auto-seed] [--no-sync-agents]");
     console.log("  --verbose      Show raw child-process logs instead of the Ink dashboard.");
+    console.log("  --no-auto-seed  Skip the automatic seed step for wrapped apps with no live version.");
     console.log("  --no-sync-agents  Skip the automatic OpenClaw per-app agent sync before worker startup.");
     return;
   }
@@ -1831,6 +1900,7 @@ async function main(): Promise<void> {
     envLocalPath,
     onboardingDone,
     agentCommand,
+    autoSeedMissingApps: !args.has("--no-auto-seed"),
     sharedOpenClawAgentId,
     mode,
     syncAgents: !args.has("--no-sync-agents"),
@@ -1855,6 +1925,9 @@ async function main(): Promise<void> {
     console.log("[start] verbose mode enabled; use 'pnpm start' for the Ink dashboard");
     if (!onboardingDone) {
       console.log("[start] onboarding mode detected; starting the shell first");
+    }
+    if (args.has("--no-auto-seed")) {
+      console.log("[start] automatic seeding is disabled for this run");
     }
     if (args.has("--no-sync-agents")) {
       console.log("[start] automatic OpenClaw agent sync is disabled for this run");
