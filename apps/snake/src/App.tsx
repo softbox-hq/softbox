@@ -102,6 +102,8 @@ function App() {
   const [direction, setDirection] = useState<Direction>('right')
   const [queuedDirection, setQueuedDirection] = useState<Direction>('right')
   const [phase, setPhase] = useState<Phase>('ready')
+  const [score, setScore] = useState(0)
+  const [bestScore, setBestScore] = useState(0)
   const [speed, setSpeed] = useState(TICK_MS)
   const boardRef = useRef<HTMLDivElement | null>(null)
 
@@ -112,6 +114,7 @@ function App() {
     setDirection('right')
     setQueuedDirection('right')
     setPhase(nextPhase)
+    setScore(0)
     setSpeed(TICK_MS)
   }, [])
 
@@ -206,6 +209,7 @@ function App() {
 
         if (hitWall || hitSelf) {
           setPhase('game-over')
+          setBestScore((currentBest) => Math.max(currentBest, score))
           return currentSnake
         }
 
@@ -213,6 +217,11 @@ function App() {
         if (!ateApple) {
           nextSnake.pop()
         } else {
+          setScore((currentScore) => {
+            const nextScore = currentScore + 1
+            setBestScore((currentBest) => Math.max(currentBest, nextScore))
+            return nextScore
+          })
           setSpeed((currentSpeed) => Math.max(75, currentSpeed - 2))
           setApples((currentApples) => {
             const remaining = currentApples.filter(
@@ -227,7 +236,7 @@ function App() {
     }, speed)
 
     return () => window.clearInterval(interval)
-  }, [apples, direction, phase, queuedDirection, speed])
+  }, [apples, direction, phase, queuedDirection, score, speed])
 
   useEffect(() => {
     if (phase === 'ready') {
@@ -241,6 +250,35 @@ function App() {
 
   return (
     <main className="game-shell">
+      <div className="hud" aria-label="Game HUD">
+        <div className="hud__cluster hud__cluster--score">
+          <div className="hud__label">Score</div>
+          <div className="hud__value">{score.toString().padStart(3, '0')}</div>
+        </div>
+
+        <div className="hud__center">
+          <div className="hud__title">Snake</div>
+          <div className="hud__status">
+            {phase === 'playing'
+              ? 'Run live'
+              : phase === 'game-over'
+                ? 'Game over'
+                : 'Press any arrow key'}
+          </div>
+        </div>
+
+        <div className="hud__cluster hud__cluster--meta">
+          <div className="hud__pill">
+            <span className="hud__pill-label">Best</span>
+            <strong>{bestScore.toString().padStart(3, '0')}</strong>
+          </div>
+          <div className="hud__pill">
+            <span className="hud__pill-label">Apples</span>
+            <strong>{apples.length}</strong>
+          </div>
+        </div>
+      </div>
+
       <div
         ref={boardRef}
         className="board"
@@ -278,20 +316,33 @@ function App() {
 
         {phase !== 'playing' && (
           <div className="board__overlay">
-            <button
-              type="button"
-              className="overlay-button"
-              onClick={
-                phase === 'game-over'
-                  ? () => {
-                      resetGame('playing')
-                      boardRef.current?.focus()
-                    }
-                  : beginGame
-              }
-            >
-              {phase === 'game-over' ? 'Restart' : 'Start'}
-            </button>
+            <div className="board__card">
+              <div className="board__card-kicker">
+                {phase === 'game-over' ? 'Run ended' : 'Arcade mode'}
+              </div>
+              <h1 className="board__card-title">
+                {phase === 'game-over' ? 'Try again' : 'Ready?'}
+              </h1>
+              <p className="board__card-copy">
+                {phase === 'game-over'
+                  ? 'Space resets. Arrow keys steer. Keep the board full of fruit.'
+                  : 'Hit start or press an arrow key to launch the run.'}
+              </p>
+              <button
+                type="button"
+                className="overlay-button"
+                onClick={
+                  phase === 'game-over'
+                    ? () => {
+                        resetGame('playing')
+                        boardRef.current?.focus()
+                      }
+                    : beginGame
+                }
+              >
+                {phase === 'game-over' ? 'Restart run' : 'Start run'}
+              </button>
+            </div>
           </div>
         )}
       </div>
