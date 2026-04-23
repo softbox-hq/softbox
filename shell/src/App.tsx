@@ -53,6 +53,160 @@ const PIPELINE_STAGE_KEYS = [
   "activate",
 ] as const;
 
+type PromptSuggestion = {
+  id: string;
+  label: string;
+  prompt: string;
+};
+
+const APP_PROMPT_SUGGESTIONS: Record<string, PromptSuggestion[]> = {
+  books: [
+    {
+      id: "books-editorial",
+      label: "Editorial layout",
+      prompt: "Redesign this books app to feel more editorial, with stronger typography, better spacing, and a featured reading section on the home view.",
+    },
+    {
+      id: "books-search",
+      label: "Add search",
+      prompt: "Add search so I can quickly find books by title or author, with a clean empty state and keyboard-friendly results.",
+    },
+    {
+      id: "books-progress",
+      label: "Reading progress",
+      prompt: "Add reading progress cards so each book shows how far I am, what I last opened, and an easy resume action.",
+    },
+  ],
+  crm: [
+    {
+      id: "crm-pipeline",
+      label: "Pipeline chart",
+      prompt: "Add a pipeline chart to this CRM so I can see deal count and value by stage at a glance.",
+    },
+    {
+      id: "crm-overdue",
+      label: "Overdue follow-ups",
+      prompt: "Create an overdue follow-ups section that highlights customers needing attention and sorts them by urgency.",
+    },
+    {
+      id: "crm-owner",
+      label: "Group by owner",
+      prompt: "Group customers and open deals by owner so the dashboard is easier to scan by team member.",
+    },
+  ],
+  gallery: [
+    {
+      id: "gallery-filters",
+      label: "Add filters",
+      prompt: "Add image filters and category chips so I can narrow the gallery quickly without losing the current visual style.",
+    },
+    {
+      id: "gallery-detail",
+      label: "Detail view",
+      prompt: "Add a focused detail view for each image with metadata, navigation, and a stronger presentation layout.",
+    },
+    {
+      id: "gallery-curation",
+      label: "Curated sections",
+      prompt: "Rework the gallery into curated sections with headings, featured images, and clearer grouping.",
+    },
+  ],
+  snake: [
+    {
+      id: "snake-score",
+      label: "Better score UI",
+      prompt: "Redesign the score and game HUD so it feels more arcade-like and easier to read during play.",
+    },
+    {
+      id: "snake-difficulty",
+      label: "Difficulty modes",
+      prompt: "Add difficulty modes for this snake game with clear labels and different speed curves.",
+    },
+    {
+      id: "snake-restart",
+      label: "Game over flow",
+      prompt: "Improve the game over flow with a stronger restart state, best score display, and clearer controls.",
+    },
+  ],
+  "space-3d": [
+    {
+      id: "space-tour",
+      label: "Guided tour",
+      prompt: "Add a guided tour mode to the solar system scene that teaches the user about each planet as they move through it.",
+    },
+    {
+      id: "space-controls",
+      label: "Control hints",
+      prompt: "Improve the control overlay so movement, boost, and planet selection are clearer on desktop and mobile.",
+    },
+    {
+      id: "space-data",
+      label: "Planet facts",
+      prompt: "Add a small planet facts panel that updates when I select a planet and explains its size, orbit, and character.",
+    },
+  ],
+  doom: [
+    {
+      id: "doom-launch",
+      label: "Launch screen",
+      prompt: "Design a stronger launch screen for this Doom app with a retro tone, clearer controls, and a better first-run experience.",
+    },
+    {
+      id: "doom-settings",
+      label: "Settings panel",
+      prompt: "Add an in-app settings panel for audio, controls, and display options without breaking the retro feel.",
+    },
+    {
+      id: "doom-overlay",
+      label: "Status overlay",
+      prompt: "Add a lightweight overlay for loading, errors, and controls so the app feels more self-explanatory.",
+    },
+  ],
+};
+
+const DEFAULT_PROMPT_SUGGESTIONS: PromptSuggestion[] = [
+  {
+    id: "default-visual-refresh",
+    label: "Refresh the UI",
+    prompt: "Refresh the UI so it feels more polished, intentional, and easier to scan without changing the core behavior.",
+  },
+  {
+    id: "default-new-feature",
+    label: "Add a feature",
+    prompt: "Add one meaningful feature to this app and make the interface support it cleanly.",
+  },
+  {
+    id: "default-better-empty-state",
+    label: "Improve empty states",
+    prompt: "Improve the empty, loading, and error states so the app feels more complete and self-explanatory.",
+  },
+];
+
+function normalizePromptSuggestionKey(value: string | null | undefined) {
+  return value?.trim().toLowerCase().replace(/\s+/g, "-") ?? "";
+}
+
+function getPromptSuggestions(app: { appId?: string | null; slug?: string | null; name?: string | null } | null | undefined) {
+  if (!app) {
+    return DEFAULT_PROMPT_SUGGESTIONS;
+  }
+
+  const candidateKeys = [
+    normalizePromptSuggestionKey(app.slug),
+    normalizePromptSuggestionKey(app.name),
+    normalizePromptSuggestionKey(app.appId),
+  ].filter(Boolean);
+
+  for (const key of candidateKeys) {
+    const suggestions = APP_PROMPT_SUGGESTIONS[key];
+    if (suggestions) {
+      return suggestions;
+    }
+  }
+
+  return DEFAULT_PROMPT_SUGGESTIONS;
+}
+
 function formatDuration(durationMs: number | null | undefined) {
   if (typeof durationMs !== "number" || Number.isNaN(durationMs)) {
     return "running";
@@ -886,6 +1040,7 @@ export function App() {
     convexApi.recordPipelineStageForVersion as any,
   );
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [prompt, setPrompt] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [appsOpen, setAppsOpen] = useState(false);
@@ -1037,6 +1192,11 @@ export function App() {
           ? "bg-amber-500/12 text-amber-100 ring-1 ring-amber-500/25"
           : "bg-white/8 text-slate-200 ring-1 ring-white/10";
   const versionActionPending = Boolean(switchingVersionId) || Boolean(deletingVersionId);
+  const promptSuggestions = getPromptSuggestions(selectedApp);
+  const showPromptSuggestions =
+    !promptDisabled &&
+    !showEmptyState &&
+    prompt.trim().length === 0;
 
   async function uninstallApp(app: { appId: string; name?: string | null }) {
     const label = app.name ?? app.appId;
@@ -1989,8 +2149,37 @@ export function App() {
                 </div>
               ) : null}
 
+              {showPromptSuggestions ? (
+                <div className="mb-3">
+                  <div className="flex flex-wrap gap-2">
+                    {promptSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion.id}
+                        type="button"
+                        onClick={() => {
+                          setPrompt(suggestion.prompt);
+                          requestAnimationFrame(() => {
+                            const input = promptInputRef.current;
+                            if (!input) {
+                              return;
+                            }
+                            input.focus();
+                            const cursor = input.value.length;
+                            input.setSelectionRange(cursor, cursor);
+                          });
+                        }}
+                        className="inline-flex items-center rounded-full border border-white/10 bg-white/6 px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors hover:border-cyan-300/30 hover:bg-cyan-300/10 hover:text-cyan-100"
+                      >
+                        {suggestion.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               <textarea
                 id="prompt-input"
+                ref={promptInputRef}
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
                 onKeyDown={(event) => {
