@@ -36,10 +36,11 @@ Install these first:
 git clone https://github.com/softbox-hq/softbox.git
 cd softbox
 pnpm install
-pnpm run bootstrap
+pnpm run local
 ```
 
-Use `pnpm run bootstrap`, not `pnpm setup`. `setup` is a pnpm built-in command, so the repo bootstrap script must be run through `run`.
+Use `pnpm run local` for the one-command local flow after `pnpm install`.
+If you want the steps separately, use `pnpm run bootstrap`, not `pnpm setup`. `setup` is a pnpm built-in command, so the repo bootstrap script must be run through `run`.
 
 What `pnpm run bootstrap` does:
 

@@ -110,10 +110,11 @@ Setup:
 
 ```bash
 pnpm install
-pnpm run bootstrap
+pnpm run local
 ```
 
-Use `pnpm run bootstrap`, not `pnpm setup`. `setup` is a pnpm built-in command, so the repo bootstrap script must be invoked through `run`.
+Use `pnpm run local` for the one-command local flow after `pnpm install`.
+If you want the steps separately, use `pnpm run bootstrap`, not `pnpm setup`. `setup` is a pnpm built-in command, so the repo bootstrap script must be invoked through `run`.
 
 `pnpm run bootstrap` copies `.env.local` from `.env.example`, fills the checkout-scoped OpenClaw prefix, starts local Docker services for the current artifact-storage mode, and when you use local MinIO it also creates the bucket, enables public reads, and writes the probe object Softbox checks. On a fresh clone that means Redis + MinIO.
 

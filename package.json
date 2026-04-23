@@ -5,6 +5,7 @@
   "packageManager": "pnpm@10.17.1",
   "scripts": {
     "bootstrap": "tsx scripts/setup.ts",
+    "local": "pnpm run bootstrap && pnpm start",
     "setup": "tsx scripts/setup.ts",
     "new-app": "tsx scripts/new-app.ts",
     "start": "tsx scripts/dev.tsx",
