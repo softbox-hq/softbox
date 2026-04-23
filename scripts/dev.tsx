@@ -114,6 +114,11 @@ function stripAnsi(value: string): string {
   return value.replace(/\u001B\[[0-9;?]*[ -/]*[@-~]/g, "");
 }
 
+function readMissingPackageName(line: string): string | null {
+  const match = line.match(/Cannot find (?:package|module) ['"]([^'"]+)['"]/);
+  return match?.[1] ?? null;
+}
+
 function formatTimestamp(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString("en-US", {
     hour12: false,
@@ -874,6 +879,26 @@ class DevRuntime {
         this.pushEvent("info", "agents", `Worker agent backend configured with ${detail}.`);
       }
       return;
+    }
+
+    const missingPackage = readMissingPackageName(line);
+    if (missingPackage) {
+      const message = `Missing local dependency '${missingPackage}'. Run 'pnpm install' in the repo root.`;
+      this.updateService("worker", {
+        status: "error",
+        detail: `Missing package ${missingPackage}`,
+      });
+      this.updateDesktopService("Worker", {
+        status: "error",
+        message,
+      });
+      if (missingPackage === "bullmq") {
+        this.updateDesktopService("BullMQ", {
+          status: "error",
+          message,
+        });
+      }
+      this.pushEventOnce(`worker-missing-package-${missingPackage}`, "error", "worker", message);
     }
 
     if (

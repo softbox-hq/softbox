@@ -101,8 +101,7 @@ Requirements:
 
 - Node.js 20+
 - `pnpm`
-- Redis
-- Docker (optional, easiest way to run Redis locally)
+- Docker (recommended for the local Redis + MinIO path)
 - Convex project
 - Artifact storage: Cloudflare R2 or MinIO
 - Codex CLI/auth configured locally
@@ -111,16 +110,21 @@ Setup:
 
 ```bash
 pnpm install
-pnpm setup
+pnpm run bootstrap
 ```
 
-Start Redis for the worker queue:
+Use `pnpm run bootstrap`, not `pnpm setup`. `setup` is a pnpm built-in command, so the repo bootstrap script must be invoked through `run`.
+
+`pnpm run bootstrap` copies `.env.local` from `.env.example`, fills the checkout-scoped OpenClaw prefix, and starts local Docker services for the current artifact-storage mode. On a fresh clone that means Redis + MinIO.
+
+If you skip `pnpm run bootstrap`, start the local services yourself:
 
 ```bash
-docker compose up -d redis
+docker compose up -d redis minio
 ```
 
 If you already have Redis running locally and `REDIS_URL` points at it, you can skip Docker.
+If you use Cloudflare R2 instead of MinIO, you only need Redis locally.
 BullMQ does not run as a separate container here. It is the queue library used inside `worker/src/index.ts`, and it stores queue state in Redis.
 
 Fill in the required values in `.env.local`, then run:
@@ -135,12 +139,13 @@ Notes:
 - the shell only needs `VITE_CONVEX_URL`
 - mounted app selection is stored in Convex, not in `.env.local`
 - `pnpm seed` now shows an arrow-key picker for wrapped apps; use `pnpm seed -- --app <app-id>` for one explicit app or `pnpm seed -- --all` to seed every wrapped app
-- set `ARTIFACT_STORAGE_PROVIDER=r2` to keep the current Cloudflare R2 flow
-- set `ARTIFACT_STORAGE_PROVIDER=minio` to use MinIO instead, then fill `MINIO_S3_API`, `MINIO_PUBLIC_DEVELOPMENT_URL`, `MINIO_ACCESS_KEY_ID`, and `MINIO_SECRET_ACCESS_KEY`
+- `.env.example` now defaults to local MinIO values so a fresh checkout can use Docker-backed artifact storage immediately
+- set `ARTIFACT_STORAGE_PROVIDER=r2` to switch from local MinIO to Cloudflare R2, then fill `S3_API`, `PUBLIC_DEVELOPMENT_URL`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`
 - `S3_API` / `PUBLIC_DEVELOPMENT_URL` remain the R2 values and are unchanged for existing setups
-- leave `OPENCLAW_AGENT_ID_PREFIX` blank unless you intentionally want a custom prefix; `pnpm setup` and `pnpm start` will generate a checkout-scoped value automatically so multiple local clones do not collide in OpenClaw
+- leave `OPENCLAW_AGENT_ID_PREFIX` blank unless you intentionally want a custom prefix; `pnpm run bootstrap` and `pnpm start` will generate a checkout-scoped value automatically so multiple local clones do not collide in OpenClaw
 - queueing is handled by BullMQ in the worker process; Redis is the only extra service you need to run locally
 - `pnpm start` starts Convex, the worker, and the shell together
+- if `pnpm start` reports a missing package such as `bullmq`, the repo install is incomplete; rerun `pnpm install` at the repo root
 - use `pnpm run doctor` instead of `pnpm doctor` because `doctor` is a reserved pnpm command
 
 Wrapping a new app:
@@ -231,7 +236,7 @@ Then open the shell in the browser and submit a prompt.
 ## Useful Commands
 
 ```bash
-pnpm setup
+pnpm run bootstrap
 pnpm new-app
 pnpm run doctor
 pnpm start

@@ -106,7 +106,7 @@ Important points:
 - `OPENCLAW_GATEWAY_BASE_URL` can be `http://` or `ws://`
 - the worker normalizes `http://` to `ws://` and `https://` to `wss://`
 - either `OPENCLAW_AGENT_ID` or `OPENCLAW_AGENT_ID_PREFIX` must be set
-- if `OPENCLAW_AGENT_ID_PREFIX` is blank or still `softbox-`, `pnpm setup` and `pnpm start` rewrite it to a checkout-scoped value like `softbox-a1b2c3d4-` so multiple clones do not collide
+- if `OPENCLAW_AGENT_ID_PREFIX` is blank or still `softbox-`, `pnpm run bootstrap` and `pnpm start` rewrite it to a checkout-scoped value like `softbox-a1b2c3d4-` so multiple clones do not collide
 - the configured OpenClaw agent workspace was `/home/fvrlak/ventures/softbox`
 - the gateway was running locally on loopback
 

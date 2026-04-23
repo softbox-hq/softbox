@@ -92,6 +92,15 @@ function commandExists(commandName: string): boolean {
   return check.status === 0;
 }
 
+function packageExists(packageName: string): boolean {
+  const check = spawnSync("node", ["-e", "require.resolve(process.argv[1])", packageName], {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: "ignore",
+  });
+  return check.status === 0;
+}
+
 function summarize(results: CheckResult[]): { failures: number; warnings: number } {
   return results.reduce(
     (summary, result) => {
@@ -118,8 +127,20 @@ async function main(): Promise<void> {
     ".env.local",
     existsSync(envLocalPath)
       ? "Environment file exists."
-      : "Missing .env.local. Run 'pnpm setup' or copy .env.example first.",
+      : "Missing .env.local. Run 'pnpm run bootstrap' or copy .env.example first.",
   );
+
+  for (const packageName of ["tsx", "bullmq"]) {
+    const installed = packageExists(packageName);
+    pushResult(
+      results,
+      installed ? "ok" : "fail",
+      `package:${packageName}`,
+      installed
+        ? `Resolved '${packageName}' from node_modules.`
+        : `Could not resolve '${packageName}'. Run 'pnpm install' at the repo root.`,
+    );
+  }
 
   const requiredEnvNames = [
     "VITE_CONVEX_URL",

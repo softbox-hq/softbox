@@ -28,7 +28,7 @@ Install these first:
 - Docker Desktop or Docker Engine
 - an OpenClaw CLI install that is already authenticated locally
 - a Convex account
-- a Cloudflare account with R2 access
+- a Cloudflare account with R2 access if you plan to use R2 instead of local MinIO
 
 ## 2. Clone And Install
 
@@ -36,16 +36,19 @@ Install these first:
 git clone https://github.com/softbox-hq/softbox.git
 cd softbox
 pnpm install
-pnpm setup
+pnpm run bootstrap
 ```
 
-What `pnpm setup` does:
+Use `pnpm run bootstrap`, not `pnpm setup`. `setup` is a pnpm built-in command, so the repo bootstrap script must be run through `run`.
+
+What `pnpm run bootstrap` does:
 
 - creates `.env.local` from `.env.example` if missing
 - generates a checkout-scoped `OPENCLAW_AGENT_ID_PREFIX` when that field is blank
-- tries to start Redis with Docker if Docker is available
+- starts Redis with Docker if Docker is available
+- starts MinIO too when `.env.local` is using the local MinIO artifact-storage mode
 
-`pnpm setup` does not finish the whole install. You still need to fill `.env.local`.
+`pnpm run bootstrap` does not finish the whole install. You still need to fill `.env.local`.
 
 ## 3. Fill Convex Env Vars
 
@@ -90,12 +93,26 @@ Important:
 
 Softbox supports two artifact storage modes:
 
-- `ARTIFACT_STORAGE_PROVIDER=r2`
 - `ARTIFACT_STORAGE_PROVIDER=minio`
+- `ARTIFACT_STORAGE_PROVIDER=r2`
 
-If you want the current hosted path, use R2. If you want a local object store option, use MinIO.
+Fresh clones now default to local MinIO in `.env.example` because it is the easiest way to get a Debian or VM setup running. Switch to R2 only when you want Cloudflare-backed artifact storage.
 
-### 4A. Cloudflare R2
+### 4A. MinIO
+
+The default `.env.example` values already point at the local Docker Compose MinIO instance:
+
+```env
+ARTIFACT_STORAGE_PROVIDER=minio
+MINIO_S3_API=http://127.0.0.1:9000/softbox-artifacts
+MINIO_PUBLIC_DEVELOPMENT_URL=http://127.0.0.1:9000/softbox-artifacts
+MINIO_ACCESS_KEY_ID=softbox
+MINIO_SECRET_ACCESS_KEY=softboxminio
+```
+
+If you keep those values, `pnpm run bootstrap` plus Docker is enough for local artifact storage.
+
+### 4B. Cloudflare R2
 
 Set this in `.env.local`:
 
@@ -224,7 +241,7 @@ R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
 ```
 
-### 4B. MinIO
+### 4C. Custom MinIO
 
 If you want local S3-compatible storage instead of Cloudflare R2, set this in `.env.local`:
 
@@ -286,7 +303,7 @@ OPENCLAW_AGENT_ID_PREFIX=
 ```
 
 Why:
-- Softbox generates a checkout-scoped prefix during `pnpm setup` or `pnpm start`
+- Softbox generates a checkout-scoped prefix during `pnpm run bootstrap` or `pnpm start`
 - that prevents multiple local clones from pointing at the same OpenClaw agents
 
 Do not invent your own shared prefix unless you intentionally want cross-checkout reuse.
@@ -337,15 +354,21 @@ openclaw config set agents.defaults.imageGenerationModel '"openai/gpt-image-1"' 
 
 If the gateway is already running, restart it after changing image-provider env vars so the new key is visible to OpenClaw tool calls.
 
-## 6. Start Redis
+## 6. Start Local Services
 
-If `pnpm setup` did not already start it, run:
+If `pnpm run bootstrap` did not already start it, run:
+
+```bash
+docker compose up -d redis minio
+```
+
+If you switched artifact storage to Cloudflare R2, you only need Redis locally:
 
 ```bash
 docker compose up -d redis
 ```
 
-BullMQ runs inside the Softbox worker. Redis is the only extra service you need for the queue.
+BullMQ runs inside the Softbox worker. Redis is the only extra service you need for the queue. MinIO is only for local artifact storage.
 
 ## 7. Validate The Setup
 
@@ -479,9 +502,9 @@ If you already know the services and only need the command order:
 
 ```bash
 pnpm install
-pnpm setup
+pnpm run bootstrap
 # fill .env.local
-docker compose up -d redis
+docker compose up -d redis minio
 pnpm run doctor
 pnpm start
 pnpm seed
