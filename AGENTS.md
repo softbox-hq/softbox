@@ -1,263 +1,161 @@
-# Softbox Agent Instructions
+# Softbox Agent Guide
 
-This file explains how AI agents should understand and work with this repository.
+This file is for coding agents working inside this repository. It is not the full
+installation guide.
 
-## What This Repo Is
+For installation or repair of a local checkout, use [`SETUP.md`](./SETUP.md) as
+the source of truth. If a human asks for AI-assisted installation, tell them to
+put `SETUP.md` in the agent context and ask the agent to follow it step by step.
+
+## What Softbox Is
 
 Softbox is a runtime with:
 
 - a stable outer shell
-- a mutable inner app
-- a worker pipeline that lets an agent rewrite app code
-- a build/preview/promotion flow that keeps live releases gated
+- mutable hosted apps under `apps/`
+- a worker pipeline that asks OpenClaw to edit app code
+- Convex state for apps, jobs, versions, boxes, and runtime status
+- artifact storage through local MinIO or Cloudflare R2
+- preview-before-promotion release flow
 
-The core idea is:
+The normal flow is:
 
-1. a user submits a prompt in the shell
-2. Convex records the job and pipeline state
-3. the worker claims the job
-4. the coding agent rewrites the selected app
-5. the worker builds a new immutable version
-6. artifacts are uploaded to Cloudflare R2
-7. the shell previews the candidate
-8. the shell only promotes it live after health checks pass
+1. the shell records a prompt in Convex
+2. the worker claims the job
+3. OpenClaw edits the selected app workspace
+4. the worker builds an immutable candidate version
+5. artifacts are uploaded
+6. the shell previews the candidate
+7. the shell promotes it only after health checks pass
 
-## Local Setup
+## Agent Source Of Truth
 
-Use `pnpm` at the repo root.
+Use these files before guessing:
+
+- `SETUP.md` for local installation, environment variables, OpenClaw, Convex,
+  Redis, MinIO, and verification
+- `README.md` for product overview and common commands
+- `skills/softbox-wrap-app/SKILL.md` for app onboarding and wrapper work
+- `worker/src/shared/liveApp.ts` for the shell runtime contract
+- app-local `AGENTS.md` files under `apps/<app>/` before editing a hosted app
+
+## Local Setup Rules
+
+Use `pnpm` at the repo root. Do not use `npm install` at the repo root.
+
+Common setup sequence:
 
 ```bash
 pnpm install
-cp .env.example .env.local
-docker compose up -d redis
+pnpm run bootstrap
+# fill .env.local using SETUP.md
+pnpm run doctor
 pnpm start
 ```
 
-Seed a wrapped app once:
+Important details:
 
-```bash
-pnpm seed
-```
+- Use `pnpm run doctor`, not `pnpm doctor`.
+- `VITE_CONVEX_URL` and `CONVEX_URL` must be the same Convex URL and should not
+  end with a trailing slash.
+- `AGENT_COMMAND` should normally be `openclaw`.
+- `OPENCLAW_GATEWAY_TOKEN` must be copied from
+  `~/.openclaw/openclaw.json`.
+- Leave `OPENCLAW_AGENT_ID_PREFIX` blank unless intentionally sharing agents
+  across checkouts; Softbox generates a checkout-scoped prefix.
+- Redis is required because BullMQ stores queue state there.
+- Local MinIO is the easiest artifact storage path for development.
+- `pnpm start` starts Convex, the worker, and the shell together.
 
-Notes:
-
-- Do not use `npm install` at the repo root.
-- `pnpm seed` and prompt-driven builds auto-install app-local dependencies on first use when a wrapped app has its own `package.json`.
-- Redis is required because BullMQ runs inside the worker and stores queue state in Redis.
-- `pnpm start` runs the shell, worker, and Convex dev server together for the full local runtime flow.
+If `openclaw` is installed but not found on `PATH`, check
+`~/.npm-global/bin/openclaw`. Either add that directory to `PATH` or link the
+binary into a directory that is already on `PATH`, such as `~/.local/bin`.
 
 ## Repo Shape
 
-- `shell/`
-  stable browser host runtime
-- `worker/`
-  orchestration, build, upload, template resolution
-- `convex/`
-  jobs, versions, app records, runtime state
-- `apps/`
-  app source folders
-- `docs/`
-  architecture and migration notes
+- `shell/` stable browser host runtime
+- `worker/` orchestration, build, upload, template resolution, OpenClaw calls
+- `convex/` jobs, versions, app records, boxes, runtime state
+- `apps/` standalone-first app workspaces
+- `skills/` repo-local agent skills
+- `docs/` architecture notes and focused implementation docs
 
 ## How Agents Should Work
 
-- Keep the shell stable unless the task is explicitly about shell/runtime behavior.
-- Prefer changing app-local code when the request is app-specific.
-- Prefer standalone-first app structure. Shell integration should stay thin.
-- Do not treat generated code as production-ready just because it builds.
+- Keep the shell stable unless the task is explicitly about shell/runtime
+  behavior.
+- Prefer app-local changes for app-specific requests.
+- Read the relevant app-local `AGENTS.md` before editing an app under `apps/`.
 - Preserve the preview-before-promotion model.
-- If a task is about app onboarding or app mounting, check `HUMAN.md`, `softbox.config.json`, and the runtime contract before editing.
-- If a human asks how app onboarding works, tell them to read `HUMAN.md` first.
-- If a human adds a folder under `/apps`, explicitly tell them that `/apps` is not auto-mounted and point them to `HUMAN.md`.
-- For wrapper/onboarding work, prefer the repo skill at `skills/softbox-wrap-app/`.
-- Wrapped/seeded apps should have an app-local `AGENTS.md`; `pnpm wrap-app` and `pnpm seed` now create that scaffold automatically if it is missing.
+- Do not treat generated code as production-ready only because it builds.
+- Do not rewrite unrelated docs, lockfiles, generated files, or environment
+  files unless the task requires it.
+- Do not revert user changes in a dirty worktree.
+
+## App Onboarding
+
+`/apps` is not auto-mounted. Putting a folder under `apps/` is not enough.
+
+A Softbox-hosted app usually needs:
+
+- a standalone app structure
+- `softbox.config.json`
+- `src/entry.tsx`
+- `src/defaultState.ts`
+- a thin shell adapter exporting `mount(ctx)` and `unmount()`
+- Convex app state from seeding or onboarding
+
+For wrapper/onboarding work, use `skills/softbox-wrap-app/`.
+
+The shell adapter should stay thin. Business logic, rendering, and domain
+behavior should remain in the standalone app core.
+
+## OpenClaw Agents
+
+Softbox usually runs OpenClaw in per-app mode. Expected agents look like:
+
+```text
+<OPENCLAW_AGENT_ID_PREFIX><appId>
+```
+
+To check or repair the local OpenClaw agent set:
+
+```bash
+openclaw gateway status
+openclaw agents list --json
+pnpm worker:openclaw-sync-agents -- --apply
+```
+
+If Convex app records do not exist yet, seed first:
+
+```bash
+pnpm seed -- --all
+pnpm worker:openclaw-sync-agents -- --apply
+```
 
 ## Generated Images
 
-When you use `image_generate`, do not stop at the managed media result.
+When using OpenClaw `image_generate` for an app asset, do not leave the result
+only in managed media storage.
 
 Required workflow:
 
-1. Generate the image with `image_generate`.
-2. Read the returned media path from the tool result.
-3. Copy the generated binary into the active app workspace under `src/assets/` unless the user requests another location.
-4. Use a deterministic filename based on the requested asset name.
-5. Update the app code to reference the workspace file, not the OpenClaw managed media path.
-6. In the final response, always report:
-   - the original OpenClaw media path
-   - the final workspace file path
-
-Rules:
-
-- Never leave a generated image only in OpenClaw managed media storage when the user asked for an app asset.
-- Never use SVG, CSS art, canvas art, or inline shapes as a fallback when the user explicitly asked for `image_generate`.
-- If `image_generate` fails or no provider key is available, stop and say that explicitly.
-
-## Important: `/apps` Is Not Auto-Mounted
-
-Putting a new application folder into `/apps` is **not** enough by itself.
-
-That is the important point.
-
-If someone adds a new app to `/apps`, extra integration work is still required before Softbox can host it inside the shell.
-
-## Is A Wrapper Needed?
-
-Yes, if the app should be hosted by Softbox.
-
-The recommended architecture is:
-
-- the app is a normal standalone app first
-- Softbox compatibility is added through a thin shell wrapper/adapter
-
-That wrapper is what connects the standalone app to the shell runtime.
-
-Without that wrapper, the app may run by itself, but the shell cannot mount it as a live mutable app in the Softbox workflow.
-
-## What The Shell Wrapper Must Do
-
-The shell-facing adapter should be thin. It should not own business logic.
-
-It needs to expose the runtime contract expected by `worker/src/shared/liveApp.ts`:
-
-- `mount(ctx)`
-- `unmount()`
-
-And the app package must expose:
-
-- `src/entry.tsx`
-- `src/defaultState.ts`
-
-The shell-facing path must support:
-
-- initial state handoff
-- `publishState(...)`
-- `reportHealthy()`
-- `reportError(...)`
-
-In practice, the adapter/wrapper should:
-
-- mount the app into the shell-provided root
-- accept initial state from the shell
-- bridge shell callbacks into the app
-- report healthy once the preview is actually ready
-- keep standalone app logic separate from shell lifecycle code
-
-## New App Onboarding Checklist
-
-If someone adds a new app under `/apps/<app-name>`, use this checklist.
-
-### 1. Make the app runnable by itself
-
-The app should ideally work as a normal standalone app first.
-
-Typical files:
-
-- `index.html`
-- `vite.config.ts`
-- `src/standalone.tsx` or equivalent standalone entry
-- app core files under `src/`
-
-### 2. Add the Softbox shell adapter
-
-Add the thin wrapper that makes the app compatible with the shell runtime.
-
-At minimum, that means:
-
-- `src/entry.tsx`
-- `src/defaultState.ts`
-- shell adapter code that implements `mount` and `unmount`
-
-### 3. Keep app logic out of the adapter
-
-The adapter should stay small.
-
-Business logic, rendering, and domain behavior should live in the standalone app core, not in the shell integration layer.
-
-### 4. Register the app template
-
-Add `softbox.config.json` in the app root or run:
-
-- `pnpm wrap-app -- --path apps/<name> --id <template-id>`
-
-The worker discovers wrapped apps from `softbox.config.json`.
-
-### 5. Make sure the worker can build it
-
-The worker currently checks for:
-
-- `src/entry.tsx`
-
-If that file is missing, the app may remain mountable from old built artifacts, but new prompt-driven edits will be blocked.
-
-### 6. Seed or configure the app record
-
-The app must exist in Convex as an app record before the shell can mount it normally.
-
-That usually means:
-
-- seeding it
-- or wiring it into the app/template flow used by the worker and shell
-
-### 7. Verify the full loop
-
-For a new shell-hosted app, verify:
-
-- prompt submission works
-- worker can claim the job
-- agent can edit the app
-- build succeeds
-- artifacts upload
-- preview mounts
-- health check passes
-- promotion works
-
-## When A Wrapper Is Not Needed
-
-If the goal is only:
-
-- keeping a standalone example in the repo
-- experimenting with UI outside the shell
-- drafting an app that is not yet part of the Softbox runtime
-
-then the wrapper can wait.
-
-But if the goal is:
-
-- prompt-driven edits
-- shell mounting
-- preview and promotion
-- Softbox-managed runtime behavior
-
-then yes, a wrapper/adapter is required.
-
-## Practical Rule
-
-Use this rule:
-
-- standalone app only: no wrapper required yet
-- Softbox-hosted app: wrapper required
-
-## Source Of Truth
-
-When in doubt, read these files first:
-
-- `HUMAN.md`
-- `skills/softbox-wrap-app/SKILL.md`
-- `README.md`
-- `docs/STANDALONE-APPS.md`
-- `softbox.config.json`
-- `worker/src/shared/liveApp.ts`
-
-## Short Version
-
-Softbox does **not** automatically turn any folder in `/apps` into a live shell-hosted app.
-
-A new app usually needs:
-
-- standalone app structure
-- thin shell wrapper/adapter
-- `src/entry.tsx`
-- `src/defaultState.ts`
-- `softbox.config.json`
-- app record setup in the runtime flow
+1. generate the image
+2. read the returned media path
+3. copy the binary into the active app under `src/assets/`
+4. use a deterministic filename
+5. update app code to reference the workspace file
+6. report both the original media path and final workspace path
+
+Do not replace an explicit image-generation request with SVG, CSS art, canvas
+art, or inline shapes.
+
+## Verification
+
+Use the narrowest check that proves the change:
+
+- setup/environment: `pnpm run doctor`
+- OpenClaw routing: `pnpm worker:openclaw-sync-agents -- --apply`
+- app seed state: `pnpm seed -- --app <app-id>` or `pnpm seed -- --all`
+- TypeScript/build-level changes: `pnpm typecheck`, `pnpm test`, or the
+  relevant app build

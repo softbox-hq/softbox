@@ -9,7 +9,7 @@ Use this skill to onboard a new app into Softbox without pretending that `/apps`
 
 ## Quick start
 
-1. Read `HUMAN.md` and `AGENTS.md`.
+1. Read the root `AGENTS.md` and the target app's local `AGENTS.md` if one exists.
 2. Inspect the target app under `/apps/<name>`.
 3. Read `references/runtime-contract.md`.
 4. If the app is a normal browser-first app, add the thin wrapper and register it.
@@ -17,7 +17,7 @@ Use this skill to onboard a new app into Softbox without pretending that `/apps`
 6. Use `assets/react-vite-shell-adapter/` as starter shapes, not blind copy-paste.
 7. Keep the app standalone-first and keep the wrapper thin.
 8. Register the template by creating `softbox.config.json`.
-9. Tell the human to look at `HUMAN.md` if they are confused about why the wrapper exists.
+9. Tell the human to read `AGENTS.md` and this skill if they are confused about why the wrapper exists.
 
 ## Hard constraints
 
