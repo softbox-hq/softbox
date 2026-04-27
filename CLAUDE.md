@@ -1,46 +1,37 @@
-# Softbox Instructions
+# Claude Code Guide
 
-You are editing the live app for this example from the project root.
+Claude Code should use this file as a short pointer, not as a full setup guide.
 
-## What This Project Does
+Read [`AGENTS.md`](./AGENTS.md) first for repo operating rules. For local
+installation or repair, read [`SETUP.md`](./SETUP.md) and follow it exactly.
 
-- The stable shell lives in `shell/`.
-- The mutable live app lives in the selected template folder such as `apps/live-app-template/src/` or `apps/live-app-template-crm/src/`.
-- After you finish editing, a launcher will build the selected template, upload a new bundle, and the shell will swap to it live.
+## What To Use For What
 
-## Your Editing Scope
+- `SETUP.md`: installation, `.env.local`, Convex, OpenClaw, Redis, MinIO/R2,
+  seeding, and troubleshooting
+- `AGENTS.md`: repository rules for coding agents
+- `skills/softbox-wrap-app/SKILL.md`: wrapping or onboarding a new app
+- `apps/<app>/AGENTS.md`: app-local rules before editing a hosted app
 
-- Edit only the selected live app template under `apps/*/src/**` unless the user explicitly asks for broader architectural work.
-- Do not touch `shell/`, `convex/`, `worker/`, `.env*`, lockfiles, or package metadata for normal scene/app changes.
-- Do not install dependencies unless the user explicitly asks.
-- Do not delete files.
-- Tailwind CSS is available inside live app templates. Prefer adding well-placed classes or improving existing structure instead of dumping raw controls into the page.
+## Critical Rules
 
-## Live App Contract
+- Use `pnpm`, not `npm install`, at the repo root.
+- Use `pnpm run doctor`, not `pnpm doctor`.
+- Do not put trailing slashes on `VITE_CONVEX_URL` or `CONVEX_URL`.
+- Keep `AGENT_COMMAND=openclaw` for the normal Softbox flow.
+- Make sure `OPENCLAW_GATEWAY_TOKEN` is set from
+  `~/.openclaw/openclaw.json`.
+- Keep app-specific changes inside the selected `apps/<app>/` workspace unless
+  the user asks for shell, worker, Convex, or docs work.
+- Do not assume a folder under `apps/` is mounted. A Softbox-hosted app needs
+  wrapping, `softbox.config.json`, `src/entry.tsx`, `src/defaultState.ts`, and
+  Convex app state.
 
-The live app must keep working with the shell runtime.
+## Quick Verification
 
-- The selected template `src/entry.tsx` must keep exporting:
-  - `mount`
-  - `unmount`
-  - `initialLiveAppState`
-- The mounted app should keep calling `reportHealthy()` once it is ready.
-- The app should keep reporting runtime failures through `reportError(...)`.
-
-## Preferred Files
-
-For most requests, prefer editing the selected template's:
-
-- `src/app.tsx`
-- `src/styles.css`
-- `src/defaultState.ts`
-- other existing `src/**` files already used by that template
-
-## Working Style
-
-- Modify the existing app instead of regenerating everything.
-- Keep changes focused on the user request.
-- Preserve visual hierarchy. New actions should go into an existing action area or toolbar when possible.
-- Avoid degrading the layout by stacking unrelated controls into headers or collapsing card/list structure.
-- If helpful, inspect files and run lightweight shell commands from the project root.
-- When you are done, print a short plain-text summary of what you changed.
+```bash
+pnpm run doctor
+openclaw gateway status
+openclaw agents list --json
+pnpm worker:openclaw-sync-agents -- --apply
+```

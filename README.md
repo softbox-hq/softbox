@@ -47,17 +47,43 @@ That means Softbox is not only about changing one app over time. It also lets yo
 apps and different versions of those apps inside the same host system.
 
 
-## Installation - automatic
+## Installation
 
-Install this repository using ./SETUP.md by giving the file to the codex or claude code.
+Recommended and fastest path: use Codex or Claude Code to install Softbox.
+Give the agent [`SETUP.md`](./SETUP.md) as context and ask it to follow that
+file step by step.
 
-## Installation - manual
+`SETUP.md` is the canonical setup guide for Convex, OpenClaw, Redis, MinIO/R2,
+`.env.local`, seeding, and verification. Manual setup works, but AI-assisted
+setup is recommended because there are several environment variables and
+service checks that are easy to miss.
+
+Suggested prompt:
+
+```text
+Use SETUP.md as the source of truth. Set up this Softbox checkout end to end.
+Do not skip verification. Explain each dashboard step before asking me to do it.
+When editing .env.local, tell me exactly which value goes into which variable.
+```
+
+`AGENTS.md` and `CLAUDE.md` are repo instruction files for agents; they are not
+full installation guides.
+
+Short command order:
+
+```bash
+pnpm install
+pnpm run bootstrap
+# fill .env.local from SETUP.md
+pnpm run doctor
+pnpm start
+```
 
 
 ## What It Is
 
 - Stable shell host built with React + Vite
-- Worker pipeline that uses Codex SDK to mutate app code
+- Worker pipeline that uses OpenClaw to mutate app code
 - Convex as the control plane for jobs, versions, and runtime state
 - Artifact storage via Cloudflare R2 or MinIO for immutable build artifacts
 - Hosted apps that can behave like normal standalone apps, not just narrow plugins
@@ -74,7 +100,7 @@ The flow is:
 2. worker claims the job from Convex
 3. agent edits the selected app source
 4. worker builds a candidate bundle
-5. artifacts are uploaded to R2
+5. artifacts are uploaded to MinIO or R2
 6. shell mounts the candidate in preview
 7. shell promotes it only after it reports healthy
 
@@ -93,7 +119,7 @@ That keeps the shell stable while the hosted app changes underneath it.
 - `chat-composer/`
   local design reference used while iterating on the shell composer
 - `docs/`
-  architecture, roadmap, positioning, and migration notes
+  focused implementation notes, OpenClaw integration docs, and storage notes
 
 ## Quickstart
 
@@ -104,17 +130,17 @@ Requirements:
 - Docker (recommended for the local Redis + MinIO path)
 - Convex project
 - Artifact storage: Cloudflare R2 or MinIO
-- Codex CLI/auth configured locally
+- OpenClaw CLI/auth configured locally
 
 Setup:
 
 ```bash
 pnpm install
-pnpm run local
+pnpm run bootstrap
 ```
 
-Use `pnpm run local` for the one-command local flow after `pnpm install`.
-If you want the steps separately, use `pnpm run bootstrap`, not `pnpm setup`. `setup` is a pnpm built-in command, so the repo bootstrap script must be invoked through `run`.
+Use `pnpm run bootstrap`, not `pnpm setup`. `setup` is a pnpm built-in command,
+so the repo bootstrap script must be invoked through `run`.
 
 `pnpm run bootstrap` copies `.env.local` from `.env.example`, fills the checkout-scoped OpenClaw prefix, starts local Docker services for the current artifact-storage mode, and when you use local MinIO it also creates the bucket, enables public reads, and writes the probe object Softbox checks. On a fresh clone that means Redis + MinIO.
 
@@ -128,7 +154,8 @@ If you already have Redis running locally and `REDIS_URL` points at it, you can 
 If you use Cloudflare R2 instead of MinIO, you only need Redis locally.
 BullMQ does not run as a separate container here. It is the queue library used inside `worker/src/index.ts`, and it stores queue state in Redis.
 
-Fill in the required values in `.env.local`, then run:
+Fill in the required values in `.env.local` using [`SETUP.md`](./SETUP.md), then
+run:
 
 ```bash
 pnpm run doctor
@@ -186,19 +213,11 @@ pnpm worker:backfill-box-profiles
 
 Starting a new app:
 
-1. copy `apps/vite-default` to `apps/<your-app>`
-2. change `softbox.config.json`
-3. replace `src/App.tsx`
-4. keep `src/entry.tsx`, `src/defaultState.ts`, and `src/adapter/`
-5. run `pnpm run doctor`
-
-You can also start the full local onboarding flow with:
-
 ```bash
 pnpm new-app
 ```
 
-That command now does the full local onboarding flow for a supported Softbox app:
+That command does the full local onboarding flow for a supported Softbox app:
 
 1. shows an arrow-key starter picker when you run it without arguments
 2. auto-generates a new app id such as `dashboard-1` or `react-app-1`
@@ -261,12 +280,14 @@ docker compose up -d redis
 
 Start with:
 
-- [`docs/README.md`](./docs/README.md)
-- [`docs/architecture.md`](./docs/architecture.md)
-- [`docs/runtime-flow.md`](./docs/runtime-flow.md)
-- [`docs/POSITIONING.md`](./docs/POSITIONING.md)
-- [`docs/STANDALONE-MIGRATION.md`](./docs/STANDALONE-MIGRATION.md)
-- [`docs/OPEN_SOURCE_CHECKLIST.md`](./docs/OPEN_SOURCE_CHECKLIST.md)
+- [`SETUP.md`](./SETUP.md)
+- [`AGENTS.md`](./AGENTS.md)
+- [`CLAUDE.md`](./CLAUDE.md)
+- [`docs/shell-host-surface.md`](./docs/shell-host-surface.md)
+- [`docs/openclaw/gateway-control.md`](./docs/openclaw/gateway-control.md)
+- [`docs/openclaw/softbox-ui-auth.md`](./docs/openclaw/softbox-ui-auth.md)
+- [`docs/openclaw/ws.md`](./docs/openclaw/ws.md)
+- [`docs/r2/R2-bottleneck.md`](./docs/r2/R2-bottleneck.md)
 
 ## Open Source Status
 

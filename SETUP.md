@@ -13,11 +13,28 @@ If you are an AI agent helping a human:
 - when a step fills `.env.local`, tell them exactly which value goes into which env var
 - do not skip verification steps
 
+This is the file to give to an AI agent for installation. `AGENTS.md` and
+`CLAUDE.md` are operating instructions for agents after they are inside the
+repo; they are not the full install guide.
+
 This guide keeps the current Softbox architecture:
 - Convex for control plane state
 - Artifact storage via Cloudflare R2 or MinIO for build artifacts
 - Redis for BullMQ queue state
 - OpenClaw for code editing
+
+## AI-Assisted Install Prompt
+
+Use this prompt with a coding agent after cloning the repo:
+
+```text
+Use SETUP.md as the source of truth. Set up this Softbox checkout end to end.
+Do not skip verification. Explain each dashboard step before asking me to do it.
+When editing .env.local, tell me exactly which value goes into which variable.
+```
+
+The agent should not invent a new setup path. It should follow this file,
+verify with `pnpm run doctor`, and only then start Softbox.
 
 ## 1. Prerequisites
 
@@ -36,11 +53,11 @@ Install these first:
 git clone https://github.com/softbox-hq/softbox.git
 cd softbox
 pnpm install
-pnpm run local
+pnpm run bootstrap
 ```
 
-Use `pnpm run local` for the one-command local flow after `pnpm install`.
-If you want the steps separately, use `pnpm run bootstrap`, not `pnpm setup`. `setup` is a pnpm built-in command, so the repo bootstrap script must be run through `run`.
+Use `pnpm run bootstrap`, not `pnpm setup`. `setup` is a pnpm built-in command,
+so the repo bootstrap script must be run through `run`.
 
 What `pnpm run bootstrap` does:
 
@@ -51,6 +68,8 @@ What `pnpm run bootstrap` does:
 - when local MinIO is configured, creates the bucket, enables public reads, and writes the probe object Softbox checks
 
 `pnpm run bootstrap` does not finish the whole install. You still need to fill `.env.local`.
+
+Do not run `pnpm start` until `pnpm run doctor` has no blocking issues.
 
 ## 3. Fill Convex Env Vars
 
@@ -65,31 +84,67 @@ CONVEX_URL=
 
 How to get the value:
 
-1. In the repo root, run:
+1. If the Convex CLI is not logged in yet, run:
 
 ```bash
-pnpm exec convex dev
+pnpm exec convex login --no-open --login-flow poll --device-name softbox-local
 ```
 
-2. If Convex asks what to do:
+Open the printed URL, approve the device, and wait for the CLI to say it saved
+credentials.
+
+2. In the repo root, run:
+
+```bash
+pnpm exec convex dev --once --tail-logs disable
+```
+
+If the CLI needs project configuration, run the same command in an interactive
+terminal or use:
+
+```bash
+pnpm exec convex dev --once --tail-logs disable --configure existing
+```
+
+Then choose the intended project and choose a cloud dev deployment.
+
+3. If Convex asks what to do:
 - choose `create a new project` for a brand new setup
-- or choose `choose an existing project` if you already have one
+- or choose an existing project if you already have one
 
-3. Finish the Convex prompt flow.
+4. Finish the Convex prompt flow.
 
-4. Convex will print or configure a deployment URL in the form:
+5. Convex will print or configure a deployment URL in the form:
 
 ```text
 https://<your-deployment>.convex.cloud
 ```
 
-5. Put that exact same value into both:
+6. Put that exact same value into both:
 - `VITE_CONVEX_URL`
 - `CONVEX_URL`
 
 Important:
 - these are intentionally duplicated because the browser shell reads `VITE_CONVEX_URL` and the worker reads `CONVEX_URL`
 - they should point to the same deployment
+- do not include a trailing slash
+
+Correct:
+
+```env
+VITE_CONVEX_URL=https://keen-echidna-470.convex.cloud
+CONVEX_URL=https://keen-echidna-470.convex.cloud
+```
+
+Wrong:
+
+```env
+VITE_CONVEX_URL=https://keen-echidna-470.convex.cloud/
+CONVEX_URL=https://keen-echidna-470.convex.cloud/
+```
+
+Why this matters: the Convex HTTP client appends `/api/query`; a trailing slash
+can turn that into `//api/query`, which can fail with a blank 404.
 
 ## 4. Fill Artifact Storage Env Vars
 
@@ -280,6 +335,25 @@ OPENCLAW_AGENT_ID_PREFIX=
 OPENCLAW_SESSION_KEY_PREFIX=softbox
 ```
 
+Make sure `openclaw` is on `PATH`:
+
+```bash
+openclaw --version
+```
+
+If the command is missing but OpenClaw was installed globally through npm, check:
+
+```bash
+ls ~/.npm-global/bin/openclaw
+```
+
+Then either add `~/.npm-global/bin` to `PATH` or link it into a directory that
+already is on `PATH`:
+
+```bash
+ln -sfn ~/.npm-global/bin/openclaw ~/.local/bin/openclaw
+```
+
 ### 5.1 Get the gateway token
 
 Run:
@@ -295,6 +369,8 @@ Put it into `.env.local`:
 ```env
 OPENCLAW_GATEWAY_TOKEN=<token>
 ```
+
+This token is what lets Softbox talk to the local OpenClaw gateway.
 
 ### 5.2 Leave the prefix blank
 
@@ -384,6 +460,19 @@ Fix every blocking issue before continuing.
 
 Warnings about unwrapped example apps are not necessarily blockers.
 
+If doctor reports a missing OpenClaw agent, run:
+
+```bash
+pnpm worker:openclaw-sync-agents -- --apply
+```
+
+If that says there are no Convex app records yet, seed first and then sync:
+
+```bash
+pnpm seed -- --all
+pnpm worker:openclaw-sync-agents -- --apply
+```
+
 ## 8. Start Softbox
 
 Run:
@@ -434,13 +523,14 @@ Choices:
 For automation:
 
 ```bash
-pnpm seed -- --app vite-default
+pnpm seed -- --app <app-id>
 pnpm seed -- --all
 ```
 
 Notes:
 - `pnpm seed` now auto-installs app-local dependencies when needed
-- if you only want the quickest first success, seed `vite-default`
+- if you only want the quickest first success, seed one of the wrapped apps
+  shown by `pnpm run doctor`
 
 ## 10. Final Verification
 
@@ -470,6 +560,20 @@ You did not finish the Convex step.
 Fix:
 - run `pnpm exec convex dev`
 - copy the deployment URL into both env vars
+- remove any trailing slash from both URLs
+
+### Convex calls fail with an empty error
+
+Most common causes:
+- the Convex functions have not been pushed to the deployment
+- `VITE_CONVEX_URL` or `CONVEX_URL` ends with a trailing slash
+- the checkout is not linked to the intended Convex project
+
+Fix:
+- run `pnpm exec convex login --no-open --login-flow poll`
+- run `pnpm exec convex dev --once --tail-logs disable`
+- if prompted, configure the intended existing project
+- verify both Convex URLs in `.env.local` have no trailing slash
 
 ### Preview mount fails or says `Failed to fetch`
 
@@ -488,12 +592,29 @@ Fix:
 Most common causes:
 - `OPENCLAW_GATEWAY_TOKEN` is blank
 - the gateway is not healthy
+- `openclaw` is installed but not on `PATH`
 - the worker is running from a different clone with stale state
 
 Fix:
 - verify `.env.local`
+- run `openclaw --version`
 - run `openclaw gateway status`
 - restart `pnpm start`
+
+### Expected OpenClaw agent is missing
+
+Most common causes:
+- `OPENCLAW_AGENT_ID_PREFIX` changed
+- app records have not been seeded into Convex yet
+- OpenClaw agents were not synced after a fresh setup
+
+Fix:
+
+```bash
+pnpm seed -- --all
+pnpm worker:openclaw-sync-agents -- --apply
+pnpm run doctor
+```
 
 ### Nothing shows up in the shell even though `/apps` exists
 
