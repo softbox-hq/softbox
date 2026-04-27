@@ -1984,15 +1984,7 @@ export default defineConfig({
             return;
           }
 
-          try {
-            await updateLocalEnv({ VITE_ONBOARDING_DONE: "true" });
-            writeJson(res, 200, { ok: true, onboardingDone: true });
-          } catch (error) {
-            writeJson(res, 500, {
-              ok: false,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
+          writeJson(res, 200, { ok: true });
         });
 
         server.middlewares.use("/__softbox/onboarding/step-1", async (req, res) => {

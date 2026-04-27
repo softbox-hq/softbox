@@ -103,7 +103,7 @@ export function ShellDesktopContextMenu(props: ShellDesktopContextMenuProps) {
                 <DesktopContextMenuItem
                   icon={<Plus className="size-4" />}
                   label="Create App"
-                  detail="Run the Softbox onboarding flow"
+                  detail="Create and seed a new Softbox app"
                   onSelect={onCreateApp}
                 />
               ) : null}

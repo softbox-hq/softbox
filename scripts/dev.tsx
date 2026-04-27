@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readFileSync, unwatchFile, watchFile } from "node:fs";
+import { existsSync } from "node:fs";
 import { Socket } from "node:net";
 import { resolve } from "node:path";
 import { ConvexHttpClient } from "convex/browser";
 import { Box, Newline, Text, render } from "ink";
-import { config as loadEnv, parse as parseDotenv } from "dotenv";
+import { config as loadEnv } from "dotenv";
 import type { ServiceHealthStatus, ServiceStatus as DesktopServiceStatus } from "../shell/src/serviceStatus";
 import { systemServices } from "../shell/src/systemServices";
 import { ensureOpenClawAgentIdPrefixInEnvFile } from "../worker/src/openClawRouting";
@@ -62,9 +62,7 @@ type DesktopTableLayout = {
 type RuntimeOptions = {
   agentCommand: string;
   autoSeedMissingApps: boolean;
-  envLocalPath: string;
   mode: Mode;
-  onboardingDone: boolean;
   sharedOpenClawAgentId: string;
   syncAgents: boolean;
 };
@@ -108,14 +106,6 @@ const serviceStatusPollIntervalMs = 2000;
 
 function isOpenClawCommand(command: string): boolean {
   return command.trim().toLowerCase().startsWith("openclaw");
-}
-
-function readOnboardingDone(envLocalPath: string): boolean {
-  const source = existsSync(envLocalPath) ? readFileSync(envLocalPath, "utf8") : "";
-  const parsed = parseDotenv(source);
-  return (parsed.VITE_ONBOARDING_DONE ?? process.env.VITE_ONBOARDING_DONE ?? "")
-    .trim()
-    .toLowerCase() === "true";
 }
 
 function stripAnsi(value: string): string {
@@ -469,10 +459,6 @@ function classifyEventLevel(line: string, stream: StreamKind): EventLevel {
 }
 
 function createInitialState(options: RuntimeOptions): DashboardState {
-  const runtimeDetail = options.onboardingDone
-    ? "Queued for startup"
-    : "Waiting for VITE_ONBOARDING_DONE=true";
-
   const agentDetail = options.syncAgents
     ? "Queued"
     : "Disabled for this start run";
@@ -490,13 +476,13 @@ function createInitialState(options: RuntimeOptions): DashboardState {
       },
       convex: {
         label: "Convex",
-        status: options.onboardingDone ? "starting" : "waiting",
-        detail: runtimeDetail,
+        status: "starting",
+        detail: "Queued for startup",
       },
       worker: {
         label: "Worker",
-        status: options.onboardingDone ? "starting" : "waiting",
-        detail: runtimeDetail,
+        status: "starting",
+        detail: "Queued for startup",
       },
       agents: {
         label: "Agent Sync",
@@ -556,52 +542,8 @@ class DevRuntime {
   }
 
   async run(): Promise<number> {
-    if (!this.options.onboardingDone) {
-      this.pushEvent(
-        "info",
-        "shell",
-        "Onboarding is incomplete. Convex and worker will start after VITE_ONBOARDING_DONE=true.",
-      );
-      this.updateDesktopService("Convex", {
-        status: "warning",
-        message: "Waiting for onboarding to complete.",
-      });
-      this.updateDesktopService("Worker", {
-        status: "warning",
-        message: "Waiting for onboarding to complete.",
-      });
-      this.updateDesktopService("BullMQ", {
-        status: "warning",
-        message: "Waiting for the worker pipeline to start.",
-      });
-      this.updateService("convex", {
-        status: "waiting",
-        detail: "Waiting for onboarding to complete",
-      });
-      this.updateService("worker", {
-        status: "waiting",
-        detail: "Waiting for onboarding to complete",
-      });
-    }
-
     this.startChild(shellProcess);
-
-    if (this.options.onboardingDone) {
-      await this.startRuntimeServices();
-    } else {
-      watchFile(this.options.envLocalPath, { interval: 500 }, async () => {
-        if (this.shuttingDown || this.runtimeStarted || this.runtimeStarting) {
-          return;
-        }
-
-        if (!readOnboardingDone(this.options.envLocalPath)) {
-          return;
-        }
-
-        this.pushEvent("success", "shell", "Onboarding completed. Starting Convex and worker.");
-        await this.startRuntimeServices();
-      });
-    }
+    await this.startRuntimeServices();
 
     return await this.completion;
   }
@@ -617,7 +559,6 @@ class DevRuntime {
 
     this.shuttingDown = true;
     this.exitCode = exitCode;
-    unwatchFile(this.options.envLocalPath);
     if (this.serviceStatusPoller) {
       clearInterval(this.serviceStatusPoller);
       this.serviceStatusPoller = null;
@@ -1895,10 +1836,7 @@ async function main(): Promise<void> {
     process.env.CLAUDE_CODE_COMMAND?.trim() ||
     "codex";
   const sharedOpenClawAgentId = process.env.OPENCLAW_AGENT_ID?.trim() || "";
-  const onboardingDone = readOnboardingDone(envLocalPath);
   const runtime = new DevRuntime({
-    envLocalPath,
-    onboardingDone,
     agentCommand,
     autoSeedMissingApps: !args.has("--no-auto-seed"),
     sharedOpenClawAgentId,
@@ -1923,9 +1861,6 @@ async function main(): Promise<void> {
     console.log("[start] starting Convex, worker, and shell");
     console.log("[start] run 'pnpm run doctor' first if startup fails");
     console.log("[start] verbose mode enabled; use 'pnpm start' for the Ink dashboard");
-    if (!onboardingDone) {
-      console.log("[start] onboarding mode detected; starting the shell first");
-    }
     if (args.has("--no-auto-seed")) {
       console.log("[start] automatic seeding is disabled for this run");
     }
