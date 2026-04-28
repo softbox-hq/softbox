@@ -21,6 +21,22 @@ type OpenClawJsonCommandResult = {
   stderr: string;
 };
 
+class OpenClawCommandTimeoutError extends Error {
+  constructor(
+    readonly command: string,
+    readonly args: string[],
+    readonly timeoutMs: number,
+    readonly stdout: string,
+    readonly stderr: string,
+  ) {
+    super(
+      `Timed out after ${timeoutMs}ms while running '${command} ${args.join(" ")}'. ` +
+        `${stderr.trim() || stdout.trim() || "No output."}`,
+    );
+    this.name = "OpenClawCommandTimeoutError";
+  }
+}
+
 let cachedAgentList:
   | {
       key: string;
@@ -105,9 +121,7 @@ function runOpenClawJsonCommand(
       settled = true;
       child.kill("SIGTERM");
       rejectPromise(
-        new Error(
-          `Timed out after ${timeoutMs}ms while running '${command} ${args.join(" ")}'.`,
-        ),
+        new OpenClawCommandTimeoutError(command, args, timeoutMs, stdout, stderr),
       );
     }, timeoutMs);
 
@@ -221,8 +235,22 @@ export async function createOpenClawAgent(args: {
     args.command,
     args.projectRoot,
     commandArgs,
-    30_000,
-  );
+    120_000,
+  ).catch(async (error: unknown) => {
+    if (!(error instanceof OpenClawCommandTimeoutError)) {
+      throw error;
+    }
+
+    console.log(
+      "[openclaw] OpenClaw agent creation timed out. On first run, OpenClaw may still be installing plugin runtime dependencies. Retrying once...",
+    );
+    return await runOpenClawJsonCommand(
+      args.command,
+      args.projectRoot,
+      commandArgs,
+      120_000,
+    );
+  });
   cachedAgentList = null;
 
   const parsed = JSON.parse(result.stdout) as unknown;

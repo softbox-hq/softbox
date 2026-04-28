@@ -90,8 +90,8 @@ How to get the value:
 pnpm exec convex login --no-open --login-flow poll --device-name softbox-local
 ```
 
-Open the printed URL, approve the device, and wait for the CLI to say it saved
-credentials.
+Human action required: open the printed Convex device URL, approve the code,
+and wait for the CLI to say it saved credentials.
 
 2. In the repo root, run:
 
@@ -111,6 +111,10 @@ Then choose the intended project and choose a cloud dev deployment.
 3. If Convex asks what to do:
 - choose `create a new project` for a brand new setup
 - or choose an existing project if you already have one
+
+Human action required: choose/create the Convex project in the CLI prompt. For a
+durable VM install, prefer a cloud dev deployment instead of a purely local
+Convex deployment.
 
 4. Finish the Convex prompt flow.
 
@@ -440,10 +444,24 @@ If `pnpm run bootstrap` did not already start it, run:
 docker compose up -d redis minio
 ```
 
+If Docker is installed but your user cannot access the Docker socket on Debian,
+either add the user to the `docker` group and open a new shell, or start the
+services with sudo:
+
+```bash
+sudo docker compose up -d redis minio
+```
+
 If you switched artifact storage to Cloudflare R2, you only need Redis locally:
 
 ```bash
 docker compose up -d redis
+```
+
+With Cloudflare R2 and sudo-managed Docker:
+
+```bash
+sudo docker compose up -d redis
 ```
 
 BullMQ runs inside the Softbox worker. Redis is the only extra service you need for the queue. MinIO is only for local artifact storage.
@@ -472,6 +490,9 @@ If that says there are no Convex app records yet, seed first and then sync:
 pnpm seed -- --all
 pnpm worker:openclaw-sync-agents -- --apply
 ```
+
+On a first OpenClaw run, agent creation can take longer while OpenClaw installs
+runtime/plugin dependencies. If sync times out, rerun the same command once.
 
 ## 8. Start Softbox
 
@@ -550,6 +571,31 @@ replace the current content with a centered div that says hello
 - builds a new candidate
 - uploads artifacts
 - mounts preview successfully
+
+## Resume Checklist
+
+If setup was interrupted halfway, these commands are safe to rerun:
+
+```bash
+pnpm install
+pnpm run bootstrap
+pnpm exec convex dev --once --tail-logs disable
+pnpm seed -- --all
+pnpm worker:openclaw-sync-agents -- --apply
+pnpm run doctor
+```
+
+Useful progress checks:
+- `.env.local` exists
+- `VITE_CONVEX_URL` and `CONVEX_URL` are both set to the same URL with no trailing slash
+- `OPENCLAW_GATEWAY_TOKEN` is set
+- Redis is reachable at `REDIS_URL`
+- MinIO is reachable when `ARTIFACT_STORAGE_PROVIDER=minio`
+- `openclaw agents list --json` shows the per-app agents after sync
+- `pnpm run doctor` has no blocking failures
+
+If Docker needs sudo on the VM, start Redis/MinIO manually with `sudo docker
+compose up -d redis minio` before running `pnpm run doctor`.
 
 ## Common Problems
 
