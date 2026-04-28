@@ -2,5 +2,6 @@
   "appId": "app_59afd0fa",
   "name": "Space 3D",
   "slug": "space-3d",
+  "icon": "src/assets/desktop-icon.png",
   "runtime": "react-vite"
 }

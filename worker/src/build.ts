@@ -24,7 +24,7 @@ export type BuildVersionResult = {
   stateJson: string;
 };
 
-function contentTypeFor(fileName: string): string {
+export function contentTypeFor(fileName: string): string {
   const normalizedName = fileName.toLowerCase();
   if (normalizedName.endsWith(".json")) return "application/json";
   if (normalizedName.endsWith(".js")) return "application/javascript";

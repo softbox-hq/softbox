@@ -2,6 +2,10 @@ export function sharedArtifactKey(appId: string, fileName: string): string {
   return `apps/${appId}/shared/${fileName}`;
 }
 
+export function appIconArtifactKey(appId: string, fileName: string): string {
+  return `apps/${appId}/icon/${fileName}`;
+}
+
 export function manifestKeyForVersion(
   appId: string,
   versionNumber: number,

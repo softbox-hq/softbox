@@ -2,5 +2,6 @@
   "appId": "app_ec63099e",
   "name": "Books",
   "slug": "books",
+  "icon": "src/assets/desktop-icon.png",
   "runtime": "react-vite"
 }

@@ -2,5 +2,6 @@
   "appId": "app_a3eaf99b",
   "name": "CRM",
   "slug": "crm",
+  "icon": "src/assets/desktop-icon.png",
   "runtime": "react-vite"
 }

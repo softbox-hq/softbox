@@ -86,6 +86,11 @@ Create `softbox.config.json` in the app root.
 
 If that file is missing, Softbox will treat the app as unwrapped even if the folder exists.
 
+If the app has a desktop icon, keep it inside the app source, normally at
+`src/assets/desktop-icon.png`, and add `"icon": "src/assets/desktop-icon.png"`
+to `softbox.config.json`. Softbox uploads that app-local icon during seed and
+stores only the public artifact URL in Convex.
+
 ### 6. Explain what still remains
 
 When you finish, state clearly:

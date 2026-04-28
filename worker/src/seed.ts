@@ -1,16 +1,19 @@
 import { stdout as output } from "node:process";
 import "./loadEnv";
-import { basename } from "node:path";
-import { manifestKeyForVersion } from "./artifacts";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { basename, extname } from "node:path";
+import { appIconArtifactKey, manifestKeyForVersion } from "./artifacts";
 import { ensureAppDependencies } from "./appDependencies";
 import { ensureAppTooling } from "./appAgents";
 import { loadWorkerConfig } from "./config";
-import { LiveAppBundler } from "./build";
+import { contentTypeFor, LiveAppBundler, type ArtifactFile } from "./build";
 import { ConvexRuntimeClient } from "./convex";
 import { readLiveAppFiles } from "./filesystem";
 import { R2Uploader } from "./r2";
 import {
   discoverWrappedApps,
+  getWrappedApp,
   getWrappedAppLabel,
   getWrappedAppSlug,
   resolveWrappedAppRoot,
@@ -39,6 +42,31 @@ function parseArgs(argv: string[]) {
     help: argv.includes("--help") || argv.includes("-h"),
     appId,
     all: seedAll,
+  };
+}
+
+async function buildAppIconArtifact(args: {
+  appId: string;
+  projectRoot: string;
+  publicDevelopmentUrl: string;
+}): Promise<{ artifact: ArtifactFile; publicPath: string } | null> {
+  const app = getWrappedApp(args.projectRoot, args.appId);
+  if (!app.iconPath) {
+    return null;
+  }
+
+  const extension = extname(app.iconPath).toLowerCase();
+  const body = await readFile(app.iconPath);
+  const digest = createHash("sha256").update(body).digest("hex").slice(0, 12);
+  const fileName = `desktop-icon-${digest}${extension || ".png"}`;
+  const key = appIconArtifactKey(args.appId, fileName);
+  return {
+    artifact: {
+      key,
+      body,
+      contentType: contentTypeFor(fileName),
+    },
+    publicPath: `${args.publicDevelopmentUrl}/${key}`,
   };
 }
 
@@ -183,12 +211,20 @@ async function main(): Promise<void> {
       const files = await readLiveAppFiles(liveAppRoot);
 
       const buildResult = await bundler.buildVersion(config.appId, 1, liveAppRoot);
-      await uploader.uploadArtifacts(buildResult.artifacts);
+      const iconAsset = await buildAppIconArtifact({
+        appId: config.appId,
+        projectRoot: config.projectRoot,
+        publicDevelopmentUrl: config.publicDevelopmentUrl,
+      });
+      await uploader.uploadArtifacts(
+        iconAsset ? [...buildResult.artifacts, iconAsset.artifact] : buildResult.artifacts,
+      );
 
       await convex.seedApp({
         appId: config.appId,
         name: getWrappedAppLabel(config.appId, config.projectRoot),
         slug: getWrappedAppSlug(config.appId, config.projectRoot),
+        iconAssetPath: iconAsset?.publicPath ?? null,
         files,
         manifestUrl: `${config.publicDevelopmentUrl}/${manifestKeyForVersion(config.appId, 1)}`,
         buildLog: "Seeded from source app",

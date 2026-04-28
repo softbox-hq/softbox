@@ -2,5 +2,6 @@
   "appId": "app_c5056a44",
   "name": "Snake",
   "slug": "snake",
+  "icon": "src/assets/desktop-icon.png",
   "runtime": "react-vite"
 }

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { access } from "node:fs/promises";
-import { basename, relative, resolve } from "node:path";
+import { basename, relative, resolve, sep } from "node:path";
 import {
   defaultAppDisplayNameFromSlug,
   isValidAppSlug,
@@ -16,6 +16,7 @@ type WrappedAppConfig = {
   slug?: string;
   name?: string;
   label?: string;
+  icon?: string;
   runtime?: string;
   templateId?: string;
 };
@@ -26,6 +27,8 @@ export type RegisteredWrappedApp = {
   appId: string;
   slug: string;
   label: string;
+  iconPath: string | null;
+  relativeIconPath: string | null;
   runtime: string | null;
   root: string;
   relativeRoot: string;
@@ -62,6 +65,9 @@ function readWrappedAppConfig(configPath: string): WrappedAppConfig {
   if (config.label !== undefined && typeof config.label !== "string") {
     throw new Error("Optional field 'label' must be a string.");
   }
+  if (config.icon !== undefined && typeof config.icon !== "string") {
+    throw new Error("Optional field 'icon' must be a string.");
+  }
   if (config.runtime !== undefined && typeof config.runtime !== "string") {
     throw new Error("Optional field 'runtime' must be a string.");
   }
@@ -85,6 +91,7 @@ function readWrappedAppConfig(configPath: string): WrappedAppConfig {
     slug: slug && slug.length > 0 ? slug : undefined,
     name: typeof config.name === "string" ? config.name.trim() : undefined,
     label: typeof config.label === "string" ? config.label.trim() : undefined,
+    icon: typeof config.icon === "string" ? config.icon.trim() : undefined,
     runtime: typeof config.runtime === "string" ? config.runtime.trim() : undefined,
     templateId:
       typeof config.templateId === "string" ? config.templateId.trim() : undefined,
@@ -154,6 +161,24 @@ export function discoverWrappedApps(projectRoot: string): {
     const appId = config.appId || dirName;
     const slug = config.slug || normalizeAppSlug(dirName) || dirName;
     const label = config.name || config.label || defaultAppDisplayNameFromSlug(slug);
+    const iconRelativePath = config.icon?.replaceAll("\\", "/") || null;
+    const iconPath = iconRelativePath ? resolve(root, iconRelativePath) : null;
+    if (iconPath && iconPath !== root && !iconPath.startsWith(`${root}${sep}`)) {
+      issues.push({
+        appDir: relativeRoot,
+        severity: "error",
+        message: `Configured icon '${iconRelativePath}' must stay inside '${relativeRoot}'.`,
+      });
+      continue;
+    }
+    if (iconPath && !existsSync(iconPath)) {
+      issues.push({
+        appDir: relativeRoot,
+        severity: "warning",
+        message: `Configured icon '${iconRelativePath}' does not exist.`,
+      });
+    }
+    const existingIconPath = iconPath && existsSync(iconPath) ? iconPath : null;
     if (config.templateId && config.templateId !== appId) {
       issues.push({
         appDir: relativeRoot,
@@ -189,6 +214,8 @@ export function discoverWrappedApps(projectRoot: string): {
       appId,
       slug,
       label,
+      iconPath: existingIconPath,
+      relativeIconPath: existingIconPath ? normalizeRelativePath(projectRoot, existingIconPath) : null,
       runtime: config.runtime || null,
       root,
       relativeRoot,
@@ -213,6 +240,10 @@ function getWrappedAppRecord(projectRoot: string, appId: string): RegisteredWrap
     );
   }
   return record;
+}
+
+export function getWrappedApp(projectRoot: string, appId: string): RegisteredWrappedApp {
+  return getWrappedAppRecord(projectRoot, appId);
 }
 
 export function getDefaultWrappedAppId(projectRoot: string): string {

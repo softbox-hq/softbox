@@ -185,6 +185,8 @@ pnpm wrap-app -- --path apps/my-app
 
 That command creates the thin Softbox runtime bridge for a browser-first React/Vite app and writes `softbox.config.json` so the worker can discover it automatically. The folder name under `/apps/<app-id>` is the canonical app id. It does not make Next.js or server-heavy apps magically compatible.
 
+Desktop icons should live in the app source, for example `src/assets/desktop-icon.png`, and can be referenced from `softbox.config.json` with `"icon": "src/assets/desktop-icon.png"`. During seed, Softbox uploads that app-local icon to artifact storage and stores only the public artifact URL in Convex.
+
 Seed a wrapped app once:
 
 ```bash

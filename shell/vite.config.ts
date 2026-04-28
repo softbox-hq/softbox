@@ -476,10 +476,26 @@ async function generateDesktopIconAsset(args: {
   const destinationFileName = `${args.appId}.png`;
   const destinationPath = resolve(generatedAppIconsDir, destinationFileName);
   await cp(sourcePath, destinationPath);
+  let appIconPath: string | null = null;
+  const wrappedApp = discoverWrappedApps(projectRoot).apps.find((app) => app.appId === args.appId);
+  if (wrappedApp) {
+    const appIconRelativePath = "src/assets/desktop-icon.png";
+    appIconPath = resolve(wrappedApp.root, appIconRelativePath);
+    await mkdir(resolve(wrappedApp.root, "src", "assets"), { recursive: true });
+    await cp(sourcePath, appIconPath);
+
+    const configSource = await readFile(wrappedApp.configPath, "utf8");
+    const config = JSON.parse(configSource) as Record<string, unknown>;
+    if (config.icon !== appIconRelativePath) {
+      config.icon = appIconRelativePath;
+      await writeFile(wrappedApp.configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+    }
+  }
 
   return {
     sourcePath,
     destinationPath,
+    appIconPath,
     publicPath: `/generated-app-icons/${destinationFileName}`,
   };
 }

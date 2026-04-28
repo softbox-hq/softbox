@@ -2,5 +2,6 @@
   "appId": "app_aa320043",
   "name": "Gallery",
   "slug": "gallery",
+  "icon": "src/assets/desktop-icon.png",
   "runtime": "react-vite"
 }
