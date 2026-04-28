@@ -462,7 +462,7 @@ async function main(): Promise<void> {
     console.log(`[wrap-app] updated ${toRelativePath(projectRoot, resolve(inspection.appRoot, "package.json"))} with ui:screenshot`);
   }
   console.log(
-    `[wrap-app] next: run 'pnpm run doctor', then 'pnpm seed' and choose '${nextAppId}' or run 'pnpm seed -- --app ${nextAppId}'`,
+    `[wrap-app] next: run 'pnpm run doctor', then 'pnpm seed -- --app ${nextAppId} --force'`,
   );
 }
 

@@ -465,7 +465,7 @@ async function main() {
   await runCommand({
     step: `seed ${appId}`,
     command: "pnpm",
-    args: ["seed", "--", "--app", appId],
+    args: ["seed", "--", "--app", appId, "--force"],
   });
 
   if (isOpenClawPerAppRoutingEnabled()) {

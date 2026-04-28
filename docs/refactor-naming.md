@@ -284,7 +284,7 @@ Check:
 - `softbox.config.json` exists
 - `src/entry.tsx` exists
 - `src/defaultState.ts` exists
-- `pnpm seed -- --app <appId>` is using the opaque `appId`, not the folder name
+- `pnpm seed -- --app <appId> --force` is using the opaque `appId`, not the folder name
 
 Main files:
 

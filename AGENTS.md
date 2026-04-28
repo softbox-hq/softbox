@@ -129,7 +129,7 @@ pnpm worker:openclaw-sync-agents -- --apply
 If Convex app records do not exist yet, seed first:
 
 ```bash
-pnpm seed -- --all
+pnpm seed -- --all --force
 pnpm worker:openclaw-sync-agents -- --apply
 ```
 
@@ -156,6 +156,6 @@ Use the narrowest check that proves the change:
 
 - setup/environment: `pnpm run doctor`
 - OpenClaw routing: `pnpm worker:openclaw-sync-agents -- --apply`
-- app seed state: `pnpm seed -- --app <app-id>` or `pnpm seed -- --all`
+- app seed state: `pnpm seed -- --app <app-id> --force` or `pnpm seed -- --all --force`
 - TypeScript/build-level changes: `pnpm typecheck`, `pnpm test`, or the
   relevant app build

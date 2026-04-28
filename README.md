@@ -166,7 +166,7 @@ Notes:
 
 - the shell only needs `VITE_CONVEX_URL`
 - mounted app selection is stored in Convex, not in `.env.local`
-- `pnpm seed` now shows an arrow-key picker for wrapped apps; use `pnpm seed -- --app <app-id>` for one explicit app or `pnpm seed -- --all` to seed every wrapped app
+- `pnpm seed` now shows an arrow-key picker for wrapped apps; use `pnpm seed -- --app <app-id> --force` for one explicit clean seed or `pnpm seed -- --all --force` to seed every wrapped app from current source
 - `.env.example` now defaults to local MinIO values so a fresh checkout can use Docker-backed artifact storage immediately
 - set `ARTIFACT_STORAGE_PROVIDER=r2` to switch from local MinIO to Cloudflare R2, then fill `S3_API`, `PUBLIC_DEVELOPMENT_URL`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`
 - `S3_API` / `PUBLIC_DEVELOPMENT_URL` remain the R2 values and are unchanged for existing setups
@@ -187,15 +187,17 @@ That command creates the thin Softbox runtime bridge for a browser-first React/V
 
 Desktop icons should live in the app source, for example `src/assets/desktop-icon.png`, and can be referenced from `softbox.config.json` with `"icon": "src/assets/desktop-icon.png"`. During seed, Softbox uploads that app-local icon to artifact storage and stores only the public artifact URL in Convex.
 
-Seed a wrapped app once:
+Seed wrapped apps from current source:
 
 ```bash
-pnpm seed
+pnpm seed -- --all --force
 ```
 
-That opens an arrow-key picker over wrapped apps and seeds the one you choose.
-It also includes a `Seed all wrapped apps` choice.
-For automation, run `pnpm seed -- --app <app-id>` or `pnpm seed -- --all`.
+That clears old seeded state/artifacts and rebuilds every wrapped app.
+For one app, run `pnpm seed -- --app <app-id> --force`.
+Plain `pnpm seed` opens an arrow-key picker over wrapped apps, including a
+`Seed all wrapped apps` choice, for cases where you do not want to force-reset
+existing seeded state.
 On a fresh clone, Softbox now auto-installs app-local dependencies for the selected app before building it.
 `pnpm start` also auto-seeds wrapped apps that still have no live version, so manual `pnpm seed` is mainly for explicit reseeds or repairs.
 After that, switch mounted apps from the shell UI instead of changing env vars.
@@ -226,7 +228,7 @@ That command does the full local onboarding flow for a supported Softbox app:
 3. either scaffolds a fresh Vite app or copies a wrapped starter app
 4. runs `pnpm wrap-app -- --path apps/<your-app>` when wrapping is needed
 5. runs `pnpm run doctor`
-6. runs `pnpm seed -- --app <your-app>`
+6. runs `pnpm seed -- --app <your-app> --force`
 7. starts normally; `pnpm start` auto-syncs per-app OpenClaw agents
 8. sets the new app as the default shell selection so the shell can mount it on refresh
 
@@ -270,7 +272,7 @@ pnpm dev:convex
 pnpm build:shell
 pnpm typecheck
 pnpm test
-pnpm seed
+pnpm seed -- --all --force
 pnpm wrap-app -- --path apps/my-app
 pnpm worker:backfill-box-profiles
 pnpm worker:migrate-app-ids

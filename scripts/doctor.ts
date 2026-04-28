@@ -272,7 +272,7 @@ async function main(): Promise<void> {
       ? `APP_ID override targets '${configuredAppId}'.`
         : configuredAppId
           ? `'${configuredAppId}' does not match any wrapped app.`
-        : "No APP_ID override set. 'pnpm seed' will prompt you to choose a wrapped app or seed all wrapped apps.",
+        : "No APP_ID override set. Use 'pnpm seed -- --all --force' for setup/repair, or 'pnpm seed' for the picker.",
   );
 
   if (agentCommand.toLowerCase().startsWith("openclaw")) {

@@ -487,7 +487,7 @@ pnpm worker:openclaw-sync-agents -- --apply
 If that says there are no Convex app records yet, seed first and then sync:
 
 ```bash
-pnpm seed -- --all
+pnpm seed -- --all --force
 pnpm worker:openclaw-sync-agents -- --apply
 ```
 
@@ -522,20 +522,31 @@ If port `4173` is busy, Vite will choose another port and print it.
 
 ## 9. Seed The First App
 
-`pnpm start` now auto-seeds wrapped apps that still have no live version.
+`pnpm start` now auto-seeds wrapped apps that still have no live version with
+`--force`.
 
 Use `pnpm seed` manually when you want to:
 - reseed a specific app
 - seed everything up front
 - repair local Convex state explicitly
 
-Manual command:
+Manual command for a clean setup or repair:
+
+```bash
+pnpm seed -- --all --force
+```
+
+This clears old seeded state and artifact files before rebuilding from the
+current app source.
+
+Interactive command:
 
 ```bash
 pnpm seed
 ```
 
-This opens the interactive picker.
+This opens the interactive picker. Use it when you intentionally want to choose
+a target and do not need to force-reset existing seeded state.
 
 Choices:
 - pick one wrapped app
@@ -544,8 +555,8 @@ Choices:
 For automation:
 
 ```bash
-pnpm seed -- --app <app-id>
-pnpm seed -- --all
+pnpm seed -- --app <app-id> --force
+pnpm seed -- --all --force
 ```
 
 Notes:
@@ -580,7 +591,7 @@ If setup was interrupted halfway, these commands are safe to rerun:
 pnpm install
 pnpm run bootstrap
 pnpm exec convex dev --once --tail-logs disable
-pnpm seed -- --all
+pnpm seed -- --all --force
 pnpm worker:openclaw-sync-agents -- --apply
 pnpm run doctor
 ```
@@ -631,7 +642,7 @@ Most common causes:
 Fix:
 - verify the CORS JSON
 - verify `PUBLIC_DEVELOPMENT_URL`
-- rerun `pnpm start` or run `pnpm seed`
+- rerun `pnpm start` or run `pnpm seed -- --all --force`
 
 ### OpenClaw gateway settings missing
 
@@ -657,7 +668,7 @@ Most common causes:
 Fix:
 
 ```bash
-pnpm seed -- --all
+pnpm seed -- --all --force
 pnpm worker:openclaw-sync-agents -- --apply
 pnpm run doctor
 ```
@@ -673,7 +684,7 @@ A Softbox-hosted app still needs:
 
 Fix:
 - run `pnpm wrap-app -- --path apps/<your-app>` if needed
-- then rerun `pnpm start` or run `pnpm seed`
+- then rerun `pnpm start` or run `pnpm seed -- --all --force`
 
 ## Short Version
 

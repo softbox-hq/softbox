@@ -31,7 +31,7 @@ function parseArgs(argv: string[]) {
   const seedAll = argv.includes("--all");
 
   if (positional.length > 1) {
-    throw new Error("Expected at most one app id. Use 'pnpm seed -- --app <app-id>'.");
+    throw new Error("Expected at most one app id. Use 'pnpm seed -- --app <app-id> --force'.");
   }
   if (seedAll && appId) {
     throw new Error("Choose either '--all' or '--app <app-id>', not both.");
@@ -76,12 +76,15 @@ function printHelp(): void {
       "Usage:",
       "  pnpm seed",
       "  pnpm seed -- --app <app-id>",
+      "  pnpm seed -- --app <app-id> --force",
       "  pnpm seed -- --all",
+      "  pnpm seed -- --all --force",
       "  APP_ID=<app-id> pnpm seed",
       "",
       "Behavior:",
       "  - interactive terminal: uses an Ink TUI picker for wrapped apps, including 'Seed all wrapped apps'",
       "  - non-interactive terminal: requires --app or APP_ID",
+      "  - --force clears existing seeded state and artifacts before rebuilding",
     ].join("\n") + "\n",
   );
 }
@@ -121,14 +124,14 @@ async function resolveSeedTargets(args: {
   if (envAppId) {
     if (!findApp(envAppId)) {
       throw new Error(
-        `APP_ID='${envAppId}' does not match any wrapped app. Re-run with 'pnpm seed -- --app <app-id>'.`,
+        `APP_ID='${envAppId}' does not match any wrapped app. Re-run with 'pnpm seed -- --app <app-id> --force'.`,
       );
     }
     return [envAppId];
   }
 
   throw new Error(
-    "No app selected. Re-run with 'pnpm seed -- --app <app-id>', 'pnpm seed -- --all', or set APP_ID for non-interactive use.",
+    "No app selected. Re-run with 'pnpm seed -- --app <app-id> --force', 'pnpm seed -- --all --force', or set APP_ID for non-interactive use.",
   );
 }
 
@@ -177,7 +180,7 @@ async function main(): Promise<void> {
         seedState.counts.runtimeErrors > 0 ? `${seedState.counts.runtimeErrors} runtime error row(s)` : null,
       ].filter((detail): detail is string => Boolean(detail));
 
-      if (!seedState.existingApp && staleDetails.length > 0) {
+      if (staleDetails.length > 0 && (args.force || !seedState.existingApp)) {
         const shouldReset =
           args.force || (await confirmReset(config.appId, staleDetails));
         if (!shouldReset) {
