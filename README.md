@@ -140,42 +140,16 @@ The invariant is simple: the shell is stable, the inner app is mutable, and gene
 
 ## Create an App
 
-Start a supported app from a built-in starter:
+Create a new app from the Softbox desktop. Right-click the desktop, choose the new-app action, and Softbox creates the app workspace, wraps it, seeds it, and makes it available in the shell.
+
+<p align="center">
+  <video src="docs/assets/github-create-new-app.mp4" controls width="900"></video>
+</p>
+
+For scripted onboarding, use the CLI:
 
 ```bash
 pnpm new-app
-```
-
-That command:
-
-1. shows a starter picker when no arguments are provided
-2. creates an app id such as `dashboard-1` or `react-app-1`
-3. scaffolds or copies the selected starter
-4. wraps it for Softbox when needed
-5. runs `pnpm run doctor`
-6. seeds the app into Convex
-7. sets it as the default shell selection
-
-Current starters:
-
-| Starter | Use case |
-| --- | --- |
-| Blank React + TypeScript | Clean typed app surface |
-| Blank React + JavaScript | Minimal browser app |
-| Dashboard example | Data/product UI starting point |
-| Grid example | Canvas/grid-style app starting point |
-| Tic tac toe example | Small interactive example |
-
-Skip the picker with a specific starter:
-
-```bash
-pnpm new-app --starter dashboard-example
-```
-
-Override the Vite template:
-
-```bash
-pnpm new-app my-app -- --template react
 ```
 
 ## Wrap an Existing App
