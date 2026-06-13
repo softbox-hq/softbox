@@ -1,64 +1,102 @@
-# Softbox
+<a id="readme-top"></a>
 
-Softbox is a host system for mutable apps.
+<div align="center"><pre>
+███████╗ ██████╗ ███████╗████████╗██████╗  ██████╗ ██╗  ██╗
+██╔════╝██╔═══██╗██╔════╝╚══██╔══╝██╔══██╗██╔═══██╗╚██╗██╔╝
+███████╗██║   ██║█████╗     ██║   ██████╔╝██║   ██║ ╚███╔╝
+╚════██║██║   ██║██╔══╝     ██║   ██╔══██╗██║   ██║ ██╔██╗
+███████║╚██████╔╝██║        ██║   ██████╔╝╚██████╔╝██╔╝ ██╗
+╚══════╝ ╚═════╝ ╚═╝        ╚═╝   ╚═════╝  ╚═════╝ ╚═╝  ╚═╝
+          Preview-first runtime for agent-mutated apps
+</pre></div>
 
-It lets an agent rewrite a Vite app, build a new immutable version, preview it inside a stable shell,
-validate it, and only then promote it live.
+<p align="center"><strong>Stable shell · mutable Vite apps · OpenClaw workers · immutable previews · explicit promotion</strong></p>
 
-Softbox is in the same general space as tools like Bolt.new, v0, and Lovable, but it is designed for
-more control over the environment, the runtime, and versioned changes.
+<p align="center">
+  <a href="https://github.com/softbox-hq/softbox"><img src="https://img.shields.io/badge/repo-softbox--hq%2Fsoftbox-111827" alt="Repository"></a>
+  <a href="https://github.com/softbox-hq/softbox"><img src="https://img.shields.io/badge/runtime-React%20%2B%20Vite-2563eb" alt="React and Vite"></a>
+  <a href="https://www.convex.dev/"><img src="https://img.shields.io/badge/control%20plane-Convex-f97316" alt="Convex"></a>
+  <a href="https://github.com/softbox-hq/softbox"><img src="https://img.shields.io/badge/storage-MinIO%20%2F%20R2-059669" alt="MinIO or Cloudflare R2"></a>
+</p>
 
-Softbox works together with OpenClaw.
+<p align="center">
+  <a href="#quickstart">Quickstart</a> ·
+  <a href="#how-it-works">How It Works</a> ·
+  <a href="#create-an-app">Create an App</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="./SETUP.md">Full Setup</a>
+</p>
 
-OpenClaw is responsible for making code changes inside the hosted application. Softbox is responsible
-for orchestrating the rest of the lifecycle: building, previewing, validating, versioning, and promoting
-the app safely.
+---
 
-Softbox is optimized for React + Vite apps that can be mounted inside the shell.
+Softbox is a host system for apps that are allowed to change.
 
-Instead of using AI only to generate code in an editor, Softbox lets a coding agent modify a real hosted
-app, build a new immutable version, preview it inside the shell, and only then promote it live.
+An agent can rewrite a real React/Vite app, but the live user-facing shell stays stable. Every change is built as an immutable candidate, uploaded to artifact storage, mounted in preview, health-checked, and promoted only after it proves it can run.
 
-## Example
-Imagine you have a Vite app backed by SQLite.
+That gives you an AI-editable app environment without letting generated code directly replace production runtime state.
 
-That app stores customer data.
+## Why Softbox
 
-Once the app is mounted in Softbox, you can evolve the interface on demand.
+Most AI app builders collapse editing, preview, and deployment into one surface. Softbox separates them.
 
-Today, you might want to see the median acquisition cost of your customers. You ask Softbox for that
-change, OpenClaw updates the app, and Softbox builds and previews the result before it goes live.
+| Layer | Responsibility |
+| --- | --- |
+| Shell | Stable browser runtime, prompt UI, app switching, preview mount |
+| Hosted app | Normal standalone-first React/Vite app code |
+| Worker | Job claiming, agent execution, build, upload, version publishing |
+| Convex | Jobs, versions, apps, boxes, runtime state |
+| Artifact storage | Immutable bundles through local MinIO or Cloudflare R2 |
+| OpenClaw | Code edits inside the selected app workspace |
 
-Tomorrow, you might want a geographic view of your customers instead. You ask for that, and Softbox
-produces another version of the app.
+Softbox is closest to tools like Bolt.new, v0, and Lovable, but it is designed for tighter control over the runtime boundary, local services, agent routing, and version promotion.
 
-You can keep both features if you want. But sometimes you want a different interface for a different
-moment, and Softbox makes that kind of change practical.
+## What It Does
 
-If you want to go back to yesterday’s version, you can switch back to it directly, including by keyboard
-shortcut.
+- **Runs mutable apps inside a stable shell**: the host does not get rewritten for ordinary app changes.
+- **Builds every agent change as a candidate version**: generated code is previewed before it becomes live.
+- **Stores immutable artifacts**: bundles are uploaded to MinIO or R2 instead of served from a mutable workspace.
+- **Tracks app and runtime state in Convex**: jobs, versions, selected app, boxes, and health state are explicit.
+- **Uses OpenClaw for code mutation**: Softbox orchestrates; OpenClaw edits.
+- **Supports app switching and version rollback**: move between apps and previously built versions from the shell.
 
-Now imagine that this SQLite app is your CRM, `my-crm`, and you also have a separate support dashboard.
+## Quickstart
 
-You can import the support dashboard into Softbox as another standalone app, mount it in the same shell,
-and customize it the same way.
+Use `SETUP.md` for a real installation. It is the source of truth for Convex, OpenClaw, Redis, MinIO/R2, `.env.local`, seeding, and verification.
 
-That means Softbox is not only about changing one app over time. It also lets you move between different
-apps and different versions of those apps inside the same host system.
+```bash
+pnpm install
+pnpm run bootstrap
+# fill .env.local using SETUP.md
+pnpm run doctor
+pnpm start
+```
 
+Open the shell after `pnpm start`, select or seed an app, then submit a prompt.
 
-## Installation
+### Requirements
 
-Recommended and fastest path: use Codex or Claude Code to install Softbox.
-Give the agent [`SETUP.md`](./SETUP.md) as context and ask it to follow that
-file step by step.
+| Requirement | Notes |
+| --- | --- |
+| Node.js 20+ | Runtime for scripts, shell, and worker |
+| pnpm | Use pnpm at the repo root; do not run `npm install` here |
+| Docker | Recommended for local Redis and MinIO |
+| Convex project | Control plane for jobs, apps, versions, runtime state |
+| OpenClaw CLI | Authenticated locally; used by the worker to edit app code |
+| MinIO or Cloudflare R2 | Artifact storage for built app bundles |
 
-`SETUP.md` is the canonical setup guide for Convex, OpenClaw, Redis, MinIO/R2,
-`.env.local`, seeding, and verification. Manual setup works, but AI-assisted
-setup is recommended because there are several environment variables and
-service checks that are easy to miss.
+### Important Setup Rules
 
-Suggested prompt:
+- Use `pnpm run bootstrap`, not `pnpm setup`.
+- Use `pnpm run doctor`, not `pnpm doctor`.
+- `VITE_CONVEX_URL` and `CONVEX_URL` must be the same Convex URL.
+- Do not include a trailing slash in either Convex URL.
+- Leave `OPENCLAW_AGENT_ID_PREFIX` blank unless you intentionally share agents across checkouts.
+- Redis is required because BullMQ stores queue state there.
+- Local MinIO is the fastest development path; switch to R2 only when you want Cloudflare-backed artifacts.
+
+## AI-Assisted Install
+
+Recommended setup path: give a coding agent `SETUP.md` and ask it to follow the file step by step.
 
 ```text
 Use SETUP.md as the source of truth. Set up this Softbox checkout end to end.
@@ -66,251 +104,222 @@ Do not skip verification. Explain each dashboard step before asking me to do it.
 When editing .env.local, tell me exactly which value goes into which variable.
 ```
 
-`AGENTS.md` and `CLAUDE.md` are repo instruction files for agents; they are not
-full installation guides.
+`AGENTS.md` and `CLAUDE.md` are operating instructions for agents inside this repo. They are not full installation guides.
 
-Short command order:
+## How It Works
 
-```bash
-pnpm install
-pnpm run bootstrap
-# fill .env.local from SETUP.md
-pnpm run doctor
-pnpm start
+```text
+User prompt
+    |
+    v
+Convex job record
+    |
+    v
+Worker claims job
+    |
+    v
+OpenClaw edits apps/<app-id>
+    |
+    v
+Worker builds candidate bundle
+    |
+    v
+MinIO / R2 artifact upload
+    |
+    v
+Shell mounts preview
+    |
+    v
+Health check passes
+    |
+    v
+Candidate promoted live
 ```
 
+The invariant is simple: the shell is stable, the inner app is mutable, and generated code has to pass through a preview boundary before promotion.
 
-## What It Is
+## Create an App
 
-- Stable shell host built with React + Vite
-- Worker pipeline that uses OpenClaw to mutate app code
-- Convex as the control plane for jobs, versions, and runtime state
-- Artifact storage via Cloudflare R2 or MinIO for immutable build artifacts
-- Hosted apps that can behave like normal standalone apps, not just narrow plugins
-
-## Core Idea
-
-The shell is the operating system.
-
-The inner app is the mutable program.
-
-The flow is:
-
-1. user submits a prompt in the shell
-2. worker claims the job from Convex
-3. agent edits the selected app source
-4. worker builds a candidate bundle
-5. artifacts are uploaded to MinIO or R2
-6. shell mounts the candidate in preview
-7. shell promotes it only after it reports healthy
-
-That keeps the shell stable while the hosted app changes underneath it.
-
-## Repo Layout
-
-- `shell/`
-  browser host runtime and prompt UI
-- `worker/`
-  agent orchestration, build pipeline, upload, publish
-- `convex/`
-  schema and mutations for jobs, versions, files, and pipeline runs
-- `apps/`
-  standalone apps and wrap targets; a Softbox-hosted app needs `softbox.config.json`, `src/entry.tsx`, and `src/defaultState.ts`
-- `chat-composer/`
-  local design reference used while iterating on the shell composer
-- `docs/`
-  focused implementation notes, OpenClaw integration docs, and storage notes
-
-## Quickstart
-
-Requirements:
-
-- Node.js 20+
-- `pnpm`
-- Docker (recommended for the local Redis + MinIO path)
-- Convex project
-- Artifact storage: Cloudflare R2 or MinIO
-- OpenClaw CLI/auth configured locally
-
-Setup:
+Start a supported app from a built-in starter:
 
 ```bash
-pnpm install
-pnpm run bootstrap
+pnpm new-app
 ```
 
-Use `pnpm run bootstrap`, not `pnpm setup`. `setup` is a pnpm built-in command,
-so the repo bootstrap script must be invoked through `run`.
+That command:
 
-`pnpm run bootstrap` copies `.env.local` from `.env.example`, fills the checkout-scoped OpenClaw prefix, starts local Docker services for the current artifact-storage mode, and when you use local MinIO it also creates the bucket, enables public reads, and writes the probe object Softbox checks. On a fresh clone that means Redis + MinIO.
+1. shows a starter picker when no arguments are provided
+2. creates an app id such as `dashboard-1` or `react-app-1`
+3. scaffolds or copies the selected starter
+4. wraps it for Softbox when needed
+5. runs `pnpm run doctor`
+6. seeds the app into Convex
+7. sets it as the default shell selection
 
-If you skip `pnpm run bootstrap`, start the local services yourself:
+Current starters:
+
+| Starter | Use case |
+| --- | --- |
+| Blank React + TypeScript | Clean typed app surface |
+| Blank React + JavaScript | Minimal browser app |
+| Dashboard example | Data/product UI starting point |
+| Grid example | Canvas/grid-style app starting point |
+| Tic tac toe example | Small interactive example |
+
+Skip the picker with a specific starter:
 
 ```bash
-docker compose up -d redis minio
+pnpm new-app --starter dashboard-example
 ```
 
-If you already have Redis running locally and `REDIS_URL` points at it, you can skip Docker.
-If you use Cloudflare R2 instead of MinIO, you only need Redis locally.
-BullMQ does not run as a separate container here. It is the queue library used inside `worker/src/index.ts`, and it stores queue state in Redis.
-
-Fill in the required values in `.env.local` using [`SETUP.md`](./SETUP.md), then
-run:
+Override the Vite template:
 
 ```bash
-pnpm run doctor
-pnpm start
+pnpm new-app my-app -- --template react
 ```
 
-Notes:
+## Wrap an Existing App
 
-- the shell only needs `VITE_CONVEX_URL`
-- mounted app selection is stored in Convex, not in `.env.local`
-- `pnpm seed` now shows an arrow-key picker for wrapped apps; use `pnpm seed -- --app <app-id> --force` for one explicit clean seed or `pnpm seed -- --all --force` to seed every wrapped app from current source
-- `.env.example` now defaults to local MinIO values so a fresh checkout can use Docker-backed artifact storage immediately
-- set `ARTIFACT_STORAGE_PROVIDER=r2` to switch from local MinIO to Cloudflare R2, then fill `S3_API`, `PUBLIC_DEVELOPMENT_URL`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`
-- `S3_API` / `PUBLIC_DEVELOPMENT_URL` remain the R2 values and are unchanged for existing setups
-- leave `OPENCLAW_AGENT_ID_PREFIX` blank unless you intentionally want a custom prefix; `pnpm run bootstrap` and `pnpm start` will generate a checkout-scoped value automatically so multiple local clones do not collide in OpenClaw
-- queueing is handled by BullMQ in the worker process; Redis is the only extra service you need to run locally
-- `pnpm start` starts Convex, the worker, and the shell together
-- `pnpm start` auto-provisions the local MinIO bucket/probe when you use local MinIO, seeds wrapped apps that still have no live version, and auto-syncs per-app OpenClaw agents unless you pass `--no-auto-seed` / `--no-sync-agents`
-- if `pnpm start` reports a missing package such as `bullmq`, the repo install is incomplete; rerun `pnpm install` at the repo root
-- use `pnpm run doctor` instead of `pnpm doctor` because `doctor` is a reserved pnpm command
-
-Wrapping a new app:
+Softbox does not auto-mount everything under `apps/`. A hosted app needs a thin runtime bridge and config.
 
 ```bash
 pnpm wrap-app -- --path apps/my-app
 ```
 
-That command creates the thin Softbox runtime bridge for a browser-first React/Vite app and writes `softbox.config.json` so the worker can discover it automatically. The folder name under `/apps/<app-id>` is the canonical app id. It does not make Next.js or server-heavy apps magically compatible.
+A wrapped app normally contains:
 
-Desktop icons should live in the app source, for example `src/assets/desktop-icon.png`, and can be referenced from `softbox.config.json` with `"icon": "src/assets/desktop-icon.png"`. During seed, Softbox uploads that app-local icon to artifact storage and stores only the public artifact URL in Convex.
+| File | Purpose |
+| --- | --- |
+| `softbox.config.json` | App metadata and build/runtime discovery |
+| `src/entry.tsx` | Shell adapter that exports `mount(ctx)` and `unmount()` |
+| `src/defaultState.ts` | Initial app state for seeding |
 
-Seed wrapped apps from current source:
+Keep the adapter thin. Business logic, rendering, and domain behavior should stay in the standalone app core.
+
+## Seed Apps
+
+Seed every wrapped app from current source:
 
 ```bash
 pnpm seed -- --all --force
 ```
 
-That clears old seeded state/artifacts and rebuilds every wrapped app.
-For one app, run `pnpm seed -- --app <app-id> --force`.
-Plain `pnpm seed` opens an arrow-key picker over wrapped apps, including a
-`Seed all wrapped apps` choice, for cases where you do not want to force-reset
-existing seeded state.
-On a fresh clone, Softbox now auto-installs app-local dependencies for the selected app before building it.
-`pnpm start` also auto-seeds wrapped apps that still have no live version, so manual `pnpm seed` is mainly for explicit reseeds or repairs.
-After that, switch mounted apps from the shell UI instead of changing env vars.
+Seed one app:
 
-If you already have older local Convex data from the pre-migration `templateId` architecture, inspect it first and then apply the rewrite once:
+```bash
+pnpm seed -- --app <app-id> --force
+```
+
+Plain `pnpm seed` opens an arrow-key picker. `pnpm start` also auto-seeds wrapped apps that still have no live version, so manual seeding is mainly for explicit reseeds and repairs.
+
+## Architecture
+
+```text
+softbox/
+  shell/        Stable browser host runtime and prompt UI
+  worker/       Agent orchestration, build pipeline, upload, publish
+  convex/       Schema, queries, mutations, runtime state
+  apps/         Standalone-first hosted app workspaces
+  skills/       Repo-local agent skills, including app wrapping
+  docs/         Focused architecture and integration notes
+```
+
+### Runtime Contract
+
+The shell and hosted app communicate through a narrow mount contract. The most important source file for that contract is:
+
+```text
+worker/src/shared/liveApp.ts
+```
+
+For app onboarding and wrapper work, use:
+
+```text
+skills/softbox-wrap-app/SKILL.md
+```
+
+For app-specific edits, read the app-local `AGENTS.md` under `apps/<app>/` before changing code.
+
+## OpenClaw Agent Routing
+
+Softbox usually runs OpenClaw in per-app mode. Expected agent ids look like:
+
+```text
+<OPENCLAW_AGENT_ID_PREFIX><appId>
+```
+
+Check or repair the local OpenClaw agent set:
+
+```bash
+openclaw gateway status
+openclaw agents list --json
+pnpm worker:openclaw-sync-agents -- --apply
+```
+
+If Convex app records do not exist yet:
+
+```bash
+pnpm seed -- --all --force
+pnpm worker:openclaw-sync-agents -- --apply
+```
+
+## Common Commands
+
+| Command | Purpose |
+| --- | --- |
+| `pnpm run bootstrap` | Create `.env.local`, generate local agent prefix, start local services |
+| `pnpm run doctor` | Validate environment and service connectivity |
+| `pnpm start` | Start Convex, worker, and shell together |
+| `pnpm new-app` | Create and onboard a new hosted app |
+| `pnpm wrap-app -- --path apps/my-app` | Add Softbox runtime bridge to an existing app |
+| `pnpm seed -- --all --force` | Rebuild and seed all wrapped apps |
+| `pnpm typecheck` | TypeScript project check |
+| `pnpm test` | Run Vitest |
+
+## Storage Modes
+
+| Provider | Best for | Env setting |
+| --- | --- | --- |
+| MinIO | Local development and VM installs | `ARTIFACT_STORAGE_PROVIDER=minio` |
+| Cloudflare R2 | Durable shared artifact storage | `ARTIFACT_STORAGE_PROVIDER=r2` |
+
+Fresh checkouts default to local MinIO values in `.env.example`. If you switch to R2, fill `S3_API`, `PUBLIC_DEVELOPMENT_URL`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` as described in `SETUP.md`.
+
+## Migration And Repair
+
+Older local Convex data from the pre-migration `templateId` architecture can be inspected and rewritten once:
 
 ```bash
 pnpm worker:migrate-app-ids
 pnpm worker:migrate-app-ids -- --apply
 ```
 
-If you already have existing OpenClaw box rows and want to attach them to the new engine/provider profile tables, run:
+Existing OpenClaw box rows can be attached to the current engine/provider profile tables:
 
 ```bash
 pnpm worker:backfill-box-profiles
-```
-
-Starting a new app:
-
-```bash
-pnpm new-app
-```
-
-That command does the full local onboarding flow for a supported Softbox app:
-
-1. shows an arrow-key starter picker when you run it without arguments
-2. auto-generates a new app id such as `dashboard-1` or `react-app-1`
-3. either scaffolds a fresh Vite app or copies a wrapped starter app
-4. runs `pnpm wrap-app -- --path apps/<your-app>` when wrapping is needed
-5. runs `pnpm run doctor`
-6. runs `pnpm seed -- --app <your-app> --force`
-7. starts normally; `pnpm start` auto-syncs per-app OpenClaw agents
-8. sets the new app as the default shell selection so the shell can mount it on refresh
-
-Current starters:
-
-- blank React + TypeScript
-- blank React + JavaScript
-- dashboard example
-- grid example
-- tic tac toe example
-
-You can still override the Vite template if needed:
-
-```bash
-pnpm new-app my-app -- --template react
-```
-
-Or skip the picker with a specific starter:
-
-```bash
-pnpm new-app --starter dashboard-example
-```
-
-The command only injects `APP_ID` for its own `doctor` step. It does not rewrite `.env.local`.
-`doctor` output is shown, but `pnpm new-app` still attempts `seed` afterwards so app-local onboarding is not blocked by unrelated environment warnings.
-The starter picker uses a Node prompt UI, so users do not need Go or any external TUI runtime.
-If a worker is already running, `pnpm new-app` now prints a restart warning after onboarding so the first prompt does not hit a stale worker process.
-
-Then open the shell in the browser and submit a prompt.
-
-## Useful Commands
-
-```bash
-pnpm run bootstrap
-pnpm new-app
-pnpm run doctor
-pnpm start
-pnpm dev:shell
-pnpm dev:worker
-pnpm dev:convex
-pnpm build:shell
-pnpm typecheck
-pnpm test
-pnpm seed -- --all --force
-pnpm wrap-app -- --path apps/my-app
-pnpm worker:backfill-box-profiles
-pnpm worker:migrate-app-ids
-pnpm worker:openclaw-sync-agents
-docker compose up -d redis
 ```
 
 ## Documentation
 
-Start with:
+| Document | Use it for |
+| --- | --- |
+| [`SETUP.md`](./SETUP.md) | Full local installation and verification |
+| [`AGENTS.md`](./AGENTS.md) | Repository instructions for coding agents |
+| [`CLAUDE.md`](./CLAUDE.md) | Claude-specific repository instructions |
+| [`skills/softbox-wrap-app/SKILL.md`](./skills/softbox-wrap-app/SKILL.md) | App onboarding and wrapper work |
+| [`docs/shell-host-surface.md`](./docs/shell-host-surface.md) | Shell host surface notes |
+| [`docs/openclaw/gateway-control.md`](./docs/openclaw/gateway-control.md) | OpenClaw gateway integration |
+| [`docs/openclaw/softbox-ui-auth.md`](./docs/openclaw/softbox-ui-auth.md) | OpenClaw UI auth notes |
+| [`docs/openclaw/ws.md`](./docs/openclaw/ws.md) | OpenClaw websocket notes |
+| [`docs/r2/R2-bottleneck.md`](./docs/r2/R2-bottleneck.md) | R2 storage notes |
 
-- [`SETUP.md`](./SETUP.md)
-- [`AGENTS.md`](./AGENTS.md)
-- [`CLAUDE.md`](./CLAUDE.md)
-- [`docs/shell-host-surface.md`](./docs/shell-host-surface.md)
-- [`docs/openclaw/gateway-control.md`](./docs/openclaw/gateway-control.md)
-- [`docs/openclaw/softbox-ui-auth.md`](./docs/openclaw/softbox-ui-auth.md)
-- [`docs/openclaw/ws.md`](./docs/openclaw/ws.md)
-- [`docs/r2/R2-bottleneck.md`](./docs/r2/R2-bottleneck.md)
+## Project Status
 
-## Open Source Status
-
-This repository is prepared to be published as open source, but it is still experimental.
-
-What is solid:
-
-- shell host runtime
-- agent-driven rebuild pipeline
-- standalone app hosting experiments
-- pipeline visibility and version promotion model
-
-What is still evolving:
-
-- app contract cleanup
-- multi-app ergonomics
-- datahub integration story
-- polished public examples
+Softbox is a local-first runtime for experimenting with agent-mutated apps. Treat generated app code as candidate code until it has been built, previewed, and promoted through the normal flow.
 
 ## License
 
 [MIT](./LICENSE)
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
