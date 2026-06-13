@@ -142,9 +142,7 @@ The invariant is simple: the shell is stable, the inner app is mutable, and gene
 
 Create a new app from the Softbox desktop. Right-click the desktop, choose the new-app action, and Softbox creates the app workspace, wraps it, seeds it, and makes it available in the shell.
 
-<p align="center">
-  <video src="docs/assets/github-create-new-app.mp4" controls width="900"></video>
-</p>
+![Create a new app from the Softbox desktop](docs/assets/github-create-new-app.gif)
 
 For scripted onboarding, use the CLI:
 
