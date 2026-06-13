@@ -138,7 +138,7 @@ Candidate promoted live
 
 The invariant is simple: the shell is stable, the inner app is mutable, and generated code has to pass through a preview boundary before promotion. -->
 
-# Create an App
+## Create an App
 
 Let's say you want to create a calendar application.
 
@@ -148,13 +148,11 @@ Let's say you want to create a calendar application.
 4. Choose a slug. This is the internal Softbox name for the Vite application.
 5. In the description, explain what the app should do and how its icon should look.
 
-![Create a new app from the Softbox desktop](docs/assets/github-create-new-app.gif)
+![Create and generate a new app from the Softbox desktop](docs/assets/github-create-new-app-flow.gif)
 
 Once the application is created, Softbox generates the default Vite boilerplate.
 
 You can then prompt Softbox to generate the new calendar application.
-
-![Create a new app from the Softbox desktop](docs/assets/github-create-new-app-2.gif)
 
 Notice that the browser does not reload. The interface changes at runtime.
 
