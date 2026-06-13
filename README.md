@@ -31,9 +31,35 @@
 
 Softbox is an operating system for dynamic user interfaces.
 
-An agent can reshape a real React/Vite interface, but the live user-facing shell stays stable. Every change is built as an immutable candidate, uploaded to artifact storage, mounted in preview, health-checked, and promoted only after it proves it can run.
 
-That gives you an AI-editable interface environment without letting generated code directly replace production runtime state.
+## ELI5
+
+Softbox is like a computer desktop in your browser.
+
+You can right-click the desktop and make a new app.
+
+Then you can tell the app what you want:
+
+```text
+Make me a calendar.
+Add a week view.
+Make the events easier to read.
+Add a button for creating meetings.
+```
+
+Softbox asks an AI coding agent to change the app for you.
+
+But it does not immediately replace the app you are using.
+
+First, Softbox builds a new version on the side.
+
+You get to see that new version before it becomes the real one.
+
+If it works, Softbox can switch to it.
+
+If it is bad, your current app is still safe.
+
+That is the whole idea: apps that can change while the desktop around them stays stable.
 
 ## Why Softbox
 
@@ -161,7 +187,7 @@ Notice that the browser does not reload. The interface changes at runtime.
 
 ## Move between Applications
 
-
+## Change Wallpapers
 
 ## It also runs Doom
 
