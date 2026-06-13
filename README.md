@@ -138,6 +138,10 @@ Candidate promoted live
 
 The invariant is simple: the shell is stable, the inner app is mutable, and generated code has to pass through a preview boundary before promotion. -->
 
+You donwloaded this repo and installed Softbox using 'SETUP.md' via your coding agent, then runned `pnpm start` and now you are in your browser at `localhost:4173`
+
+![Create and generate a new app from the Softbox desktop](docs/assets/github-softbox-main-screen.png)
+
 ## Create an App
 
 Let's say you want to create a calendar application.
@@ -149,13 +153,18 @@ Let's say you want to create a calendar application.
 5. In the description, explain what the app should do and how its icon should look.
 
 ![Create and generate a new app from the Softbox desktop](docs/assets/github-create-new-app-flow.gif)
+(Notice that the browser nor input field does not reload. This is due to the idea that the prompt input envelops the Vite application. Think of analogy as softbox is your hands, and the vite application is rubick cube.)
 
-Once the application is created, Softbox generates the default Vite boilerplate.
 
-You can then prompt Softbox to generate the new calendar application.
+- Once the application is created, Softbox generates the default Vite boilerplate.
+- You can then prompt Softbox to generate the new calendar application.
+- The result is whole Vite application that can be run without softbox. (you can the check the code in `/apps/calendar`)
 
-Notice that the browser does not reload. The interface changes at runtime.
+You can therefore think of softbox as:
+ - builder app, similiar to v0, bolt.new or Lovable
+ - novel/experimental solution for dynamic interface
 
+## Dynamic interface
 
 ## Move between Applications
 
@@ -224,7 +233,7 @@ pnpm seed -- --app <app-id> --force
 
 Plain `pnpm seed` opens an arrow-key picker. `pnpm start` also auto-seeds wrapped apps that still have no live version, so manual seeding is mainly for explicit reseeds and repairs. -->
 
-## Architecture
+<!-- ## Architecture -->
 <!-- 
 ```text
 softbox/
