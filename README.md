@@ -152,6 +152,22 @@ Let's say you want to create a calendar application.
 
 Once the application is created, Softbox generates the default Vite boilerplate.
 
+You can then prompt Softbox to generate the new calendar application.
+
+![Create a new app from the Softbox desktop](docs/assets/github-create-new-app-2.gif)
+
+Notice that the browser does not reload. The interface changes at runtime.
+
+
+## Move between Applications
+
+
+
+## It also runs Doom
+
+
+
+
 ## Wrap an Existing App
 
 Softbox does not auto-mount everything under `apps/`. A hosted app needs a thin runtime bridge and config.
