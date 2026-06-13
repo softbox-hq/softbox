@@ -140,15 +140,17 @@ The invariant is simple: the shell is stable, the inner app is mutable, and gene
 
 ## Create an App
 
-Create a new app from the Softbox desktop. Right-click the desktop, choose the new-app action, and Softbox creates the app workspace, wraps it, seeds it, and makes it available in the shell.
+Let's say you want to create a calendar application.
+
+1. Right-click the desktop.
+2. Click `Create app`.
+3. Choose a name. In this case, use `Calendar`.
+4. Choose a slug. This is the internal Softbox name for the Vite application.
+5. In the description, explain what the app should do and how its icon should look.
 
 ![Create a new app from the Softbox desktop](docs/assets/github-create-new-app.gif)
 
-For scripted onboarding, use the CLI:
-
-```bash
-pnpm new-app
-```
+Once the application is created, Softbox generates the default Vite boilerplate.
 
 ## Wrap an Existing App
 
