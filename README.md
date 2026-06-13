@@ -82,31 +82,7 @@ Softbox is closest to tools like Bolt.new, v0, and Lovable, but it is designed f
 - **Uses OpenClaw for code mutation**: Softbox orchestrates; OpenClaw edits.
 - **Supports app switching and version rollback**: move between apps and previously built versions from the shell. -->
 
-## Quickstart
 
-Use Claude code or codex or any agentic CLI tool and give it `SETUP.md` for a installation.
-
-Agent than in the essence will do following:
-```bash
-pnpm install
-pnpm run bootstrap
-# fill .env.local using SETUP.md
-pnpm run doctor
-pnpm start
-```
-
-Once agent is done installing, you then `pnpm start` and open browser at localhost:4173
-
-### Requirements
-
-| Requirement | Notes |
-| --- | --- |
-| Node.js 20+ | Runtime for scripts, shell, and worker |
-| pnpm | Use pnpm at the repo root; do not run `npm install` here |
-| Docker | Recommended for local Redis and MinIO |
-| Convex project | Control plane for jobs, apps, versions, runtime state |
-| OpenClaw CLI | Authenticated locally; used by the worker to edit app code |
-| MinIO or Cloudflare R2 | Artifact storage for built app bundles |
 
 <!-- ### Important Setup Rules
 
@@ -190,9 +166,33 @@ Notice that the browser does not reload. The interface changes at runtime.
 ## It also runs Doom
 
 
+## Quickstart
 
+Use Claude code or codex or any agentic CLI tool and give it `SETUP.md` for a installation.
 
-## Wrap an Existing App
+Agent than in the essence will do following:
+```bash
+pnpm install
+pnpm run bootstrap
+# fill .env.local using SETUP.md
+pnpm run doctor
+pnpm start
+```
+
+Once agent is done installing, you then `pnpm start` and open browser at localhost:4173
+
+### Requirements
+
+| Requirement | Notes |
+| --- | --- |
+| Node.js 20+ | Runtime for scripts, shell, and worker |
+| pnpm | Use pnpm at the repo root; do not run `npm install` here |
+| Docker | Recommended for local Redis and MinIO |
+| Convex project | Control plane for jobs, apps, versions, runtime state |
+| OpenClaw CLI | Authenticated locally; used by the worker to edit app code |
+| MinIO or Cloudflare R2 | Artifact storage for built app bundles |
+
+<!-- ## Wrap an Existing App
 
 Softbox does not auto-mount everything under `apps/`. A hosted app needs a thin runtime bridge and config.
 
@@ -224,10 +224,10 @@ Seed one app:
 pnpm seed -- --app <app-id> --force
 ```
 
-Plain `pnpm seed` opens an arrow-key picker. `pnpm start` also auto-seeds wrapped apps that still have no live version, so manual seeding is mainly for explicit reseeds and repairs.
+Plain `pnpm seed` opens an arrow-key picker. `pnpm start` also auto-seeds wrapped apps that still have no live version, so manual seeding is mainly for explicit reseeds and repairs. -->
 
 ## Architecture
-
+<!-- 
 ```text
 softbox/
   shell/        Stable browser host runtime and prompt UI
@@ -312,7 +312,7 @@ Existing OpenClaw box rows can be attached to the current engine/provider profil
 
 ```bash
 pnpm worker:backfill-box-profiles
-```
+``` -->
 
 ## Documentation
 
