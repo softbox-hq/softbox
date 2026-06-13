@@ -34,34 +34,31 @@ Softbox is an operating system for dynamic user interfaces.
 
 ## ELI5
 
-Softbox is like a computer desktop in your browser.
+| Softbox is like a computer desktop in your browser. |
+| --- |
+| You right-click the desktop, make a new app, and tell it what you want. |
 
-You can right-click the desktop and make a new app.
+Examples:
 
-Then you can tell the app what you want:
+<p>
+  <code>Make me a calendar.</code>
+  <code>Add a week view.</code>
+  <code>Make the events easier to read.</code>
+  <code>Add a button for creating meetings.</code>
+</p>
 
-```text
-Make me a calendar.
-Add a week view.
-Make the events easier to read.
-Add a button for creating meetings.
-```
+Softbox asks an AI coding agent to change the app for you, but it does **not** immediately replace the app you are using.
 
-Softbox asks an AI coding agent to change the app for you.
+| Step | What happens |
+| --- | --- |
+| 1 | Softbox builds a new version on the side. |
+| 2 | You preview that new version first. |
+| 3 | If it works, Softbox can switch to it. |
+| 4 | If it is bad, your current app is still safe. |
 
-But it does not immediately replace the app you are using.
+That is the whole idea: apps can change while the desktop around them stays stable.
 
-First, Softbox builds a new version on the side.
-
-You get to see that new version before it becomes the real one.
-
-If it works, Softbox can switch to it.
-
-If it is bad, your current app is still safe.
-
-That is the whole idea: apps that can change while the desktop around them stays stable.
-
-## Why Softbox
+<!-- ## Why Softbox
 
 Most AI app builders collapse editing, preview, and deployment into one surface. Softbox separates them.
 
@@ -83,12 +80,13 @@ Softbox is closest to tools like Bolt.new, v0, and Lovable, but it is designed f
 - **Stores immutable artifacts**: bundles are uploaded to MinIO or R2 instead of served from a mutable workspace.
 - **Tracks app and runtime state in Convex**: jobs, versions, selected app, boxes, and health state are explicit.
 - **Uses OpenClaw for code mutation**: Softbox orchestrates; OpenClaw edits.
-- **Supports app switching and version rollback**: move between apps and previously built versions from the shell.
+- **Supports app switching and version rollback**: move between apps and previously built versions from the shell. -->
 
 ## Quickstart
 
-Use `SETUP.md` for a real installation. It is the source of truth for Convex, OpenClaw, Redis, MinIO/R2, `.env.local`, seeding, and verification.
+Use Claude code or codex or any agentic CLI tool and give it `SETUP.md` for a installation.
 
+Agent than in the essence will do following:
 ```bash
 pnpm install
 pnpm run bootstrap
@@ -97,7 +95,7 @@ pnpm run doctor
 pnpm start
 ```
 
-Open the shell after `pnpm start`, select or seed an app, then submit a prompt.
+Once agent is done installing, you then `pnpm start` and open browser at localhost:4173
 
 ### Requirements
 
@@ -110,7 +108,7 @@ Open the shell after `pnpm start`, select or seed an app, then submit a prompt.
 | OpenClaw CLI | Authenticated locally; used by the worker to edit app code |
 | MinIO or Cloudflare R2 | Artifact storage for built app bundles |
 
-### Important Setup Rules
+<!-- ### Important Setup Rules
 
 - Use `pnpm run bootstrap`, not `pnpm setup`.
 - Use `pnpm run doctor`, not `pnpm doctor`.
@@ -118,9 +116,9 @@ Open the shell after `pnpm start`, select or seed an app, then submit a prompt.
 - Do not include a trailing slash in either Convex URL.
 - Leave `OPENCLAW_AGENT_ID_PREFIX` blank unless you intentionally share agents across checkouts.
 - Redis is required because BullMQ stores queue state there.
-- Local MinIO is the fastest development path; switch to R2 only when you want Cloudflare-backed artifacts.
+- Local MinIO is the fastest development path; switch to R2 only when you want Cloudflare-backed artifacts. -->
 
-## AI-Assisted Install
+<!-- ## AI-Assisted Install
 
 Recommended setup path: give a coding agent `SETUP.md` and ask it to follow the file step by step.
 
@@ -130,11 +128,11 @@ Do not skip verification. Explain each dashboard step before asking me to do it.
 When editing .env.local, tell me exactly which value goes into which variable.
 ```
 
-`AGENTS.md` and `CLAUDE.md` are operating instructions for agents inside this repo. They are not full installation guides.
+`AGENTS.md` and `CLAUDE.md` are operating instructions for agents inside this repo. They are not full installation guides. -->
 
-## How It Works
+# How It Works
 
-```text
+<!-- ```text
 User prompt
     |
     v
@@ -162,9 +160,9 @@ Health check passes
 Candidate promoted live
 ```
 
-The invariant is simple: the shell is stable, the inner app is mutable, and generated code has to pass through a preview boundary before promotion.
+The invariant is simple: the shell is stable, the inner app is mutable, and generated code has to pass through a preview boundary before promotion. -->
 
-## Create an App
+# Create an App
 
 Let's say you want to create a calendar application.
 
