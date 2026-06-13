@@ -1,0 +1,7 @@
+{
+  "appId": "app_e8cb3914",
+  "name": "Calendar",
+  "slug": "calendar",
+  "runtime": "react-vite",
+  "icon": "src/assets/desktop-icon.png"
+}

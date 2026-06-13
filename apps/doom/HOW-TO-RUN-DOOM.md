@@ -25,7 +25,7 @@ If you want the app to boot your own Doom copy by default:
 1. Get your own legally obtained Doom IWAD
 2. Copy it into `apps/doom/`
 3. Rename or replace it as `DOOM.WAD`
-4. Rebuild / reseed the app so Softbox picks up the new bundled asset
+4. Rebuild / reseed the app so Softbox picks up the new bundled asset - just put into the text input "ping" so that the whole app rebuilds.
 
 ## Important licensing note
 

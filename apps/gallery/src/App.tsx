@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import dogImage from './assets/dog.png'
 import catImage from './assets/cat.png'
 import openclawBotImage from './assets/openclaw-bot.png'
+import parrotImage from './assets/parrot.png'
+import treeImage from './assets/tree.png'
 import './App.css'
 
 function App() {
@@ -84,6 +86,8 @@ function App() {
               { src: dogImage, alt: 'Dog portrait' },
               { src: catImage, alt: 'Cat portrait' },
               { src: openclawBotImage, alt: 'OpenClaw bot' },
+              { src: parrotImage, alt: 'Parrot portrait' },
+              { src: treeImage, alt: 'Tree illustration' },
             ].map((image) => (
               <button
                 key={image.alt}

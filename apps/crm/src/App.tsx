@@ -8,7 +8,7 @@ type Summary = {
   totalCustomers: number
   openDeals: number
   pipelineValue: number
-  overdueActivities: number
+  totalRevenue: number
 }
 
 type CustomerRow = {
@@ -49,7 +49,6 @@ type DashboardData = {
 }
 
 const DB_PATH = crmDbUrl
-const TODAY = '2026-04-23 16:33'
 
 function queryRows<T>(db: { exec: (sql: string) => Array<{ columns: string[]; values: unknown[][] }> }, sql: string) {
   const [result] = db.exec(sql)
@@ -69,6 +68,14 @@ function formatCurrency(amount: number) {
     currency: 'USD',
     maximumFractionDigits: 0,
   }).format(amount)
+}
+
+function getRevenuePerCustomer(summary: Summary) {
+  if (summary.totalCustomers === 0) {
+    return 0
+  }
+
+  return summary.totalRevenue / summary.totalCustomers
 }
 
 function App() {
@@ -98,7 +105,7 @@ function App() {
              (SELECT COUNT(*) FROM customers) AS totalCustomers,
              (SELECT COUNT(*) FROM deals WHERE stage NOT IN ('Closed Won', 'Closed Lost')) AS openDeals,
              (SELECT COALESCE(SUM(amount), 0) FROM deals WHERE stage NOT IN ('Closed Won', 'Closed Lost')) AS pipelineValue,
-             (SELECT COUNT(*) FROM activities WHERE completed = 0 AND due_at < '${TODAY}') AS overdueActivities`,
+             (SELECT COALESCE(SUM(amount), 0) FROM deals) AS totalRevenue`,
         )[0]
 
         const customers = queryRows<CustomerRow>(
@@ -213,14 +220,14 @@ function App() {
           <p>Active opportunities still in motion</p>
         </article>
         <article className="panel stat-card">
-          <span className="mini-label">Pipeline value</span>
-          <strong>{formatCurrency(data.summary.pipelineValue)}</strong>
-          <p>Total value excluding closed business</p>
+          <span className="mini-label">Revenue / customer</span>
+          <strong>{formatCurrency(getRevenuePerCustomer(data.summary))}</strong>
+          <p>Total revenue divided by amount of customers</p>
         </article>
         <article className="panel stat-card">
-          <span className="mini-label">Overdue</span>
-          <strong>{data.summary.overdueActivities}</strong>
-          <p>Activities scheduled before {TODAY}</p>
+          <span className="mini-label">Revenue</span>
+          <strong>{formatCurrency(data.summary.totalRevenue)}</strong>
+          <p>Sum of all deals stored in this database</p>
         </article>
       </section>
 

@@ -1,6 +1,6 @@
 import { Canvas, type ThreeEvent, useFrame, useThree } from '@react-three/fiber'
 import { Html, Stars } from '@react-three/drei'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import './App.css'
 
@@ -95,17 +95,8 @@ const planets: PlanetConfig[] = [
   },
 ]
 
-const moveBindings: Record<string, THREE.Vector3Tuple> = {
-  KeyW: [0, 0, -1],
-  KeyS: [0, 0, 1],
-  KeyA: [-1, 0, 0],
-  KeyD: [1, 0, 0],
-  KeyQ: [0, 1, 0],
-  KeyE: [0, -1, 0],
-}
-
 function App() {
-  const [selectedPlanet, setSelectedPlanet] = useState<string>('Earth')
+  const [selectedPlanet, setSelectedPlanet] = useState<string>('Jupiter')
 
   return (
     <main className="app-shell">
@@ -118,23 +109,22 @@ function App() {
           <directionalLight position={[20, 14, 20]} intensity={1.4} />
           <Stars radius={180} depth={100} count={9000} factor={5} saturation={0} fade speed={0.5} />
           <SolarSystem selectedPlanet={selectedPlanet} onPlanetSelect={setSelectedPlanet} />
-          <FlightControls />
+          <FollowPlanetCamera planetName="Jupiter" />
         </Canvas>
 
         <div className="hud hud-top-left">
           <p className="eyebrow">Space 3D</p>
-          <h1>Solar system fly-through</h1>
+          <h1>Jupiter locked camera</h1>
           <p className="body-copy">
-            Cruise around the scene with keyboard flight controls and click any planet to highlight it.
+            The camera now tracks Jupiter continuously while the rest of the solar system moves around it.
           </p>
         </div>
 
         <div className="hud hud-top-right">
-          <p className="eyebrow">Navigation</p>
+          <p className="eyebrow">Camera mode</p>
           <ul>
-            <li><span>W A S D</span><strong>move</strong></li>
-            <li><span>Q / E</span><strong>up / down</strong></li>
-            <li><span>Shift</span><strong>boost</strong></li>
+            <li><span>Jupiter</span><strong>locked target</strong></li>
+            <li><span>Auto</span><strong>smooth follow</strong></li>
           </ul>
         </div>
 
@@ -229,11 +219,16 @@ function Planet({
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[config.orbitRadius - 0.04, config.orbitRadius + 0.04, 128]} />
-        <meshBasicMaterial color={selected ? '#93c5fd' : '#2b3648'} transparent opacity={selected ? 0.85 : 0.45} side={THREE.DoubleSide} />
+        <meshBasicMaterial
+          color={selected ? '#93c5fd' : '#2b3648'}
+          transparent
+          opacity={selected ? 0.85 : 0.45}
+          side={THREE.DoubleSide}
+        />
       </mesh>
 
-      <group ref={orbitRef}>
-        <group position={[config.orbitRadius, 0, 0]}>
+      <group ref={orbitRef} name={`${config.name}-orbit`}>
+        <group position={[config.orbitRadius, 0, 0]} name={config.name}>
           <mesh
             ref={planetRef}
             onClick={handleClick}
@@ -271,70 +266,21 @@ function Planet({
   )
 }
 
-function FlightControls() {
-  const { camera } = useThree()
-  const pressedKeys = useRef<Set<string>>(new Set())
-  const direction = useMemo(() => new THREE.Vector3(), [])
-  const forward = useMemo(() => new THREE.Vector3(), [])
-  const right = useMemo(() => new THREE.Vector3(), [])
-  const up = useMemo(() => new THREE.Vector3(0, 1, 0), [])
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.code in moveBindings || event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
-        event.preventDefault()
-      }
-      pressedKeys.current.add(event.code)
-    }
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      pressedKeys.current.delete(event.code)
-    }
-
-    const handleBlur = () => {
-      pressedKeys.current.clear()
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('keyup', handleKeyUp)
-    window.addEventListener('blur', handleBlur)
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('keyup', handleKeyUp)
-      window.removeEventListener('blur', handleBlur)
-    }
-  }, [])
+function FollowPlanetCamera({ planetName }: { planetName: string }) {
+  const { camera, scene } = useThree()
+  const planetPosition = useMemo(() => new THREE.Vector3(), [])
+  const targetPosition = useMemo(() => new THREE.Vector3(), [])
+  const followOffset = useMemo(() => new THREE.Vector3(0, 4.5, 11), [])
 
   useFrame((_, delta) => {
-    direction.set(0, 0, 0)
+    const planet = scene.getObjectByName(planetName)
+    if (!planet) return
 
-    for (const key of pressedKeys.current) {
-      const vector = moveBindings[key]
-      if (vector) {
-        direction.add(new THREE.Vector3(...vector))
-      }
-    }
+    planet.getWorldPosition(planetPosition)
+    targetPosition.copy(planetPosition).add(followOffset)
 
-    if (direction.lengthSq() === 0) return
-
-    const speed = pressedKeys.current.has('ShiftLeft') || pressedKeys.current.has('ShiftRight') ? 20 : 10
-    camera.getWorldDirection(forward)
-    right.crossVectors(forward, camera.up).normalize()
-
-    const vertical = direction.y
-    direction.y = 0
-    direction.normalize()
-
-    const movement = new THREE.Vector3()
-    movement.addScaledVector(forward, -direction.z)
-    movement.addScaledVector(right, direction.x)
-    movement.addScaledVector(up, vertical)
-
-    if (movement.lengthSq() === 0) return
-
-    movement.normalize().multiplyScalar(speed * delta)
-    camera.position.add(movement)
+    camera.position.lerp(targetPosition, 1 - Math.exp(-delta * 2.4))
+    camera.lookAt(planetPosition)
   })
 
   return null
