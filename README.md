@@ -7,10 +7,10 @@
 ╚════██║██║   ██║██╔══╝     ██║   ██╔══██╗██║   ██║ ██╔██╗
 ███████║╚██████╔╝██║        ██║   ██████╔╝╚██████╔╝██╔╝ ██╗
 ╚══════╝ ╚═════╝ ╚═╝        ╚═╝   ╚═════╝  ╚═════╝ ╚═╝  ╚═╝
-          Preview-first runtime for agent-mutated apps
+          Operating system for dynamic user interfaces
 </pre></div>
 
-<p align="center"><strong>Stable shell · mutable Vite apps · OpenClaw workers · immutable previews · explicit promotion</strong></p>
+<p align="center"><strong>Dynamic user interfaces · stable shell · OpenClaw workers · immutable previews · explicit promotion</strong></p>
 
 <p align="center">
   <a href="https://github.com/softbox-hq/softbox"><img src="https://img.shields.io/badge/repo-softbox--hq%2Fsoftbox-111827" alt="Repository"></a>
@@ -29,11 +29,11 @@
 
 ---
 
-Softbox is a host system for apps that are allowed to change.
+Softbox is an operating system for dynamic user interfaces.
 
-An agent can rewrite a real React/Vite app, but the live user-facing shell stays stable. Every change is built as an immutable candidate, uploaded to artifact storage, mounted in preview, health-checked, and promoted only after it proves it can run.
+An agent can reshape a real React/Vite interface, but the live user-facing shell stays stable. Every change is built as an immutable candidate, uploaded to artifact storage, mounted in preview, health-checked, and promoted only after it proves it can run.
 
-That gives you an AI-editable app environment without letting generated code directly replace production runtime state.
+That gives you an AI-editable interface environment without letting generated code directly replace production runtime state.
 
 ## Why Softbox
 
@@ -52,7 +52,7 @@ Softbox is closest to tools like Bolt.new, v0, and Lovable, but it is designed f
 
 ## What It Does
 
-- **Runs mutable apps inside a stable shell**: the host does not get rewritten for ordinary app changes.
+- **Runs dynamic interfaces inside a stable shell**: the operating layer does not get rewritten for ordinary app changes.
 - **Builds every agent change as a candidate version**: generated code is previewed before it becomes live.
 - **Stores immutable artifacts**: bundles are uploaded to MinIO or R2 instead of served from a mutable workspace.
 - **Tracks app and runtime state in Convex**: jobs, versions, selected app, boxes, and health state are explicit.
