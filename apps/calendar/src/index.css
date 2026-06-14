@@ -9,7 +9,6 @@
   --text-h: #111827;
   --bg: #f3f5f9;
   --panel: rgba(255, 255, 255, 0.88);
-  --sidebar-bg: rgba(236, 240, 246, 0.88);
   --border: rgba(148, 163, 184, 0.22);
   --field-bg: rgba(255, 255, 255, 0.92);
   --accent: #6366f1;
@@ -44,7 +43,6 @@
   --text-h: #f8fafc;
   --bg: #0f172a;
   --panel: rgba(15, 23, 42, 0.84);
-  --sidebar-bg: rgba(15, 23, 42, 0.96);
   --border: rgba(148, 163, 184, 0.18);
   --field-bg: rgba(30, 41, 59, 0.9);
   --accent: #818cf8;
@@ -112,6 +110,5 @@ p {
 }
 
 #root {
-  width: min(1400px, 100%);
-  margin: 0 auto;
+  width: 100%;
 }

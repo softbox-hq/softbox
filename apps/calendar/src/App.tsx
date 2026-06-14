@@ -52,6 +52,7 @@ function App() {
   const [selectedDate, setSelectedDate] = useState(
     initialState.ui.selectedDate ?? formatDateKey(today),
   )
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [time, setTime] = useState('09:00')
   const [category, setCategory] = useState<CalendarEvent['category']>('Work')
@@ -66,13 +67,6 @@ function App() {
       .filter((event) => event.date === selectedDate)
       .sort((a, b) => a.time.localeCompare(b.time)),
     [events, selectedDate],
-  )
-
-  const upcomingEvents = useMemo(
-    () => [...events]
-      .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`))
-      .slice(0, 4),
-    [events],
   )
 
   const monthLabel = currentMonth.toLocaleDateString(undefined, {
@@ -112,6 +106,21 @@ function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
+
+  useEffect(() => {
+    if (!isDetailsOpen) {
+      return
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsDetailsOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isDetailsOpen])
 
   useEffect(() => {
     publishState({
@@ -209,7 +218,10 @@ function App() {
                 ]
                   .filter(Boolean)
                   .join(' ')}
-                onClick={() => setSelectedDate(dateKey)}
+                onClick={() => {
+                  setSelectedDate(dateKey)
+                  setIsDetailsOpen(true)
+                }}
               >
                 <span className="day-number">{day.date.getDate()}</span>
                 <div className="day-events">
@@ -228,91 +240,101 @@ function App() {
         </div>
       </section>
 
-      <aside className="sidebar">
-        <section className="card">
-          <p className="eyebrow">Selected day</p>
-          <h2>{selectedDateLabel}</h2>
-          <div className="agenda-list">
-            {selectedEvents.length ? (
-              selectedEvents.map((event) => (
-                <article key={event.id} className="agenda-item">
-                  <span
-                    className="category-dot"
-                    style={{ background: categoryColors[event.category] }}
-                  />
-                  <div>
-                    <strong>{event.title}</strong>
-                    <p>
-                      {event.time} · {event.category}
-                    </p>
-                  </div>
-                </article>
-              ))
-            ) : (
-              <p className="empty-state">Nothing here yet. Add something below.</p>
-            )}
-          </div>
-        </section>
-
-        <section className="card">
-          <p className="eyebrow">Quick add</p>
-          <form className="event-form" onSubmit={handleAddEvent}>
-            <label>
-              Title
-              <input
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="Team sync"
-              />
-            </label>
-            <div className="form-row">
-              <label>
-                Time
-                <input
-                  type="time"
-                  value={time}
-                  onChange={(event) => setTime(event.target.value)}
-                />
-              </label>
-              <label>
-                Category
-                <select
-                  value={category}
-                  onChange={(event) =>
-                    setCategory(event.target.value as CalendarEvent['category'])
-                  }
-                >
-                  <option>Work</option>
-                  <option>Personal</option>
-                  <option>Health</option>
-                </select>
-              </label>
-            </div>
-            <button type="submit" className="primary-button">
-              Add event
-            </button>
-          </form>
-        </section>
-
-        <section className="card">
-          <p className="eyebrow">Upcoming</p>
-          <div className="upcoming-list">
-            {upcomingEvents.map((event) => (
-              <div key={event.id} className="upcoming-item">
-                <strong>{event.title}</strong>
-                <p>
-                  {new Date(`${event.date}T00:00:00`).toLocaleDateString(undefined, {
-                    month: 'short',
-                    day: 'numeric',
-                  })}
-                  {' · '}
-                  {event.time}
+      {isDetailsOpen ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => setIsDetailsOpen(false)}
+        >
+          <section
+            className="details-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="selected-day-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="details-modal-header">
+              <div>
+                <p className="eyebrow">Selected day</p>
+                <h2 id="selected-day-title">{selectedDateLabel}</h2>
+                <p className="subtitle">
+                  Add something new or review the agenda for this date.
                 </p>
               </div>
-            ))}
-          </div>
-        </section>
-      </aside>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => setIsDetailsOpen(false)}
+                aria-label="Close day details"
+              >
+                Close
+              </button>
+            </div>
+            <section className="modal-section">
+              <p className="eyebrow">Quick add</p>
+              <form className="event-form" onSubmit={handleAddEvent}>
+                <label>
+                  Title
+                  <input
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder="Team sync"
+                  />
+                </label>
+                <div className="form-row">
+                  <label>
+                    Time
+                    <input
+                      type="time"
+                      value={time}
+                      onChange={(event) => setTime(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Category
+                    <select
+                      value={category}
+                      onChange={(event) =>
+                        setCategory(event.target.value as CalendarEvent['category'])
+                      }
+                    >
+                      <option>Work</option>
+                      <option>Personal</option>
+                      <option>Health</option>
+                    </select>
+                  </label>
+                </div>
+                <button type="submit" className="primary-button">
+                  Add event
+                </button>
+              </form>
+            </section>
+            <section className="modal-section">
+              <p className="eyebrow">Events</p>
+              <div className="agenda-list">
+                {selectedEvents.length ? (
+                  selectedEvents.map((event) => (
+                    <article key={event.id} className="agenda-item">
+                      <span
+                        className="category-dot"
+                        style={{ background: categoryColors[event.category] }}
+                      />
+                      <div>
+                        <strong>{event.title}</strong>
+                        <p>
+                          {event.time} · {event.category}
+                        </p>
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <p className="empty-state">Nothing here yet. Add something above.</p>
+                )}
+              </div>
+            </section>
+          </section>
+        </div>
+      ) : null}
     </main>
   )
 }

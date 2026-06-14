@@ -26,3 +26,4 @@ worker-runtime
 *.sqlite-shm
 *.sqlite-wal
 *.sqlite-journal
+HUMAN.md
