@@ -37,6 +37,7 @@ function buildWorkerConfig(overrides?: Partial<WorkerConfig>): WorkerConfig {
     openClawAgentId: undefined,
     openClawAgentIdPrefix: "softbox-demo-",
     openClawSessionKeyPrefix: "softbox",
+    openClawAllowModelOverrides: true,
     ...overrides,
   };
 }
@@ -94,6 +95,7 @@ describe("buildRewriteAgentConfig", () => {
       agentIdPrefix: "softbox-demo-",
       sessionKeyPrefix: "softbox",
       sessionKeyGeneration: 0,
+      allowModelOverrides: true,
     });
   });
 
@@ -117,6 +119,7 @@ describe("buildRewriteAgentConfig", () => {
       agentIdPrefix: null,
       sessionKeyPrefix: "box-scope",
       sessionKeyGeneration: 4,
+      allowModelOverrides: true,
     });
   });
 
@@ -139,6 +142,25 @@ describe("buildRewriteAgentConfig", () => {
     });
 
     expect(rewriteConfig.model).toBe("openai-codex/gpt-5.4");
+  });
+
+  it("omits OpenClaw model routing unless model overrides are enabled", () => {
+    const config = buildWorkerConfig({
+      openClawAllowModelOverrides: false,
+    });
+
+    const rewriteConfig = buildRewriteAgentConfig({
+      config,
+      appId: "vite-default",
+      selectedBoxId: "box_123",
+      liveAppRoot: "/tmp/softbox/apps/vite-default",
+      liveAppLabel: "vite-default",
+      boxEngineContext: buildBoxContext(),
+      usesOpenClawSession: true,
+    });
+
+    expect(rewriteConfig.model).toBeUndefined();
+    expect(rewriteConfig.openClaw?.allowModelOverrides).toBe(false);
   });
 });
 

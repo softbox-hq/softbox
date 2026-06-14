@@ -68,6 +68,7 @@ export type AgentCliConfig = {
     agentIdPrefix?: string | null;
     sessionKeyPrefix: string;
     sessionKeyGeneration?: number | null;
+    allowModelOverrides?: boolean;
   };
 };
 
@@ -795,7 +796,7 @@ function normalizeOpenClawGatewayUrl(baseUrl: string): string {
   return url.toString().replace(/\/$/, "");
 }
 
-function buildOpenClawGatewayArgs(
+export function buildOpenClawGatewayArgs(
   config: AgentCliConfig,
   prompt: string,
   agentId: string,
@@ -821,7 +822,7 @@ function buildOpenClawGatewayArgs(
   }
 
   const normalizedModel = normalizeOpenClawModelId(config.model ?? null);
-  if (normalizedModel) {
+  if (config.openClaw.allowModelOverrides && normalizedModel) {
     params.model = normalizedModel;
   }
 
@@ -870,7 +871,8 @@ async function runOpenClawGateway(
     projectRoot: config.projectRoot,
     appId: config.appId,
     liveAppRoot: config.liveAppRoot,
-    model: config.model ?? null,
+    model: config.openClaw.allowModelOverrides ? (config.model ?? null) : null,
+    unpinModel: config.openClaw.allowModelOverrides !== true,
     autoRepair: true,
     openClaw: {
       agentId: config.openClaw.agentId ?? null,

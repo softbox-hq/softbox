@@ -163,6 +163,32 @@ pnpm worker:openclaw-sync-agents -- --apply
 
 This is intended to be the final setup step after gateway config and auth are healthy.
 
+## Model Override Authorization
+
+OpenClaw can reject gateway calls with:
+
+```text
+GatewayClientRequestError: provider/model overrides are not authorized for this caller.
+```
+
+For local Softbox development, the stable default is to let OpenClaw use its own
+configured default model instead of sending per-call provider/model overrides.
+Softbox therefore leaves gateway model overrides off unless explicitly enabled:
+
+```bash
+OPENCLAW_ALLOW_MODEL_OVERRIDES=false
+AGENT_MODEL=
+```
+
+Only set `OPENCLAW_ALLOW_MODEL_OVERRIDES=true` when the local OpenClaw caller is
+authorized to pass model overrides through the gateway. If this error appears
+after token refresh, OpenClaw upgrade, or OAuth re-auth, turn the flag back off,
+clear `AGENT_MODEL`, restart the worker, and re-run:
+
+```bash
+pnpm worker:openclaw-sync-agents -- --apply
+```
+
 ## What Was Verified
 
 Verified in code:

@@ -16,6 +16,14 @@ function parsePositiveNumber(value: string | undefined, fallback: number): numbe
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function parseBoolean(value: string | undefined, fallback = false): boolean {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+  return ["1", "true", "yes", "on"].includes(normalized);
+}
+
 function normalizeObjectStorageEndpoint(endpoint: string): string {
   const trimmed = endpoint.trim();
   try {
@@ -150,6 +158,7 @@ export type WorkerConfig = {
   openClawAgentId?: string;
   openClawAgentIdPrefix?: string;
   openClawSessionKeyPrefix: string;
+  openClawAllowModelOverrides: boolean;
 };
 
 export function loadWorkerConfig(): WorkerConfig {
@@ -216,5 +225,8 @@ export function loadWorkerConfig(): WorkerConfig {
     openClawAgentIdPrefix: openClawEnabled ? openClawAgentIdPrefix : undefined,
     openClawSessionKeyPrefix:
       process.env.OPENCLAW_SESSION_KEY_PREFIX?.trim() || "softbox",
+    openClawAllowModelOverrides: openClawEnabled
+      ? parseBoolean(process.env.OPENCLAW_ALLOW_MODEL_OVERRIDES, false)
+      : false,
   };
 }

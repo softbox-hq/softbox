@@ -354,6 +354,7 @@ export async function resolveOpenClawAgentForApp(args: {
   liveAppRoot: string;
   openClaw: Pick<OpenClawRoutingConfig, "agentId" | "agentIdPrefix">;
   model?: string | null;
+  unpinModel?: boolean;
   autoRepair?: boolean;
 }): Promise<{
   agentId: string;
@@ -375,8 +376,9 @@ export async function resolveOpenClawAgentForApp(args: {
     registeredAgent !== undefined && registeredAgent.workspace !== expectedWorkspace;
   const hasModelMismatch =
     registeredAgent !== undefined &&
-    expectedModel !== null &&
-    registeredAgent.model !== expectedModel;
+    (expectedModel !== null
+      ? registeredAgent.model !== expectedModel
+      : args.unpinModel === true && registeredAgent.model !== null);
 
   async function createExpectedAgent() {
     await createOpenClawAgent({

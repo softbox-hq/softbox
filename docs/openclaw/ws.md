@@ -29,6 +29,8 @@ See also:
   - How to stop the local OpenClaw gateway cleanly when it is running under `systemctl --user`, and how to run it again in foreground interactive mode.
 - [`softbox-ui-auth.md`](/home/fvrlak/ventures/softbox/docs/openclaw/softbox-ui-auth.md)
   - How the Softbox desktop bootstraps local OpenClaw gateway config and runs auth from the UI.
+- [`model-auth-repair.md`](/home/fvrlak/ventures/softbox/docs/openclaw/model-auth-repair.md)
+  - How to repair local OpenClaw model/auth drift after `openai-codex/*` to `openai/*` migration issues.
 
 ## Why WS Was Chosen
 

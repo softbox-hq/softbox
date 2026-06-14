@@ -116,24 +116,36 @@ export function buildRewriteAgentConfig(args: {
   boxEngineContext: ReturnType<typeof resolveBoxEngineContext>;
   usesOpenClawSession: boolean;
 }): AgentCliConfig {
-  const baseOpenClawConfig =
+  const baseOpenClaw =
     args.usesOpenClawSession &&
     args.config.openClawGatewayBaseUrl &&
     args.config.openClawGatewayToken
       ? {
-          openClaw: {
-            baseUrl: args.config.openClawGatewayBaseUrl,
-            token: args.config.openClawGatewayToken,
-            agentId: args.config.openClawAgentId ?? null,
-            agentIdPrefix: args.config.openClawAgentIdPrefix ?? null,
-            sessionKeyPrefix: args.config.openClawSessionKeyPrefix,
-            sessionKeyGeneration: 0,
-          },
+          baseUrl: args.config.openClawGatewayBaseUrl,
+          token: args.config.openClawGatewayToken,
+          agentId: args.config.openClawAgentId ?? null,
+          agentIdPrefix: args.config.openClawAgentIdPrefix ?? null,
+          sessionKeyPrefix: args.config.openClawSessionKeyPrefix,
+          sessionKeyGeneration: 0,
+          allowModelOverrides: args.config.openClawAllowModelOverrides,
         }
-      : {};
-  const resolvedModel = args.boxEngineContext?.model ?? args.config.agentModel;
+      : null;
+  const rewriteConfigPatch = args.boxEngineContext?.rewriteConfigPatch;
+  const mergedOpenClaw: AgentCliConfig["openClaw"] =
+    baseOpenClaw || rewriteConfigPatch?.openClaw
+      ? ({
+          ...baseOpenClaw,
+          ...rewriteConfigPatch?.openClaw,
+          allowModelOverrides: args.config.openClawAllowModelOverrides,
+        } as AgentCliConfig["openClaw"])
+      : undefined;
+  const resolvedModel =
+    args.usesOpenClawSession && !args.config.openClawAllowModelOverrides
+      ? undefined
+      : args.boxEngineContext?.model ?? args.config.agentModel;
 
   return {
+    ...rewriteConfigPatch,
     appId: args.appId,
     boxId: args.boxEngineContext?.boxId ?? args.selectedBoxId,
     command: args.config.agentCommand,
@@ -142,8 +154,7 @@ export function buildRewriteAgentConfig(args: {
     projectRoot: args.config.projectRoot,
     liveAppRoot: args.liveAppRoot,
     liveAppLabel: args.liveAppLabel,
-    ...baseOpenClawConfig,
-    ...args.boxEngineContext?.rewriteConfigPatch,
+    ...(mergedOpenClaw ? { openClaw: mergedOpenClaw } : {}),
   };
 }
 
@@ -538,7 +549,9 @@ export async function processJobById(
             projectRoot: config.projectRoot,
             appId,
             liveAppRoot,
-            model: boxEngineContext.model ?? config.agentModel ?? null,
+            model: config.openClawAllowModelOverrides
+              ? (boxEngineContext.model ?? config.agentModel ?? null)
+              : null,
             openClaw: {
               agentId:
                 boxEngineContext.rewriteConfigPatch.openClaw?.agentId ??

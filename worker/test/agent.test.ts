@@ -3,6 +3,7 @@ import {
   buildAgentArgs,
   buildCodexThreadOptions,
   buildClaudePrompt,
+  buildOpenClawGatewayArgs,
   buildOpenClawSessionKey,
   countSourceBytes,
   diffEditedSourceFiles,
@@ -239,6 +240,56 @@ describe("buildOpenClawSessionKey", () => {
         },
       }),
     ).toBe("agent:softbox:openclaw-softbox-critic:g2");
+  });
+});
+
+describe("buildOpenClawGatewayArgs", () => {
+  const baseConfig = {
+    appId: "vite-default",
+    command: "openclaw",
+    model: "openai-codex/gpt-5.4",
+    timeoutMs: 1000,
+    projectRoot: "/tmp/project",
+    liveAppRoot: "/tmp/project/apps/vite-default",
+    liveAppLabel: "vite-default",
+    openClaw: {
+      baseUrl: "http://127.0.0.1:18789",
+      token: "test-token",
+      agentIdPrefix: "softbox-demo-",
+      sessionKeyPrefix: "softbox",
+    },
+  };
+
+  it("omits model overrides by default for OpenClaw gateway calls", () => {
+    const args = buildOpenClawGatewayArgs(
+      baseConfig,
+      "prompt",
+      "softbox-demo-vite-default",
+      "agent:softbox-demo-vite-default:vite-default",
+      null,
+    );
+    const params = JSON.parse(args[args.indexOf("--params") + 1]);
+
+    expect(params.model).toBeUndefined();
+  });
+
+  it("includes model overrides only when explicitly enabled", () => {
+    const args = buildOpenClawGatewayArgs(
+      {
+        ...baseConfig,
+        openClaw: {
+          ...baseConfig.openClaw,
+          allowModelOverrides: true,
+        },
+      },
+      "prompt",
+      "softbox-demo-vite-default",
+      "agent:softbox-demo-vite-default:vite-default",
+      null,
+    );
+    const params = JSON.parse(args[args.indexOf("--params") + 1]);
+
+    expect(params.model).toBe("openai-codex/gpt-5.4");
   });
 });
 

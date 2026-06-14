@@ -23,7 +23,9 @@ async function main(): Promise<void> {
   const apply = process.argv.includes("--apply");
   const config = loadWorkerConfig();
   const convex = new ConvexRuntimeClient(config);
-  const expectedModel = normalizeOpenClawModelId(config.agentModel ?? null);
+  const expectedModel = config.openClawAllowModelOverrides
+    ? normalizeOpenClawModelId(config.agentModel ?? null)
+    : null;
   let defaultProfiles:
     | {
         engineProfileId: string;
@@ -148,7 +150,9 @@ async function main(): Promise<void> {
     if (existingAgent) {
       const hasWorkspaceMismatch = existingAgent.workspace !== expectedWorkspace;
       const hasModelMismatch =
-        expectedModel !== null && existingAgent.model !== expectedModel;
+        expectedModel !== null
+          ? existingAgent.model !== expectedModel
+          : !config.openClawAllowModelOverrides && existingAgent.model !== null;
 
       if (hasWorkspaceMismatch || hasModelMismatch) {
         const reasons = [
@@ -156,7 +160,7 @@ async function main(): Promise<void> {
             ? `workspace is '${existingAgent.workspace ?? "unknown"}', expected '${expectedWorkspace}'`
             : null,
           hasModelMismatch
-            ? `model is '${existingAgent.model ?? "unknown"}', expected '${expectedModel}'`
+            ? `model is '${existingAgent.model ?? "unknown"}', expected '${expectedModel ?? "default"}'`
             : null,
         ].filter((value): value is string => Boolean(value));
 
@@ -176,7 +180,7 @@ async function main(): Promise<void> {
           projectRoot: config.projectRoot,
           agentId,
           workspace: expectedWorkspace,
-          model: config.agentModel,
+          model: expectedModel ?? undefined,
         });
         await clearStoredSession();
         const boxPersisted = await persistBox(null);
@@ -213,7 +217,7 @@ async function main(): Promise<void> {
       projectRoot: config.projectRoot,
       agentId,
       workspace: expectedWorkspace,
-      model: config.agentModel,
+      model: expectedModel ?? undefined,
     });
     await clearStoredSession();
     const boxPersisted = await persistBox(null);

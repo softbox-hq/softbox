@@ -31,6 +31,7 @@ function buildConfig(overrides?: Partial<WorkerConfig>): WorkerConfig {
     openClawAgentId: undefined,
     openClawAgentIdPrefix: "softbox-",
     openClawSessionKeyPrefix: "softbox",
+    openClawAllowModelOverrides: false,
     ...overrides,
   };
 }
