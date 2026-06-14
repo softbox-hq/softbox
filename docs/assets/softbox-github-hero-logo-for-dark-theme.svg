@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 618 224" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-miterlimit:50;">
+    <g transform="matrix(1,0,0,1,-170.947614,11.911993)">
+        <g transform="matrix(1,0,0,1,-9.19113,0)">
+            <g id="Logo" transform="matrix(1,0,0,1,-570.973318,13.161559)">
+                <g transform="matrix(0.012829,0.007407,-0.007407,0.012829,819.748818,-42.799345)">
+                    <rect x="3385.827" y="2598.425" width="7039.37" height="7039.37" style="fill:rgb(235,235,235);fill-opacity:0;stroke:white;stroke-width:84.38px;stroke-dasharray:337.525,253.144,0,0,0,0;"/>
+                </g>
+                <g transform="matrix(0.01712,0.01712,-0.01712,0.01712,869.82258,-125.6685)">
+                    <rect x="4260.857" y="4657.972" width="3494.094" height="3494.094" style="fill:rgb(235,235,235);fill-opacity:0;stroke:white;stroke-width:86.05px;"/>
+                </g>
+                <g transform="matrix(0.013475,0.02334,-0.02334,0.013475,920.552881,-147.856534)">
+                    <rect x="5194.815" y="4923.263" width="2559.054" height="2559.054" style="fill:rgb(235,235,235);fill-opacity:0;stroke:white;stroke-width:77.3px;"/>
+                </g>
+                <g transform="matrix(0.00604,0.022542,-0.022542,0.00604,969.340915,-84.647913)">
+                    <rect x="4717.839" y="5101.421" width="2401.574" height="2401.574" style="fill:rgb(235,235,235);fill-opacity:0;stroke:white;stroke-width:89.27px;"/>
+                </g>
+                <g transform="matrix(0.012029,0,0,0.012029,805.126535,26.916551)">
+                    <rect x="2923.318" y="3091.606" width="3779.525" height="3779.525" style="fill:rgb(235,235,235);fill-opacity:0;stroke:white;stroke-width:173.19px;"/>
+                </g>
+            </g>
+            <g transform="matrix(2.97994,0,0,2.97994,135.01384,-127.047947)">
+                <g transform="matrix(50,0,0,50,225.012483,89.584973)">
+                </g>
+                <text x="88.405px" y="89.585px" style="font-family:'Jersey10-Regular', 'Jersey 10';font-size:50px;fill:white;">softbox</text>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -1,7 +1,10 @@
 <a id="readme-top"></a>
 
 <p align="center">
-  <img src="docs/assets/softbox-github-hero-logo.svg" alt="Softbox" width="500">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/softbox-github-hero-logo-for-light-theme.svg">
+    <img src="docs/assets/softbox-github-hero-logo-for-dark-theme.svg" alt="Softbox" width="500">
+  </picture>
 </p>
 
 <p align="center"><strong>Dynamic user interfaces · stable shell · OpenClaw workers · immutable previews · explicit promotion</strong></p>
