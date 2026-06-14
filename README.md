@@ -1,3 +1,5 @@
+# Softbox - operating system for dynamic user interfaces.
+
 <a id="readme-top"></a>
 
 <p align="center">
@@ -23,10 +25,6 @@
   <a href="#architecture">Architecture</a> ·
   <a href="./SETUP.md">Full Setup</a>
 </p>
-
----
-
-Softbox is an operating system for dynamic user interfaces.
 
 ## ELI5
 
