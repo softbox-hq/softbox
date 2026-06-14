@@ -1,14 +1,8 @@
 <a id="readme-top"></a>
 
-<div align="center"><pre>
-███████╗ ██████╗ ███████╗████████╗██████╗  ██████╗ ██╗  ██╗
-██╔════╝██╔═══██╗██╔════╝╚══██╔══╝██╔══██╗██╔═══██╗╚██╗██╔╝
-███████╗██║   ██║█████╗     ██║   ██████╔╝██║   ██║ ╚███╔╝
-╚════██║██║   ██║██╔══╝     ██║   ██╔══██╗██║   ██║ ██╔██╗
-███████║╚██████╔╝██║        ██║   ██████╔╝╚██████╔╝██╔╝ ██╗
-╚══════╝ ╚═════╝ ╚═╝        ╚═╝   ╚═════╝  ╚═════╝ ╚═╝  ╚═╝
-          Operating system for dynamic user interfaces
-</pre></div>
+<p align="center">
+  <img src="docs/assets/softbox-logo-readme.png" alt="Softbox logo" width="220">
+</p>
 
 <p align="center"><strong>Dynamic user interfaces · stable shell · OpenClaw workers · immutable previews · explicit promotion</strong></p>
 
@@ -110,6 +104,8 @@ pnpm start
 
 Once agent is done installing, you then `pnpm start` and open browser at localhost:4173
 
+> In case of any issues with installation, consult it with AI agent, pass them `/docs/` as a reference.
+
 ## Requirements
 
 | Requirement | Notes |
@@ -121,7 +117,7 @@ Once agent is done installing, you then `pnpm start` and open browser at localho
 | OpenClaw CLI | Authenticated locally; used by the worker to edit app code |
 | MinIO or Cloudflare R2 | Artifact storage for built app bundles |
 
-
+> From your side as a human, there shoulnd be too much to install, AI agent will manage it all, but you might have to hatch openclaw if havent done so. 
 
 ## Documentation
 
@@ -137,9 +133,6 @@ Once agent is done installing, you then `pnpm start` and open browser at localho
 | [`docs/openclaw/ws.md`](./docs/openclaw/ws.md) | OpenClaw websocket notes |
 | [`docs/r2/R2-bottleneck.md`](./docs/r2/R2-bottleneck.md) | R2 storage notes |
 
-## Project Status
-
-Softbox is a local-first runtime for experimenting with agent-mutated apps. Treat generated app code as candidate code until it has been built, previewed, and promoted through the normal flow.
 
 ## License
 
