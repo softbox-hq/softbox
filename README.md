@@ -1,7 +1,7 @@
 <a id="readme-top"></a>
 
 <p align="center">
-  <img src="docs/assets/softbox-logo-readme.png" alt="Softbox logo" width="220">
+  <img src="docs/assets/softbox-github-hero-logo.svg" alt="Softbox" width="500">
 </p>
 
 <p align="center"><strong>Dynamic user interfaces · stable shell · OpenClaw workers · immutable previews · explicit promotion</strong></p>
