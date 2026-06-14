@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
+import { useSoftboxRuntime } from './adapter/runtime'
+import type { LiveAppTheme } from './defaultState'
 import './App.css'
 
 type CalendarEvent = {
@@ -42,14 +44,21 @@ const seededEvents: CalendarEvent[] = [
 ]
 
 function App() {
+  const { initialState, publishState } = useSoftboxRuntime()
   const [currentMonth, setCurrentMonth] = useState(
     new Date(today.getFullYear(), today.getMonth(), 1),
   )
   const [events, setEvents] = useState(seededEvents)
-  const [selectedDate, setSelectedDate] = useState(formatDateKey(today))
+  const [selectedDate, setSelectedDate] = useState(
+    initialState.ui.selectedDate ?? formatDateKey(today),
+  )
   const [title, setTitle] = useState('')
   const [time, setTime] = useState('09:00')
   const [category, setCategory] = useState<CalendarEvent['category']>('Work')
+  const [theme, setTheme] = useState<LiveAppTheme>(() => {
+    const nextTheme = initialState.ui.theme
+    return nextTheme === 'dark' ? 'dark' : 'light'
+  })
 
   const days = useMemo(() => buildMonthDays(currentMonth), [currentMonth])
   const selectedEvents = useMemo(
@@ -100,6 +109,21 @@ function App() {
     setTitle('')
   }
 
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+  }, [theme])
+
+  useEffect(() => {
+    publishState({
+      ...initialState,
+      ui: {
+        ...initialState.ui,
+        selectedDate,
+        theme,
+      },
+    })
+  }, [initialState, publishState, selectedDate, theme])
+
   return (
     <main className="app-shell">
       <section className="calendar-panel">
@@ -110,6 +134,24 @@ function App() {
             <p className="subtitle">A clean monthly view with the basics done right.</p>
           </div>
           <div className="topbar-actions">
+            <div className="theme-toggle" role="group" aria-label="Theme">
+              <button
+                type="button"
+                className={theme === 'light' ? 'toggle-button is-active' : 'toggle-button'}
+                onClick={() => setTheme('light')}
+                aria-pressed={theme === 'light'}
+              >
+                Light
+              </button>
+              <button
+                type="button"
+                className={theme === 'dark' ? 'toggle-button is-active' : 'toggle-button'}
+                onClick={() => setTheme('dark')}
+                aria-pressed={theme === 'dark'}
+              >
+                Dark
+              </button>
+            </div>
             <button
               type="button"
               className="ghost-button"

@@ -34,29 +34,10 @@ Softbox is an operating system for dynamic user interfaces.
 
 ## ELI5
 
-| Softbox is like a computer desktop in your browser. |
-| --- |
-| You right-click the desktop, make a new app, and tell it what you want. |
-
-Examples:
-
-<p>
-  <code>Make me a calendar.</code>
-  <code>Add a week view.</code>
-  <code>Make the events easier to read.</code>
-  <code>Add a button for creating meetings.</code>
-</p>
-
-Softbox asks an AI coding agent to change the app for you, but it does **not** immediately replace the app you are using.
-
-| Step | What happens |
-| --- | --- |
-| 1 | Softbox builds a new version on the side. |
-| 2 | You preview that new version first. |
-| 3 | If it works, Softbox can switch to it. |
-| 4 | If it is bad, your current app is still safe. |
-
-That is the whole idea: apps can change while the desktop around them stays stable.
+- Softbox is like a computer desktop in your browser.
+- You right-click the desktop, make a new app, and tell it what you want.
+- think of sibling to bolt.new, v0 or Lovable but with novel twist.
+- if you don't like button or want to add new db, you just tell the OpenClaw and it will make it happen.
 
 <!-- ## Why Softbox
 
@@ -156,21 +137,31 @@ Let's say you want to create a calendar application.
 (Notice that the browser nor input field does not reload. This is due to the idea that the prompt input envelops the Vite application. Think of analogy as softbox is your hands, and the vite application is rubick cube.)
 
 
-- Once the application is created, Softbox generates the default Vite boilerplate.
-- You can then prompt Softbox to generate the new calendar application.
-- The result is whole Vite application that can be run without softbox. (you can the check the code in `/apps/calendar`)
-
-You can therefore think of softbox as:
- - builder app, similiar to v0, bolt.new or Lovable
- - novel/experimental solution for dynamic interface
+6. Once the application is created, Softbox generates the default Vite boilerplate.
+7. You can then prompt Softbox to generate the new calendar application. `create calendar app. basic stuff`
 
 ## Dynamic interface
+
+Having calendar app generated, let's say I dont like the background, and I want to change it.
+(you can also think of Softbox that instead of having night theme written by developers, if you want night theme just tell, if you dont dont tell.)
+
+![Create and generate a new app from the Softbox desktop](docs/assets/github-create-new-app-theme.gif)
+
+
+## Change versions of app
 
 ## Move between Applications
 
 ## Change Wallpapers
 
 ## It also runs Doom
+
+
+## Summary
+The result is whole Vite application that can be run without softbox. (you can the check the code in `/apps/calendar`)
+You can therefore think of softbox as:
+ - builder app, similiar to v0, bolt.new or Lovable
+ - novel/experimental solution for dynamic interface
 
 
 ## Quickstart
