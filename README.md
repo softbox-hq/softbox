@@ -1,4 +1,3 @@
-# Softbox - operating system for dynamic user interfaces.
 
 <a id="readme-top"></a>
 
@@ -9,7 +8,7 @@
   </picture>
 </p>
 
-<p align="center"><strong>Dynamic user interfaces · stable shell · OpenClaw workers · immutable previews · explicit promotion</strong></p>
+<p align="center"><strong>Operating system for dynamic user interfaces.</strong></p>
 
 <p align="center">
   <a href="https://github.com/softbox-hq/softbox"><img src="https://img.shields.io/badge/repo-softbox--hq%2Fsoftbox-111827" alt="Repository"></a>
@@ -69,11 +68,23 @@ By clicking on prompt bar you have option to select elements to change or modify
 
 ![Create and generate a new app from the Softbox desktop](docs/assets/github-create-new-app-modal.gif)
 
-## Change versions of app
+### Update backend as well.
+
+Calendar needs backend also. Just give it prompt to create SQLite where data will be stored in subsequent runs. Its persisent btw sessions.
+
+## Change versions of app or Rollback
+If you are not satisfied with generated version, just roll back by one click
 
 ## Move between Applications
 
+When you want to change application you just click `go to desktop` and it will return you back to desktop
+
+
+
 ## Change Wallpapers
+You can also change the desktop background.
+
+![Wallpapers](docs/assets/github-wallpapers.gif)
 
 ## It also runs Doom
 In `/apps/doom` you will find `DOOM.WAD` which is open source version of doom (freedoom).
