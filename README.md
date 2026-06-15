@@ -21,35 +21,48 @@
   <a href="#quickstart">Quickstart</a> ·
   <a href="#how-it-works">How It Works</a> ·
   <a href="#create-an-app">Create an App</a> ·
+  <a href="#star-trek-interface">Star Trek Interface</a> ·
   <a href="#architecture">Architecture</a> ·
   <a href="./SETUP.md">Full Setup</a>
 </p>
 
 ## What if apps were not fixed?
 
-Most software gives you the interface its developers imagined ahead of time. Softbox explores a different model: apps that can be rewritten while you use them.
+Most software ships with an interface someone designed ahead of time. Softbox explores a different model: apps that can change while you use them.
 
-Ask for a dark mode, a new database, a different layout, or a more specific view of your data. Softbox routes the request to an AI coding worker, builds a new version of the app, lets you preview it, and only promotes it when it passes health checks.
+Ask for dark mode, a database, a different layout, or a new way to inspect your data. Softbox sends the request to an AI coding worker, builds a candidate version, lets you preview it, and only promotes it after health checks pass.
 
-The long-term idea is closer to the computers in Star Trek than to a normal settings screen: describe what you need, and the interface changes around the task.
+The mental model is closer to the computer in Star Trek than to a normal settings screen: describe what you need, and the interface adapts to the task.
 
 ## ELI5
 
 - Softbox is like a computer desktop in your browser.
 - You right-click the desktop, make a new app, and tell it what you want.
-- Think of it as a sibling to bolt.new, v0, or Lovable, but with a different twist.
+- Think of it as a sibling to bolt.new, v0, or Lovable, but with a different runtime model.
 - If you do not like a button, want a new database, or need the app to behave differently, you tell OpenClaw and it edits the app for you.
 
-# How It Works
+## Quickstart
 
-After installation, Softbox runs as a local desktop-like environment in your browser.
+Use Claude Code, Codex, or another agentic CLI tool, and give it `SETUP.md` to install Softbox.
 
-1. Clone this repository.
-2. Give [`SETUP.md`](./SETUP.md) to your coding agent and ask it to complete the setup.
-3. Run `pnpm start`.
-4. Open [`localhost:4173`](http://localhost:4173) in your browser.
+The agent will roughly follow this sequence:
 
-From there, you can create apps, prompt OpenClaw to edit them, preview generated versions, and promote the version you want to keep.
+```bash
+pnpm install
+pnpm run bootstrap
+# fill .env.local using SETUP.md
+pnpm run doctor
+pnpm start
+```
+
+Once the agent is done installing, run `pnpm start` and open [`localhost:4173`](http://localhost:4173).
+
+> [!NOTE]
+> If you run into installation issues, ask your AI agent to inspect `/docs/` as a reference.
+
+## How It Works
+
+After installation, Softbox runs as a local desktop-like environment in your browser. From there, you create apps, prompt OpenClaw to edit them, preview generated versions, and promote the version you want to keep.
 
 <p align="center">
   <picture>
@@ -74,56 +87,56 @@ Let's say you want to create a calendar application.
 
 > Notice that the browser and prompt input do not reload. The prompt input wraps the Vite application, so you can keep interacting with the app while Softbox prepares the next version.
 
+## Change the Interface
 
-## Dynamic interface
-
-After generating the calendar app, let's say you do not like the background and want to change it.
+After generating the calendar app, let's say you do not like the background.
 
 > [!TIP]
 > You can think of Softbox as an interface that changes when you ask. Instead of waiting for developers to build a night theme, you can simply ask for one.
 
-![Create and generate a new app from the Softbox desktop](docs/assets/github-create-new-app-theme.gif)
+![Change the generated app interface from the Softbox desktop](docs/assets/github-create-new-app-theme.gif)
 
 ### Inspect mode
+
 Click the prompt bar to enter inspect mode. From there, you can select elements to change or modify. For example, you might ask Softbox to move a sidebar into a modal instead of keeping it on the side.
 
-![Create and generate a new app from the Softbox desktop](docs/assets/github-create-new-app-modal-2.gif)
+![Use inspect mode to modify a generated app](docs/assets/github-create-new-app-modal-2.gif)
 
-### Update the backend as well
+## Add Backend State
 
 A calendar also needs a backend. Prompt Softbox to create a SQL database, and the app can store data across future runs. The data persists between sessions.
 
-![db](docs/assets/github-db.gif)
+![Add backend state to a generated app](docs/assets/github-db.gif)
 
+## Preview, Promote, and Roll Back
 
-## Change app versions or roll back
 If you are not satisfied with a generated version, roll back with one click.
 
-![rollback](docs/assets/github-rollback.gif)
+![Roll back a generated app version](docs/assets/github-rollback.gif)
 
-
-## Move between applications
+## Switch Apps
 
 When you want to switch applications, click `Back to desktop`.
 
-![mba](docs/assets/github-change-applications-2.gif)
+![Move between Softbox applications](docs/assets/github-change-applications-2.gif)
 
-## Change wallpapers
+## Change Wallpapers
+
 You can also change the desktop background.
 
 ![Wallpapers](docs/assets/github-wallpapers.gif)
 
-## Star Trek interface (Interesting use cases)
+## Star Trek Interface
 
 Dynamic interfaces make some applications feel closer to science fiction. In Star Trek, characters like Captain Picard or Geordi La Forge do not click through a fixed settings panel for every task. They ask the ship computer for the view, data, simulation, or adjustment they need, and the interface responds to the intent.
 
 That is the mental model Softbox explores for normal software: instead of treating the interface as fixed, you describe the change you want and the app can be rewritten around that request.
 
-Similar ideas show up across science fiction, from the Enterprise computer in Star Trek to conversational ship computers in films like Alien. The important part is not the voice assistant. The important part is that the interface becomes something you can negotiate with.
+Similar ideas show up across science fiction, from the Enterprise computer in Star Trek to ship computers in films like Alien. The important part is not the voice assistant. The important part is that the interface becomes something you can negotiate with.
 
 For example, when you open the Space 3D app and say `lock my view to jupiter`, OpenClaw rewrites the app code and points the camera at Jupiter.
 
-![Wallpapers](docs/assets/github-jupiter.gif)
+![Point the Space 3D app camera at Jupiter](docs/assets/github-jupiter.gif)
 
 You can extend the same idea further. You might ask Softbox to show asteroids approaching Jupiter, zoom in on a specific asteroid, display its known orbital path, or add a panel for its mineral profile if the app has access to that data.
 
@@ -131,55 +144,36 @@ This means you do not need to hard-code every possible action, such as navigatio
 
 This still has limitations. See [Limitations](#limitations).
 
-## It also runs Doom
+## It Also Runs Doom
+
 In `/apps/doom`, you will find `DOOM.WAD`, which is the open source Freedoom WAD.
 
 To play the classic version of Doom, replace the Freedoom WAD with the original WAD. You need to purchase the original game separately.
 
 ![Doom](docs/assets/github-doom.gif)
 
-## Summary: what Softbox solves
+## What Softbox Solves
 
-The calendar example shows the core idea: instead of using the same generic interface as everyone else, you can ask Softbox to shape the app around your own workflow.
+Softbox is for exploring software that is not locked to one interface forever.
 
-If you want a light and dark theme switch, ask for it. If a sidebar should become a popup, ask for it. If your contracts need a SQLite database, ask for it.
+Traditional apps usually ask users to adapt to the product. Softbox explores the opposite direction: the app can adapt to the user by changing its own code, rebuilding, and shipping a new candidate version.
 
-That is the idea behind Softbox: the application adapts to you instead of forcing you to adapt to the application.
+The generated result is still a real Vite application. Each app in Softbox is standalone-first, so it can be extracted from Softbox and run separately.
 
-Of course, a basic generated calendar app will not replace a mature product like Google Calendar. This repo explores a different path, where users can choose what they want to see and how their apps should behave.
+This repo is experimental. A basic generated calendar app will not replace a mature product like Google Calendar today. The point is to explore a different path: interfaces that can be negotiated, regenerated, previewed, and promoted as the user's needs change.
 
-The result is a complete Vite application that can run without Softbox. Each app in Softbox is a standalone Vite app, so you can extract it and run it separately.
+You can think of Softbox as:
 
-You can therefore think of Softbox as:
- - a builder app, similar to v0, bolt.new, or Lovable
- - a novel and experimental runtime for dynamic interfaces
+- a builder app, similar to v0, bolt.new, or Lovable
+- a novel and experimental runtime for dynamic interfaces
 
 ## Architecture
 
 Softbox keeps the browser shell stable while app code changes underneath it. The shell records prompts and previews generated app versions. The worker asks OpenClaw to edit the selected app workspace, builds a candidate version, uploads the artifacts, and only promotes the candidate after health checks pass.
 
-
 ## Limitations
+
 Model inference is currently slow. Most changes require a few minutes of waiting.
-
-
-# Quickstart
-
-Use Claude Code, Codex, or another agentic CLI tool, and give it `SETUP.md` to install Softbox.
-
-The agent will roughly follow this sequence:
-```bash
-pnpm install
-pnpm run bootstrap
-# fill .env.local using SETUP.md
-pnpm run doctor
-pnpm start
-```
-
-Once the agent is done installing, run `pnpm start` and open [`localhost:4173`](http://localhost:4173).
-
-> [!NOTE]
-> If you run into installation issues, ask your AI agent to inspect `/docs/` as a reference.
 
 ## Requirements
 
