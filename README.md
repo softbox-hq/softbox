@@ -25,6 +25,14 @@
   <a href="./SETUP.md">Full Setup</a>
 </p>
 
+## What if apps were not fixed?
+
+Most software gives you the interface its developers imagined ahead of time. Softbox explores a different model: apps that can be rewritten while you use them.
+
+Ask for a dark mode, a new database, a different layout, or a more specific view of your data. Softbox routes the request to an AI coding worker, builds a new version of the app, lets you preview it, and only promotes it when it passes health checks.
+
+The long-term idea is closer to the computers in Star Trek than to a normal settings screen: describe what you need, and the interface changes around the task.
+
 ## ELI5
 
 - Softbox is like a computer desktop in your browser.
@@ -105,13 +113,21 @@ You can also change the desktop background.
 
 ![Wallpapers](docs/assets/github-wallpapers.gif)
 
-## Interesting use cases
+## Star Trek interface (Interesting use cases)
 
-Dynamic interfaces make some applications feel closer to science fiction. Since Softbox uses Vite, hosted apps can also render 3D experiences.
+Dynamic interfaces make some applications feel closer to science fiction. In Star Trek, characters like Captain Picard or Geordi La Forge do not click through a fixed settings panel for every task. They ask the ship computer for the view, data, simulation, or adjustment they need, and the interface responds to the intent.
+
+That is the mental model Softbox explores for normal software: instead of treating the interface as fixed, you describe the change you want and the app can be rewritten around that request.
+
+Similar ideas show up across science fiction, from the Enterprise computer in Star Trek to conversational ship computers in films like Alien. The important part is not the voice assistant. The important part is that the interface becomes something you can negotiate with.
 
 For example, when you open the Space 3D app and say `lock my view to jupiter`, OpenClaw rewrites the app code and points the camera at Jupiter.
 
-This means you do not need to hard-code every possible action, such as navigation, distance, camera movement, or planet selection. You can describe what you want, and Softbox can prepare a new version of the app.
+![Wallpapers](docs/assets/github-jupiter.gif)
+
+You can extend the same idea further. You might ask Softbox to show asteroids approaching Jupiter, zoom in on a specific asteroid, display its known orbital path, or add a panel for its mineral profile if the app has access to that data.
+
+This means you do not need to hard-code every possible action, such as navigation, distance, camera movement, planet selection, asteroid overlays, or data panels. You can describe what you want, and Softbox can prepare a new version of the app.
 
 This still has limitations. See [Limitations](#limitations).
 
