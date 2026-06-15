@@ -73,7 +73,7 @@ Having calendar app generated, let's say I dont like the background, and I want 
 ### Inspect mode
 By clicking on prompt bar you have option to select elements to change or modify ... you might want to have the sidebar poped as modal instead being on the side..
 
-![Create and generate a new app from the Softbox desktop](docs/assets/github-create-new-app-modal.gif)
+![Create and generate a new app from the Softbox desktop](docs/assets/github-create-new-app-modal-2.gif)
 
 ### Update backend as well.
 
@@ -92,7 +92,7 @@ If you are not satisfied with generated version, just roll back by one click
 
 When you want to change application you just click `Back to desktop` and it will return you back to desktop
 
-![rollback](docs/assets/github-change-applications.gif)
+![mba](docs/assets/github-change-applications-2.gif)
 
 ## Change Wallpapers
 You can also change the desktop background.
