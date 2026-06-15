@@ -29,13 +29,19 @@
 
 - Softbox is like a computer desktop in your browser.
 - You right-click the desktop, make a new app, and tell it what you want.
-- think of sibling to bolt.new, v0 or Lovable but with novel twist.
-- if you don't like button or want to add new db, you just tell the OpenClaw and it will make it happen.
+- Think of it as a sibling to bolt.new, v0, or Lovable, but with a different twist.
+- If you do not like a button, want a new database, or need the app to behave differently, you tell OpenClaw and it edits the app for you.
 
 # How It Works
 
-- You cloned this repo and installed Softbox using `SETUP.md` by passing the file to your coding agent.
-- You then run `pnpm start` and now you are in your browser at `localhost:4173`
+After installation, Softbox runs as a local desktop-like environment in your browser.
+
+1. Clone this repository.
+2. Give [`SETUP.md`](./SETUP.md) to your coding agent and ask it to complete the setup.
+3. Run `pnpm start`.
+4. Open [`localhost:4173`](http://localhost:4173) in your browser.
+
+From there, you can create apps, prompt OpenClaw to edit them, preview generated versions, and promote the version you want to keep.
 
 <p align="center">
   <picture>
@@ -54,96 +60,98 @@ Let's say you want to create a calendar application.
 4. Choose a slug. This is the internal Softbox name for the Vite application.
 5. In the description, explain what the app should do and how its icon should look.
 6. Once the application is created, Softbox generates the default Vite boilerplate.
-7. You can then prompt Softbox to generate the new calendar application. `create calendar app. basic stuff`
+7. Prompt Softbox to generate the calendar app. For example: `create calendar app. basic stuff`
 
 ![Create and generate a new app from the Softbox desktop](docs/assets/github-create-new-app-flow.gif)
 
-> Notice that the browser nor input field does not reload. This is due to the idea that the prompt input envelops the Vite application. Think of analogy as softbox is your hands, and the vite application is a rubick cube.
+> Notice that the browser and prompt input do not reload. The prompt input wraps the Vite application, so you can keep interacting with the app while Softbox prepares the next version.
 
 
 ## Dynamic interface
 
-Having calendar app generated, let's say I dont like the background, and I want to change it.
+After generating the calendar app, let's say you do not like the background and want to change it.
 
-[!TIP]
-> you can also think of Softbox that instead of having night theme written by developers, if you want night theme just tell, if you dont dont tell.
+> [!TIP]
+> You can think of Softbox as an interface that changes when you ask. Instead of waiting for developers to build a night theme, you can simply ask for one.
 
 ![Create and generate a new app from the Softbox desktop](docs/assets/github-create-new-app-theme.gif)
 
 ### Inspect mode
-By clicking on prompt bar you have option to select elements to change or modify ... you might want to have the sidebar poped as modal instead being on the side..
+Click the prompt bar to enter inspect mode. From there, you can select elements to change or modify. For example, you might ask Softbox to move a sidebar into a modal instead of keeping it on the side.
 
 ![Create and generate a new app from the Softbox desktop](docs/assets/github-create-new-app-modal-2.gif)
 
-### Update backend as well.
+### Update the backend as well
 
-Calendar needs backend also. Just give it prompt to create SQL db where data will be stored in subsequent runs. Its persisent btw sessions.
+A calendar also needs a backend. Prompt Softbox to create a SQL database, and the app can store data across future runs. The data persists between sessions.
 
 ![db](docs/assets/github-db.gif)
 
 
-## Change versions of app or Rollback
-If you are not satisfied with generated version, just roll back by one click
+## Change app versions or roll back
+If you are not satisfied with a generated version, roll back with one click.
 
 ![rollback](docs/assets/github-rollback.gif)
 
 
-## Move between Applications
+## Move between applications
 
-When you want to change application you just click `Back to desktop` and it will return you back to desktop
+When you want to switch applications, click `Back to desktop`.
 
 ![mba](docs/assets/github-change-applications-2.gif)
 
-## Change Wallpapers
+## Change wallpapers
 You can also change the desktop background.
 
 ![Wallpapers](docs/assets/github-wallpapers.gif)
 
-## Interesting usecases
+## Interesting use cases
 
-Dynamic interface offers option to have certain applications "as from star trek". Since softbox uses vite, it allows for 3d rendering.
+Dynamic interfaces make some applications feel closer to science fiction. Since Softbox uses Vite, hosted apps can also render 3D experiences.
 
-When you open app Space 3d and tell that "lock my view to jupiter" , openclaw will rewrtie code on the fly and lock your view on jupiter.
+For example, when you open the Space 3D app and say `lock my view to jupiter`, OpenClaw rewrites the app code and points the camera at Jupiter.
 
-Therefore you do not need to hard code all the posiblities of the application - such as navigation or disctance or any method that comes to your mind, but instead you tell on the fly what you want to do, where the camera wnats to go and what planets you want to see and the softbox will render that on the fly.
-Currently this comes with limitations - read more info below in `## Limitations`
+This means you do not need to hard-code every possible action, such as navigation, distance, camera movement, or planet selection. You can describe what you want, and Softbox can prepare a new version of the app.
+
+This still has limitations. See [Limitations](#limitations).
 
 ## It also runs Doom
-In `/apps/doom` you will find `DOOM.WAD` which is open source version of doom (freedoom).
+In `/apps/doom`, you will find `DOOM.WAD`, which is the open source Freedoom WAD.
 
-To play classical version of doom just change WAD file from freedoom to original - you need to purchase it online.
+To play the classic version of Doom, replace the Freedoom WAD with the original WAD. You need to purchase the original game separately.
 
 ![Doom](docs/assets/github-doom.gif)
 
-## Summary and what softbox solves.
+## Summary: what Softbox solves
 
-What was ment to explain in this example of README by creating the calendar app, is that instead of having generic calndar app that will create for you some other developer and every person have the same interface with minimum amount of personalization, softbox offers you to customize the app as you want, so I wanted to have light and dark theme switch - so i asked for it, the modal should be rather on popup instead of being on the side so i customzied it. I want to sqlite  db for my contracts so i asked for it.
+The calendar example shows the core idea: instead of using the same generic interface as everyone else, you can ask Softbox to shape the app around your own workflow.
 
-This is the idea of softbox, the application adjust to yourself and not you to application.
+If you want a light and dark theme switch, ask for it. If a sidebar should become a popup, ask for it. If your contracts need a SQLite database, ask for it.
 
-Ofcourse basic calndar app will not substitute complex app like google calendar, but this repo might be the beggiing of such path that you as user choosing what you want to see in your app. 
+That is the idea behind Softbox: the application adapts to you instead of forcing you to adapt to the application.
 
-The result is whole Vite application that can be run without softbox. Each application in softbox is standalone vite application, you can extract it from softbox and run.
+Of course, a basic generated calendar app will not replace a mature product like Google Calendar. This repo explores a different path, where users can choose what they want to see and how their apps should behave.
 
-You can therefore think of softbox as:
- - builder app, similiar to v0, bolt.new or Lovable
- - novel/experimental solution for dynamic interface
+The result is a complete Vite application that can run without Softbox. Each app in Softbox is a standalone Vite app, so you can extract it and run it separately.
 
+You can therefore think of Softbox as:
+ - a builder app, similar to v0, bolt.new, or Lovable
+ - a novel and experimental runtime for dynamic interfaces
 
-###  Softbox being builder app
+## Architecture
 
-### novel/experimental solution for dynamic interface (Star Trek like)
+Softbox keeps the browser shell stable while app code changes underneath it. The shell records prompts and previews generated app versions. The worker asks OpenClaw to edit the selected app workspace, builds a candidate version, uploads the artifacts, and only promotes the candidate after health checks pass.
 
 
 ## Limitations
-Currently the inference of the model is very slow. For any change there is a need for few minutes of waiting 
+Model inference is currently slow. Most changes require a few minutes of waiting.
 
 
 # Quickstart
 
-Use Claude code or codex or any agentic CLI tool and give it `SETUP.md` to install.
+Use Claude Code, Codex, or another agentic CLI tool, and give it `SETUP.md` to install Softbox.
 
-Agent in the essence will do following:
+The agent will roughly follow this sequence:
 ```bash
 pnpm install
 pnpm run bootstrap
@@ -152,10 +160,10 @@ pnpm run doctor
 pnpm start
 ```
 
-Once agent is done installing, you then `pnpm start` and open browser at localhost:4173
+Once the agent is done installing, run `pnpm start` and open [`localhost:4173`](http://localhost:4173).
 
 > [!NOTE]
-> In case of any issues with installation, consult it with AI agent, pass them `/docs/` as a reference.
+> If you run into installation issues, ask your AI agent to inspect `/docs/` as a reference.
 
 ## Requirements
 
@@ -168,7 +176,7 @@ Once agent is done installing, you then `pnpm start` and open browser at localho
 | OpenClaw CLI | Authenticated locally; used by the worker to edit app code |
 | MinIO or Cloudflare R2 | Artifact storage for built app bundles |
 
-> From your side as a human, there shoulnd be too much to install, AI agent will manage it all, but you might have to hatch openclaw if havent done so. 
+> As a human, there should not be too much to install manually. Your AI agent can manage most of it, but you may need to authenticate OpenClaw if you have not done so yet.
 
 ## Documentation
 
