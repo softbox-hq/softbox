@@ -34,10 +34,15 @@
 
 # How It Works
 
-- You downloaded this repo and installed Softbox using `SETUP.md` by passing the file to your coding agent.
+- You cloned this repo and installed Softbox using `SETUP.md` by passing the file to your coding agent.
 - You then run `pnpm start` and now you are in your browser at `localhost:4173`
 
-![Create and generate a new app from the Softbox desktop](docs/assets/github-softbox-main-screen.png)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/github-softbox-main-screen.png">
+    <img src="docs/assets/github-softbox-main-screen.png" alt="Softbox" width="1000">
+  </picture>
+</p>
 
 ## Create an App
 
@@ -59,6 +64,8 @@ Let's say you want to create a calendar application.
 ## Dynamic interface
 
 Having calendar app generated, let's say I dont like the background, and I want to change it.
+
+[!TIP]
 > you can also think of Softbox that instead of having night theme written by developers, if you want night theme just tell, if you dont dont tell.
 
 ![Create and generate a new app from the Softbox desktop](docs/assets/github-create-new-app-theme.gif)
@@ -70,21 +77,36 @@ By clicking on prompt bar you have option to select elements to change or modify
 
 ### Update backend as well.
 
-Calendar needs backend also. Just give it prompt to create SQLite where data will be stored in subsequent runs. Its persisent btw sessions.
+Calendar needs backend also. Just give it prompt to create SQL db where data will be stored in subsequent runs. Its persisent btw sessions.
+
+![db](docs/assets/github-db.gif)
+
 
 ## Change versions of app or Rollback
 If you are not satisfied with generated version, just roll back by one click
 
+![rollback](docs/assets/github-rollback.gif)
+
+
 ## Move between Applications
 
-When you want to change application you just click `go to desktop` and it will return you back to desktop
+When you want to change application you just click `Back to desktop` and it will return you back to desktop
 
-
+![rollback](docs/assets/github-change-applications.gif)
 
 ## Change Wallpapers
 You can also change the desktop background.
 
 ![Wallpapers](docs/assets/github-wallpapers.gif)
+
+## Interesting usecases
+
+Dynamic interface offers option to have certain applications "as from star trek". Since softbox uses vite, it allows for 3d rendering.
+
+When you open app Space 3d and tell that "lock my view to jupiter" , openclaw will rewrtie code on the fly and lock your view on jupiter.
+
+Therefore you do not need to hard code all the posiblities of the application - such as navigation or disctance or any method that comes to your mind, but instead you tell on the fly what you want to do, where the camera wnats to go and what planets you want to see and the softbox will render that on the fly.
+Currently this comes with limitations - read more info below in `## Limitations`
 
 ## It also runs Doom
 In `/apps/doom` you will find `DOOM.WAD` which is open source version of doom (freedoom).
@@ -93,12 +115,28 @@ To play classical version of doom just change WAD file from freedoom to original
 
 ![Doom](docs/assets/github-doom.gif)
 
-## Summary
+## Summary and what softbox solves.
+
+What was ment to explain in this example of README by creating the calendar app, is that instead of having generic calndar app that will create for you some other developer and every person have the same interface with minimum amount of personalization, softbox offers you to customize the app as you want, so I wanted to have light and dark theme switch - so i asked for it, the modal should be rather on popup instead of being on the side so i customzied it. I want to sqlite  db for my contracts so i asked for it.
+
+This is the idea of softbox, the application adjust to yourself and not you to application.
+
+Ofcourse basic calndar app will not substitute complex app like google calendar, but this repo might be the beggiing of such path that you as user choosing what you want to see in your app. 
+
 The result is whole Vite application that can be run without softbox. Each application in softbox is standalone vite application, you can extract it from softbox and run.
 
 You can therefore think of softbox as:
  - builder app, similiar to v0, bolt.new or Lovable
  - novel/experimental solution for dynamic interface
+
+
+###  Softbox being builder app
+
+### novel/experimental solution for dynamic interface (Star Trek like)
+
+
+## Limitations
+Currently the inference of the model is very slow. For any change there is a need for few minutes of waiting 
 
 
 # Quickstart
@@ -116,6 +154,7 @@ pnpm start
 
 Once agent is done installing, you then `pnpm start` and open browser at localhost:4173
 
+> [!NOTE]
 > In case of any issues with installation, consult it with AI agent, pass them `/docs/` as a reference.
 
 ## Requirements

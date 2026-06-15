@@ -231,6 +231,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .primary-button,
 .ghost-button,
 .toggle-button {
@@ -252,6 +257,15 @@ button {
 .ghost-button {
   background: var(--panel);
   color: var(--text-h);
+}
+
+.database-status {
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+
+.database-status.is-error {
+  color: var(--danger);
 }
 
 .modal-backdrop {

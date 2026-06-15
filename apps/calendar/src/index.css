@@ -14,6 +14,7 @@
   --accent: #6366f1;
   --accent-bg: rgba(99, 102, 241, 0.12);
   --accent-border: rgba(99, 102, 241, 0.35);
+  --danger: #dc2626;
   --tag-work: #6366f1;
   --tag-personal: #ec4899;
   --tag-health: #10b981;
@@ -48,6 +49,7 @@
   --accent: #818cf8;
   --accent-bg: rgba(129, 140, 248, 0.16);
   --accent-border: rgba(129, 140, 248, 0.45);
+  --danger: #f87171;
   --tag-work: #818cf8;
   --tag-personal: #f472b6;
   --tag-health: #34d399;

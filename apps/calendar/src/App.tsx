@@ -2,15 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useSoftboxRuntime } from './adapter/runtime'
 import type { LiveAppTheme } from './defaultState'
+import { openEventsDatabase } from './eventsDatabase'
+import type { CalendarEvent, EventCategory, EventsDatabase } from './eventsDatabase'
 import './App.css'
-
-type CalendarEvent = {
-  id: number
-  title: string
-  date: string
-  time: string
-  category: 'Work' | 'Personal' | 'Health'
-}
 
 const categoryColors: Record<CalendarEvent['category'], string> = {
   Work: 'var(--tag-work)',
@@ -48,14 +42,16 @@ function App() {
   const [currentMonth, setCurrentMonth] = useState(
     new Date(today.getFullYear(), today.getMonth(), 1),
   )
-  const [events, setEvents] = useState(seededEvents)
+  const [eventsDatabase, setEventsDatabase] = useState<EventsDatabase | null>(null)
+  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [databaseError, setDatabaseError] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState(
     initialState.ui.selectedDate ?? formatDateKey(today),
   )
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [time, setTime] = useState('09:00')
-  const [category, setCategory] = useState<CalendarEvent['category']>('Work')
+  const [category, setCategory] = useState<EventCategory>('Work')
   const [theme, setTheme] = useState<LiveAppTheme>(() => {
     const nextTheme = initialState.ui.theme
     return nextTheme === 'dark' ? 'dark' : 'light'
@@ -86,22 +82,52 @@ function App() {
   function handleAddEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    if (!title.trim()) {
+    if (!title.trim() || !eventsDatabase) {
       return
     }
 
-    setEvents((current) => [
-      ...current,
-      {
-        id: Date.now(),
-        title: title.trim(),
-        date: selectedDate,
-        time,
-        category,
-      },
-    ])
+    eventsDatabase.addEvent({
+      title: title.trim(),
+      date: selectedDate,
+      time,
+      category,
+    })
+
+    setEvents(eventsDatabase.listEvents())
     setTitle('')
   }
+
+  useEffect(() => {
+    let isCurrent = true
+    let database: EventsDatabase | null = null
+
+    openEventsDatabase(seededEvents)
+      .then((openedDatabase) => {
+        database = openedDatabase
+
+        if (!isCurrent) {
+          openedDatabase.close()
+          return
+        }
+
+        setEventsDatabase(openedDatabase)
+        setEvents(openedDatabase.listEvents())
+        setDatabaseError(null)
+      })
+      .catch((error: unknown) => {
+        if (!isCurrent) {
+          return
+        }
+
+        setEvents(seededEvents)
+        setDatabaseError(error instanceof Error ? error.message : 'Unable to open events database')
+      })
+
+    return () => {
+      isCurrent = false
+      database?.close()
+    }
+  }, [])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -272,6 +298,11 @@ function App() {
             </div>
             <section className="modal-section">
               <p className="eyebrow">Quick add</p>
+              {databaseError ? (
+                <p className="database-status is-error">
+                  SQLite storage is unavailable. New events are paused.
+                </p>
+              ) : null}
               <form className="event-form" onSubmit={handleAddEvent}>
                 <label>
                   Title
@@ -295,7 +326,7 @@ function App() {
                     <select
                       value={category}
                       onChange={(event) =>
-                        setCategory(event.target.value as CalendarEvent['category'])
+                        setCategory(event.target.value as EventCategory)
                       }
                     >
                       <option>Work</option>
@@ -304,13 +335,16 @@ function App() {
                     </select>
                   </label>
                 </div>
-                <button type="submit" className="primary-button">
+                <button type="submit" className="primary-button" disabled={!eventsDatabase}>
                   Add event
                 </button>
               </form>
             </section>
             <section className="modal-section">
               <p className="eyebrow">Events</p>
+              {!eventsDatabase && !databaseError ? (
+                <p className="database-status">Opening SQLite events database...</p>
+              ) : null}
               <div className="agenda-list">
                 {selectedEvents.length ? (
                   selectedEvents.map((event) => (
